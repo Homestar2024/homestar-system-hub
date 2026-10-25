@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.1 (Phase 1: read + login). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.2 (Phase 2: training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -62,7 +62,8 @@ async function loadAll() {
     sb.from('folders').select('*').order('sort_order'),
     sb.from('items').select('id,type,folder_id,department_id,title,slug,overview,state,owner_id,next_review,last_reviewed,videos,sort_order,updated_at').order('sort_order').order('title'),
   ]);
-  return { departments: d.data || [], folders: f.data || [], items: i.data || [], error: d.error || f.error || i.error };
+  const [t, p, so] = await Promise.all([sb.from('tracks').select('*'), sb.from('progress').select('*'), sb.from('signoffs').select('person_id,item_id,agreed_at')]);
+  return { departments: d.data || [], folders: f.data || [], items: i.data || [], tracks: t.data || [], progress: p.data || [], signoffs: so.data || [], error: d.error || f.error || i.error };
 }
 
 // ---------- components ----------
@@ -98,7 +99,18 @@ function ItemTable({ rows, data, title }) {
     ${!rows.length && html`<tr><td colSpan="5" class="muted">Nothing here yet.</td></tr>`}</tbody></table></div>`;
 }
 
-function ItemView({ slug, data, me, people }) {
+async function markProgress(me, data, itemId) {
+  const rows = data.tracks.filter(t => (t.steps || []).some(st => st.item_id === itemId)).map(t => ({ person_id: me.id, track_id: t.id, item_id: itemId, status: 'complete', completed_at: new Date().toISOString() }));
+  if (rows.length) await sb.from('progress').upsert(rows, { onConflict: 'person_id,track_id,item_id' });
+}
+function TrackPanel({ track, data, me, onRun }) {
+  const steps = track.steps || []; const done = new Set(data.progress.filter(p => p.person_id === me.id && p.track_id === track.id && p.status === 'complete').map(p => p.item_id));
+  const pct = steps.length ? Math.round(100 * steps.filter(s => done.has(s.item_id)).length / steps.length) : 0; const mins = steps.reduce((a, s) => a + (s.minutes || 0), 0);
+  return html`<div class="card"><div class="row" style=${{ justifyContent: 'space-between' }}><h3 style=${{ margin: 0 }}>Learning Track <span class="muted" style=${{ fontWeight: 400, fontSize: 13 }}>· ${steps.length} items · about ${mins} min</span></h3><button class="btn orange" onClick=${onRun}>${pct === 100 ? 'Review' : pct > 0 ? 'Continue' : 'Run'}</button></div>
+    <div class="progress" style=${{ margin: '10px 0' }}><i style=${{ width: pct + '%' }}></i></div><div class="muted" style=${{ fontSize: 13, marginBottom: 8 }}>${pct}% complete</div>
+    ${steps.map((st, n) => { const it = data.items.find(i => i.id === st.item_id); return html`<div key=${n} class="row" style=${{ justifyContent: 'space-between', padding: '7px 0', borderTop: '1px solid var(--line)' }}><a href=${it ? '#/' + it.type + '/' + it.slug : '#'}>${n + 1}. ${it ? it.title : 'missing item'}</a><span class="muted" style=${{ fontSize: 13 }}>${st.minutes} min · ${done.has(st.item_id) ? html`<strong style=${{ color: 'var(--live)' }}>Complete</strong>` : 'Incomplete'}</span></div>`; })}</div>`;
+}
+function ItemView({ slug, data, me, people, reload }) {
   const [item, setItem] = useState(null); const [check, setCheck] = useState(false); const [done, setDone] = useState({}); const [agreed, setAgreed] = useState(null); const [comments, setComments] = useState([]); const [c, setC] = useState('');
   useEffect(() => { (async () => {
     const { data: it } = await sb.from('items').select('*').eq('slug', slug).single(); setItem(it || null);
@@ -114,7 +126,8 @@ function ItemView({ slug, data, me, people }) {
   const folder = data.folders.find(f => f.id === item.folder_id); const dept = data.departments.find(d => d.id === item.department_id);
   const owner = people.find(p => p.id === item.owner_id);
   const vids = (item.videos || []).map(videoEmbed).filter(Boolean);
-  const agree = async () => { const { error } = await sb.from('signoffs').insert({ person_id: me.id, item_id: item.id }); if (!error) setAgreed(new Date().toISOString()); };
+  const agree = async () => { const { error } = await sb.from('signoffs').insert({ person_id: me.id, item_id: item.id }); if (!error) { setAgreed(new Date().toISOString()); await markProgress(me, data, item.id); if (reload) reload(); } };
+  const track = item.type === 'training' ? data.tracks.find(t => t.training_id === item.id) : null;
   const post = async () => { if (!c.trim()) return; const { data: row } = await sb.from('comments').insert({ item_id: item.id, author_id: me.id, body: c.trim() }).select().single(); if (row) { setComments([...comments, row]); setC(''); } };
   const steps = check ? (item.body_md.match(/^\s*(?:\d+\.|[-*]\s*\[ \])\s+(.+)$/gm) || []).map(s => s.replace(/^\s*(?:\d+\.|[-*]\s*\[ \])\s+/, '')) : [];
   const canEdit = me.role === 'admin' || item.owner_id === me.id || (me.role === 'manager' && me.department_id === item.department_id);
@@ -126,6 +139,7 @@ function ItemView({ slug, data, me, people }) {
       ${owner && html`<span>Owner: ${owner.name}</span>`}${item.last_reviewed && html`<span>Last reviewed ${fmtDate(item.last_reviewed)}</span>`}${item.next_review && html`<span>Next review ${fmtDate(item.next_review)}</span>`}
       ${isChecklist(item.body_md) && html`<button class=${'btn sm ' + (check ? '' : 'ghost')} onClick=${() => setCheck(!check)}>${check ? 'Reading mode' : 'Checklist mode'}</button>`}</div>
     ${item.overview && html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>Overview</h3><div class="md" dangerouslySetInnerHTML=${render(item.overview)}></div></div>`}
+    ${track && html`<${TrackPanel} track=${track} data=${data} me=${me} onRun=${() => go('/run/' + track.id + '/0')}/>`}
     ${vids.map(v => html`<iframe key=${v} class="video" src=${v} allow="autoplay; fullscreen" allowfullscreen></iframe>`)}
     <div class="card">${check ? html`<div><div class="progress" style=${{ marginBottom: 10 }}><i style=${{ width: (100 * Object.values(done).filter(Boolean).length / Math.max(1, steps.length)) + '%' }}></i></div>
         ${steps.map((s, n) => html`<label key=${n} class=${'check' + (done[n] ? ' done' : '')}><input type="checkbox" checked=${!!done[n]} onChange=${e => setDone({ ...done, [n]: e.target.checked })}/><span>${s}</span></label>`)}</div>`
@@ -142,12 +156,63 @@ function ItemView({ slug, data, me, people }) {
   </div>`;
 }
 
+function Runner({ trackId, n, data, me, people, reload }) {
+  const track = data.tracks.find(t => t.id === trackId); if (!track) return html`<div class="card">Track not found.</div>`;
+  const steps = track.steps || []; const idx = Math.min(Math.max(0, parseInt(n) || 0), steps.length - 1); const step = steps[idx]; const it = data.items.find(i => i.id === step.item_id);
+  const training = data.items.find(i => i.id === track.training_id);
+  const done = new Set(data.progress.filter(p => p.person_id === me.id && p.track_id === track.id && p.status === 'complete').map(p => p.item_id));
+  const [full, setFull] = useState(null); const [busy, setBusy] = useState(false);
+  useEffect(() => { setFull(null); if (it) sb.from('items').select('*').eq('id', it.id).single().then(({ data }) => setFull(data || null)); }, [step.item_id]);
+  const vids = ((full && full.videos) || []).map(videoEmbed).filter(Boolean);
+  const agree = async () => { setBusy(true); await sb.from('signoffs').insert({ person_id: me.id, item_id: step.item_id }); await markProgress(me, data, step.item_id); await reload(); setBusy(false); if (idx < steps.length - 1) go(`/run/${track.id}/${idx + 1}`); };
+  const pct = steps.length ? Math.round(100 * steps.filter(s => done.has(s.item_id)).length / steps.length) : 0;
+  return html`<div class="runner">
+    <aside class="side" style=${{ display: 'block', position: 'static', borderRight: '1px solid var(--line)' }}><div style=${{ fontWeight: 700, marginBottom: 6 }}>${training ? training.title : 'Learning track'}</div><div class="progress"><i style=${{ width: pct + '%' }}></i></div><div class="muted" style=${{ fontSize: 12, margin: '4px 0 10px' }}>${pct}% complete</div>
+      ${steps.map((st, i) => { const x = data.items.find(q => q.id === st.item_id); return html`<div key=${i} class=${'item' + (i === idx ? ' on' : '')} onClick=${() => go(`/run/${track.id}/${i}`)}><span class="dot" style=${{ background: done.has(st.item_id) ? 'var(--live)' : 'var(--draft)' }}></span>${x ? x.title : '?'}</div>`; })}</aside>
+    <main class="main">
+      <div class="crumb">Step ${idx + 1} of ${steps.length} · ${step.minutes} min</div>
+      <h1 class="title">${it ? it.title : 'Missing item'}</h1>
+      ${!full ? html`<div class="muted">Loading…</div>` : html`<div>
+        ${full.overview && html`<div class="card"><div class="md" dangerouslySetInnerHTML=${render(full.overview)}></div></div>`}
+        ${vids.map(v => html`<iframe key=${v} class="video" src=${v} allow="autoplay; fullscreen" allowfullscreen></iframe>`)}
+        <div class="card"><div class="md" dangerouslySetInnerHTML=${render(full.body_md)}></div></div></div>`}
+      <div class="card row" style=${{ justifyContent: 'space-between' }}>
+        <div>${done.has(step.item_id) ? html`<span class="muted">Completed. ${idx < steps.length - 1 ? '' : 'This was the last item.'}</span>` : html`<span class="muted">Read or watch it, then confirm you understand and will follow it.</span>`}</div>
+        <div class="row">${idx > 0 && html`<button class="btn ghost" onClick=${() => go(`/run/${track.id}/${idx - 1}`)}>‹ Back</button>`}
+          ${!done.has(step.item_id) ? html`<button class="btn orange" disabled=${busy} onClick=${agree}>Agree and continue</button>` : idx < steps.length - 1 ? html`<button class="btn" onClick=${() => go(`/run/${track.id}/${idx + 1}`)}>Next ›</button>` : html`<a class="btn" href=${'#/training/' + (training ? training.slug : '')}>Back to training</a>`}</div></div>
+    </main></div>`;
+}
+function MyRecord({ data, me, people }) {
+  const my = data.signoffs.filter(s => s.person_id === me.id).sort((a, b) => b.agreed_at.localeCompare(a.agreed_at));
+  const myTracks = data.tracks.map(t => { const steps = t.steps || []; const d = steps.filter(s => data.progress.some(p => p.person_id === me.id && p.track_id === t.id && p.item_id === s.item_id && p.status === 'complete')).length; return { t, steps: steps.length, done: d, training: data.items.find(i => i.id === t.training_id) }; }).filter(x => x.done > 0 || (x.training && x.training.state === 'live'));
+  return html`<div><h1 class="title">My record</h1>
+    <div class="card"><h3 style=${{ margin: '0 0 8px' }}>Training</h3>${myTracks.map(x => html`<div key=${x.t.id} class="row" style=${{ justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid var(--line)' }}><a href=${'#/training/' + (x.training ? x.training.slug : '')}>${x.training ? x.training.title : '?'}</a><span class="muted" style=${{ fontSize: 13 }}>${x.done}/${x.steps} · ${x.steps ? Math.round(100 * x.done / x.steps) : 0}%</span></div>`)}</div>
+    <div class="card"><h3 style=${{ margin: '0 0 8px' }}>Sign-offs (${my.length})</h3><table class="table"><thead><tr><th>Item</th><th>Type</th><th>Agreed</th></tr></thead><tbody>${my.map((s, n) => { const it = data.items.find(i => i.id === s.item_id); return html`<tr key=${n} onClick=${() => it && go('/' + it.type + '/' + it.slug)}><td>${it ? it.title : '(removed item)'}</td><td>${it ? LIBS[it.type] : ''}</td><td class="muted">${fmtDate(s.agreed_at)}</td></tr>`; })}</tbody></table>
+    <p class="muted" style=${{ fontSize: 13 }}>Print this page (Ctrl+P) for the HR file; a PDF export arrives with Phase 3.</p></div></div>`;
+}
+function Dashboard({ data, me, people }) {
+  if (!['admin', 'manager'].includes(me.role)) return html`<div class="card">Managers and admins only.</div>`;
+  const scope = me.role === 'admin' ? people : people.filter(p => p.department_id === me.department_id);
+  const liveTracks = data.tracks.filter(t => { const tr = data.items.find(i => i.id === t.training_id); return tr && tr.state === 'live'; });
+  const today = new Date().toISOString().slice(0, 10); const yearAgo = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
+  const stale = data.items.filter(i => i.state === 'live' && ((i.next_review && i.next_review < today) || (!i.next_review && (i.last_reviewed || i.updated_at || '').slice(0, 10) < yearAgo)));
+  const drafts = data.items.filter(i => i.state === 'draft' || i.state === 'review');
+  return html`<div><h1 class="title">Dashboard</h1>
+    <div class="row" style=${{ marginBottom: 14 }}>${[['People', scope.filter(p => p.active).length], ['Live items', data.items.filter(i => i.state === 'live').length], ['Drafts / in review', drafts.length], ['Needs review', stale.length], ['Sign-offs', data.signoffs.length]].map(([k, v]) => html`<div key=${k} class="card" style=${{ flex: 1, minWidth: 120, marginBottom: 0 }}><div class="muted" style=${{ fontSize: 12, textTransform: 'uppercase' }}>${k}</div><div style=${{ fontSize: 26, fontWeight: 700 }}>${v}</div></div>`)}</div>
+    <div class="card"><h3 style=${{ margin: '0 0 8px' }}>Training completion</h3><div style=${{ overflow: 'auto' }}><table class="table"><thead><tr><th>Person</th>${liveTracks.map(t => { const tr = data.items.find(i => i.id === t.training_id); return html`<th key=${t.id} title=${tr.title}>${tr.title.length > 22 ? tr.title.slice(0, 20) + '…' : tr.title}</th>`; })}</tr></thead>
+      <tbody>${scope.filter(p => p.active).map(p => html`<tr key=${p.id}><td>${p.name}</td>${liveTracks.map(t => { const steps = (t.steps || []).length; const d = (t.steps || []).filter(s => data.progress.some(pr => pr.person_id === p.id && pr.track_id === t.id && pr.item_id === s.item_id && pr.status === 'complete')).length; const pct = steps ? Math.round(100 * d / steps) : 0; return html`<td key=${t.id}><span class=${'badge ' + (pct === 100 ? 'live' : pct > 0 ? 'review' : 'draft')}>${pct}%</span></td>`; })}</tr>`)}</tbody></table></div></div>
+    <${ItemTable} rows=${stale} data=${data} title="Live items overdue for review (no review in 12 months)"/>
+    <${ItemTable} rows=${drafts} data=${data} title="Drafts and items in review"/>
+  </div>`;
+}
 function Home({ data, me, people }) {
   const recent = [...data.items].sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || '')).slice(0, 8);
   const mine = data.items.filter(i => i.department_id === me.department_id && i.state === 'live');
   return html`<div>
     <h1 class="title">Welcome, ${me.name.split(' ')[0]}</h1>
     <div class="card"><strong>Your department:</strong> ${(data.departments.find(d => d.id === me.department_id) || {}).name || 'not set yet (ask Calvin)'} · <strong>Role:</strong> ${me.role}</div>
+    ${(() => { const open = data.tracks.map(t => { const steps = t.steps || []; const d = steps.filter(s => data.progress.some(p => p.person_id === me.id && p.track_id === t.id && p.item_id === s.item_id && p.status === 'complete')).length; return { t, steps: steps.length, done: d, training: data.items.find(i => i.id === t.training_id) }; }).filter(x => x.training && x.training.state === 'live' && x.done < x.steps && (x.training.department_id === me.department_id || !x.training.department_id || x.training.department_id === (data.departments.find(d => d.name === 'Company') || {}).id)).slice(0, 6);
+      return open.length ? html`<div class="card"><h3 style=${{ margin: '0 0 8px' }}>Your training</h3>${open.map(x => html`<div key=${x.t.id} class="row" style=${{ justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid var(--line)' }}><a href=${'#/training/' + x.training.slug}>${x.training.title}</a><div class="row"><div class="progress" style=${{ width: 120 }}><i style=${{ width: (x.steps ? 100 * x.done / x.steps : 0) + '%' }}></i></div><span class="muted" style=${{ fontSize: 13 }}>${x.done}/${x.steps}</span><a class="btn sm orange" href=${'#/run/' + x.t.id + '/' + Math.max(0, (x.t.steps || []).findIndex(s => !data.progress.some(p => p.person_id === me.id && p.track_id === x.t.id && p.item_id === s.item_id && p.status === 'complete')))}>${x.done ? 'Continue' : 'Start'}</a></div></div>`)}</div>` : null; })()}
     <${ItemTable} rows=${mine.slice(0, 12)} data=${data} title="Live systems in your department"/>
     <${ItemTable} rows=${recent} data=${data} title="Recently updated"/>
   </div>`;
@@ -176,18 +241,21 @@ function App() {
   const parts = route.split('/').filter(Boolean); const lib = ['system', 'policy', 'training'].includes(parts[0]) ? parts[0] : null; const slug = lib ? parts[1] : null;
   const results = q.trim() ? data.items.filter(i => (i.title + ' ' + (i.overview || '')).toLowerCase().includes(q.toLowerCase())) : null;
   const navA = (p, label) => html`<a href=${'#' + p} class=${(route === p || (p !== '/' && route.startsWith(p))) ? 'on' : ''}>${label}</a>`;
+  if (parts[0] === 'run') return html`<div><header class="top"><img src="logo.png" alt=""/><span class="brand">System Hub</span><nav>${navA('/training', '‹ Training')}</nav><span class="grow"></span><button class="btn ghost sm" onClick=${() => sb.auth.signOut()}>Sign out</button></header><${Runner} key=${parts[1] + '/' + parts[2]} trackId=${parts[1]} n=${parts[2]} data=${data} me=${me} people=${people} reload=${reload}/></div>`;
   return html`<div>
     <header class="top"><button class="btn ghost sm menu-btn" onClick=${() => setSide(!side)}>☰</button><img src="logo.png" alt=""/><span class="brand">System Hub</span>
-      <nav>${navA('/', 'Home')}${navA('/system', 'Systems')}${navA('/policy', 'Policies')}${navA('/training', 'Training')}${me.role === 'admin' && navA('/people', 'People')}</nav>
+      <nav>${navA('/', 'Home')}${navA('/system', 'Systems')}${navA('/policy', 'Policies')}${navA('/training', 'Training')}${navA('/me', 'My record')}${['admin', 'manager'].includes(me.role) && navA('/dashboard', 'Dashboard')}${me.role === 'admin' && navA('/people', 'People')}</nav>
       <span class="grow"></span><input placeholder="Search…" value=${q} onInput=${e => setQ(e.target.value)}/>
       <button class="btn ghost sm" onClick=${() => sb.auth.signOut()}>Sign out</button></header>
     <div class="layout">
       <aside class=${'side' + (side ? ' open' : '')}>${lib ? html`<${Tree} lib=${lib} data=${data} current=${slug} onPick=${i => { go(`/${i.type}/${i.slug}`); setSide(false); }}/>` : html`<div class="muted" style=${{ fontSize: 13 }}>Pick Systems, Policies or Training to browse the tree.</div>`}</aside>
       <main class="main">
         ${results ? html`<${ItemTable} rows=${results} data=${data} title=${`Search: ${q}`}/>`
-        : slug ? html`<${ItemView} key=${slug} slug=${slug} data=${data} me=${me} people=${people}/>`
+        : slug ? html`<${ItemView} key=${slug} slug=${slug} data=${data} me=${me} people=${people} reload=${reload}/>`
         : lib ? html`<${ItemTable} rows=${data.items.filter(i => i.type === lib)} data=${data} title=${LIBS[lib]}/>`
         : parts[0] === 'people' ? html`<${People} data=${data} people=${people} me=${me} reload=${reload}/>`
+        : parts[0] === 'me' ? html`<${MyRecord} data=${data} me=${me} people=${people}/>`
+        : parts[0] === 'dashboard' ? html`<${Dashboard} data=${data} me=${me} people=${people}/>`
         : html`<${Home} data=${data} me=${me} people=${people}/>`}
       </main>
       <aside class="rail"><h4>Access</h4><div>${me.name}</div><div class="muted" style=${{ fontSize: 13 }}>${me.email || session.user.email}</div>
