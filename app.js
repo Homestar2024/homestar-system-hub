@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.3.1 (Phase 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.4 (Phase 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -73,8 +73,8 @@ async function loadAll() {
     sb.from('folders').select('*').order('sort_order'),
     sb.from('items').select('id,type,folder_id,department_id,title,slug,overview,state,owner_id,next_review,last_reviewed,videos,sort_order,updated_at').order('sort_order').order('title'),
   ]);
-  const [t, p, so] = await Promise.all([sb.from('tracks').select('*'), sb.from('progress').select('*'), sb.from('signoffs').select('person_id,item_id,agreed_at')]);
-  return { departments: d.data || [], folders: f.data || [], items: i.data || [], tracks: t.data || [], progress: p.data || [], signoffs: so.data || [], error: d.error || f.error || i.error };
+  const [t, p, so, qz, qr] = await Promise.all([sb.from('tracks').select('*'), sb.from('progress').select('*'), sb.from('signoffs').select('person_id,item_id,agreed_at'), sb.from('quizzes').select('item_id,pass_mark,questions'), sb.from('quiz_results').select('person_id,item_id,score,passed,attempted_at')]);
+  return { departments: d.data || [], folders: f.data || [], items: i.data || [], tracks: t.data || [], progress: p.data || [], signoffs: so.data || [], quizzes: qz.data || [], quizResults: qr.data || [], error: d.error || f.error || i.error };
 }
 
 // ---------- components ----------
@@ -124,7 +124,7 @@ function TrackPanel({ track, data, me, onRun }) {
 }
 function ItemView({ slug, data, me, people, reload }) {
   const [item, setItem] = useState(null); const [check, setCheck] = useState(false); const [done, setDone] = useState({}); const [agreed, setAgreed] = useState(null); const [comments, setComments] = useState([]); const [c, setC] = useState('');
-  const [edit, setEdit] = useState(false); const [showHist, setShowHist] = useState(false);
+  const [edit, setEdit] = useState(false); const [showHist, setShowHist] = useState(false); const [quizOpen, setQuizOpen] = useState(false);
   const refresh = async () => { const { data: it } = await sb.from('items').select('*').eq('slug', slug).single(); setItem(it || null); if (reload) reload(); };
   useEffect(() => { (async () => {
     const { data: it } = await sb.from('items').select('*').eq('slug', slug).single(); setItem(it || null);
@@ -167,6 +167,7 @@ function ItemView({ slug, data, me, people, reload }) {
       ${comments.filter(cm => !cm.resolved).map(cm => html`<div key=${cm.id} style=${{ padding: '6px 0', borderBottom: '1px solid var(--line)' }}><div class="row" style=${{ justifyContent: 'space-between' }}><span class="muted" style=${{ fontSize: 12 }}>${(people.find(p => p.id === cm.author_id) || {}).name || 'Someone'} · ${fmtDate(cm.created_at)}</span>${(canEdit || cm.author_id === me.id) && html`<button class="btn ghost sm" onClick=${async () => { const { error } = await sb.from('comments').update({ resolved: true }).eq('id', cm.id); if (!error) setComments(comments.map(x => x.id === cm.id ? { ...x, resolved: true } : x)); }}>Resolve</button>`}</div><div>${cm.body}</div></div>`)}
       ${comments.some(cm => cm.resolved) && html`<div class="muted" style=${{ fontSize: 12, marginTop: 4 }}>${comments.filter(cm => cm.resolved).length} resolved</div>`}
       <div class="row" style=${{ marginTop: 10 }}><input style=${{ flex: 1, padding: 9, border: '1px solid var(--line)', borderRadius: 8 }} placeholder="Add a comment" value=${c} onInput=${e => setC(e.target.value)}/><button class="btn sm" onClick=${post}>Comment</button></div></div>
+    ${(() => { const quiz = quizFor(data, item.id); if (!quiz) return null; const best = bestQuiz(data, me.id, item.id); return quizOpen ? html`<${Quiz} quiz=${quiz} item=${item} me=${me} onPassed=${async () => { if (reload) await reload(); }} onClose=${() => setQuizOpen(false)}/>` : html`<div class="card row" style=${{ justifyContent: 'space-between' }}><span>Quick check: ${best ? (best.passed ? html`<strong style=${{ color: 'var(--live)' }}>passed ${best.score}%</strong>` : `best ${best.score}%, not passed`) : 'not taken'}</span><button class=${'btn sm ' + (best && best.passed ? 'ghost' : 'orange')} onClick=${() => setQuizOpen(true)}>${best && best.passed ? 'Retake' : 'Take the quick check'}</button></div>`; })()}
     <div class="card row" style=${{ justifyContent: 'space-between' }}>
       <div>${agreed ? html`<span class="muted">You agreed on ${fmtDate(agreed)}.</span>` : html`<span class="muted">Read it? Confirm you understand and will follow it.</span>`}</div>
       ${!agreed && html`<button class="btn orange" onClick=${agree}>Agree</button>`}</div>
@@ -180,10 +181,12 @@ function Runner({ trackId, n, data, me, people, reload }) {
   const idx = Math.min(Math.max(0, parseInt(n) || 0), steps.length - 1); const step = steps[idx]; const it = data.items.find(i => i.id === step.item_id);
   const training = data.items.find(i => i.id === track.training_id);
   const done = new Set(data.progress.filter(p => p.person_id === me.id && p.track_id === track.id && p.status === 'complete').map(p => p.item_id));
-  const [full, setFull] = useState(null); const [busy, setBusy] = useState(false);
-  useEffect(() => { setFull(null); if (it) sb.from('items').select('*').eq('id', it.id).single().then(({ data }) => setFull(data || null)); }, [step.item_id]);
+  const [full, setFull] = useState(null); const [busy, setBusy] = useState(false); const [quizOpen, setQuizOpen] = useState(false);
+  useEffect(() => { setFull(null); setQuizOpen(false); if (it) sb.from('items').select('*').eq('id', it.id).single().then(({ data }) => setFull(data || null)); }, [step.item_id]);
+  const quiz = it ? quizFor(data, it.id) : null; const best = it ? bestQuiz(data, me.id, it.id) : null; const quizDone = !quiz || (best && best.passed);
   const vids = ((full && full.videos) || []).map(videoEmbed).filter(Boolean);
-  const agree = async () => { setBusy(true); await sb.from('signoffs').insert({ person_id: me.id, item_id: step.item_id }); await markProgress(me, data, step.item_id); await reload(); setBusy(false); if (idx < steps.length - 1) go(`/run/${track.id}/${idx + 1}`); };
+  const agree = async () => { setBusy(true); await sb.from('signoffs').insert({ person_id: me.id, item_id: step.item_id }); await markProgress(me, data, step.item_id); await reload(); setBusy(false); if (quiz && !(best && best.passed)) setQuizOpen(true); else if (idx < steps.length - 1) go(`/run/${track.id}/${idx + 1}`); };
+  const next = () => { if (idx < steps.length - 1) go(`/run/${track.id}/${idx + 1}`); };
   const pct = steps.length ? Math.round(100 * steps.filter(s => done.has(s.item_id)).length / steps.length) : 0;
   return html`<div class="runner">
     <aside class="side" style=${{ display: 'block', position: 'static', borderRight: '1px solid var(--line)' }}><div style=${{ fontWeight: 700, marginBottom: 6 }}>${training ? training.title : 'Learning track'}</div><div class="progress"><i style=${{ width: pct + '%' }}></i></div><div class="muted" style=${{ fontSize: 12, margin: '4px 0 10px' }}>${pct}% complete</div>
@@ -195,6 +198,8 @@ function Runner({ trackId, n, data, me, people, reload }) {
         ${full.overview && html`<div class="card"><${Md} md=${full.overview}/></div>`}
         ${vids.map(v => html`<iframe key=${v} class="video" src=${v} allow="autoplay; fullscreen" allowfullscreen></iframe>`)}
         <div class="card"><${Md} md=${full.body_md}/></div></div>`}
+      ${quizOpen && quiz && it && html`<${Quiz} quiz=${quiz} item=${it} me=${me} onPassed=${async () => { await reload(); }} onClose=${() => { setQuizOpen(false); if (bestQuiz(data, me.id, it.id)?.passed || quizDone) next(); }}/>`}
+      ${!quizOpen && quiz && done.has(step.item_id) && !quizDone && html`<div class="card row" style=${{ justifyContent: 'space-between', borderLeft: '4px solid var(--orange)' }}><span>Quick check not passed yet${best ? ` (best ${best.score}%)` : ''}.</span><button class="btn orange sm" onClick=${() => setQuizOpen(true)}>Take the quick check</button></div>`}
       <div class="card row" style=${{ justifyContent: 'space-between' }}>
         <div>${done.has(step.item_id) ? html`<span class="muted">Completed. ${idx < steps.length - 1 ? '' : 'This was the last item.'}</span>` : html`<span class="muted">Read or watch it, then confirm you understand and will follow it.</span>`}</div>
         <div class="row">${idx > 0 && html`<button class="btn ghost" onClick=${() => go(`/run/${track.id}/${idx - 1}`)}>‹ Back</button>`}
@@ -219,6 +224,30 @@ async function uploadImage(itemId, file) {
   const key = `${itemId}__${Date.now().toString(36)}-${safe}`;
   const { error } = await sb.storage.from('images').upload(key, f, { contentType: f.type, upsert: false }); if (error) throw error;
   return key;
+}
+
+// ---------- quizzes (Phase 4a) ----------
+const quizFor = (data, itemId) => (data.quizzes || []).find(q => q.item_id === itemId && (q.questions || []).length);
+const bestQuiz = (data, personId, itemId) => (data.quizResults || []).filter(r => r.person_id === personId && r.item_id === itemId).sort((a, b) => b.score - a.score)[0];
+function Quiz({ quiz, item, me, onPassed, onClose }) {
+  const [order] = useState(() => quiz.questions.map(q => { const idx = q.choices.map((_, i) => i); for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; } return idx; }));
+  const [picks, setPicks] = useState({}); const [result, setResult] = useState(null); const [busy, setBusy] = useState(false);
+  const qs = quiz.questions; const allPicked = qs.every((_, n) => picks[n] !== undefined);
+  const submit = async () => {
+    const correct = qs.filter((q, n) => order[n][picks[n]] === q.answer).length; const score = Math.round(100 * correct / qs.length); const passed = score >= (quiz.pass_mark || 80);
+    setBusy(true); await sb.from('quiz_results').insert({ person_id: me.id, item_id: item.id, score, passed }); setBusy(false); setResult({ score, passed, correct });
+    if (passed && onPassed) onPassed(score);
+  };
+  return html`<div class="card quiz" style=${{ borderLeft: '4px solid var(--orange)' }}>
+    <div class="row" style=${{ justifyContent: 'space-between' }}><h3 style=${{ margin: 0 }}>Quick check: ${item.title}</h3><span class="muted" style=${{ fontSize: 13 }}>${qs.length} questions · pass mark ${quiz.pass_mark || 80}%</span></div>
+    ${qs.map((q, n) => html`<div key=${n} style=${{ margin: '12px 0' }}><div style=${{ fontWeight: 600, marginBottom: 6 }}>${n + 1}. ${q.q}</div>
+      ${order[n].map((ci, k) => { const chosen = picks[n] === k; const isRight = ci === q.answer; const cls = result ? (isRight ? ' right' : chosen ? ' wrong' : '') : (chosen ? ' chosen' : '');
+        return html`<label key=${k} class=${'choice' + cls}><input type="radio" name=${'q' + n} disabled=${!!result} checked=${chosen} onChange=${() => setPicks({ ...picks, [n]: k })}/><span>${q.choices[ci]}</span></label>`; })}
+      ${result && html`<div class="muted" style=${{ fontSize: 13, marginTop: 4 }}>${q.why}</div>`}</div>`)}
+    ${!result ? html`<div class="row" style=${{ justifyContent: 'flex-end' }}>${onClose && html`<button class="btn ghost sm" onClick=${onClose}>Later</button>`}<button class="btn orange" disabled=${!allPicked || busy} onClick=${submit}>Check answers</button></div>`
+      : html`<div class="row" style=${{ justifyContent: 'space-between' }}><strong style=${{ color: result.passed ? 'var(--live)' : '#B42318' }}>${result.passed ? 'Passed' : 'Not yet'} · ${result.correct}/${qs.length} correct (${result.score}%)</strong>
+        <div class="row">${!result.passed && html`<button class="btn orange sm" onClick=${() => { setPicks({}); setResult(null); }}>Try again</button>`}${onClose && html`<button class="btn sm" onClick=${onClose}>${result.passed ? 'Continue' : 'Close'}</button>`}</div></div>`}
+  </div>`;
 }
 const VIDEO_RX = /https?:\/\/(?:www\.)?(?:loom\.com\/(?:share|embed)\/[a-f0-9]+|youtube\.com\/(?:watch\?v=|embed\/)[\w-]{11}|youtu\.be\/[\w-]{11}|fast\.wistia\.(?:net|com)\/embed\/iframe\/\w+|\w+\.wistia\.com\/medias\/\w+)[^\s)>\]"]*/g;
 function Editor({ item, data, me, people, onDone }) {
@@ -277,6 +306,7 @@ function MyRecord({ data, me, people }) {
   const myTracks = data.tracks.map(t => { const steps = t.steps || []; const d = steps.filter(s => data.progress.some(p => p.person_id === me.id && p.track_id === t.id && p.item_id === s.item_id && p.status === 'complete')).length; return { t, steps: steps.length, done: d, training: data.items.find(i => i.id === t.training_id) }; }).filter(x => x.done > 0 || (x.training && x.training.state === 'live'));
   return html`<div class="print-record"><h1 class="title">My record <span class="muted print-only" style=${{ fontSize: 14, fontWeight: 400 }}>· ${me.name} · ${me.email || ''} · printed ${fmtDate(new Date().toISOString())}</span></h1>
     <div class="card"><h3 style=${{ margin: '0 0 8px' }}>Training</h3>${myTracks.map(x => html`<div key=${x.t.id} class="row" style=${{ justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid var(--line)' }}><a href=${'#/training/' + (x.training ? x.training.slug : '')}>${x.training ? x.training.title : '?'}</a><span class="muted" style=${{ fontSize: 13 }}>${x.done}/${x.steps} · ${x.steps ? Math.round(100 * x.done / x.steps) : 0}%</span></div>`)}</div>
+    ${(() => { const mine = (data.quizResults || []).filter(r => r.person_id === me.id); const byItem = {}; mine.forEach(r => { const b = byItem[r.item_id]; if (!b || r.score > b.score) byItem[r.item_id] = r; }); const rows = Object.values(byItem).sort((a, b) => b.attempted_at.localeCompare(a.attempted_at)); return rows.length ? html`<div class="card"><h3 style=${{ margin: '0 0 8px' }}>Quick checks (${rows.filter(r => r.passed).length} passed of ${rows.length})</h3><table class="table"><thead><tr><th>Item</th><th>Best score</th><th>Result</th><th>Date</th></tr></thead><tbody>${rows.map(r => { const it = data.items.find(i => i.id === r.item_id); return html`<tr key=${r.item_id} onClick=${() => it && go('/' + it.type + '/' + it.slug)}><td>${it ? it.title : '(removed)'}</td><td>${r.score}%</td><td><span class=${'badge ' + (r.passed ? 'live' : 'draft')}>${r.passed ? 'Passed' : 'Not passed'}</span></td><td class="muted">${fmtDate(r.attempted_at)}</td></tr>`; })}</tbody></table></div>` : null; })()}
     <div class="card"><h3 style=${{ margin: '0 0 8px' }}>Sign-offs (${my.length})</h3><table class="table"><thead><tr><th>Item</th><th>Type</th><th>Agreed</th></tr></thead><tbody>${my.map((s, n) => { const it = data.items.find(i => i.id === s.item_id); return html`<tr key=${n} onClick=${() => it && go('/' + it.type + '/' + it.slug)}><td>${it ? it.title : '(removed item)'}</td><td>${it ? LIBS[it.type] : ''}</td><td class="muted">${fmtDate(s.agreed_at)}</td></tr>`; })}</tbody></table>
     <div class="row" style=${{ marginTop: 8 }}><button class="btn sm" onClick=${() => window.print()}>Print / save as PDF</button><span class="muted" style=${{ fontSize: 13 }}>Choose "Save as PDF" in the print dialog for the HR file.</span></div></div></div>`;
 }
@@ -288,9 +318,9 @@ function Dashboard({ data, me, people }) {
   const stale = data.items.filter(i => i.state === 'live' && ((i.next_review && i.next_review < today) || (!i.next_review && (i.last_reviewed || i.updated_at || '').slice(0, 10) < yearAgo)));
   const drafts = data.items.filter(i => i.state === 'draft' || i.state === 'review');
   return html`<div><h1 class="title">Dashboard</h1>
-    <div class="row" style=${{ marginBottom: 14 }}>${[['People', scope.filter(p => p.active).length], ['Live items', data.items.filter(i => i.state === 'live').length], ['Drafts / in review', drafts.length], ['Needs review', stale.length], ['Sign-offs', data.signoffs.length]].map(([k, v]) => html`<div key=${k} class="card" style=${{ flex: 1, minWidth: 120, marginBottom: 0 }}><div class="muted" style=${{ fontSize: 12, textTransform: 'uppercase' }}>${k}</div><div style=${{ fontSize: 26, fontWeight: 700 }}>${v}</div></div>`)}</div>
-    <div class="card"><h3 style=${{ margin: '0 0 8px' }}>Training completion</h3><div style=${{ overflow: 'auto' }}><table class="table"><thead><tr><th>Person</th>${liveTracks.map(t => { const tr = data.items.find(i => i.id === t.training_id); return html`<th key=${t.id} title=${tr.title}>${tr.title.length > 22 ? tr.title.slice(0, 20) + '…' : tr.title}</th>`; })}</tr></thead>
-      <tbody>${scope.filter(p => p.active).map(p => html`<tr key=${p.id}><td>${p.name}</td>${liveTracks.map(t => { const steps = (t.steps || []).length; const d = (t.steps || []).filter(s => data.progress.some(pr => pr.person_id === p.id && pr.track_id === t.id && pr.item_id === s.item_id && pr.status === 'complete')).length; const pct = steps ? Math.round(100 * d / steps) : 0; return html`<td key=${t.id}><span class=${'badge ' + (pct === 100 ? 'live' : pct > 0 ? 'review' : 'draft')}>${pct}%</span></td>`; })}</tr>`)}</tbody></table></div></div>
+    <div class="row" style=${{ marginBottom: 14 }}>${[['People', scope.filter(p => p.active).length], ['Live items', data.items.filter(i => i.state === 'live').length], ['Drafts / in review', drafts.length], ['Needs review', stale.length], ['Sign-offs', data.signoffs.length], ['Quick checks passed', (() => { const k = new Set(); (data.quizResults || []).filter(r => r.passed).forEach(r => k.add(r.person_id + r.item_id)); return k.size; })()]].map(([k, v]) => html`<div key=${k} class="card" style=${{ flex: 1, minWidth: 120, marginBottom: 0 }}><div class="muted" style=${{ fontSize: 12, textTransform: 'uppercase' }}>${k}</div><div style=${{ fontSize: 26, fontWeight: 700 }}>${v}</div></div>`)}</div>
+    <div class="card"><h3 style=${{ margin: '0 0 8px' }}>Training completion</h3><div style=${{ overflow: 'auto' }}><table class="table"><thead><tr><th>Person</th><th>Quick checks</th>${liveTracks.map(t => { const tr = data.items.find(i => i.id === t.training_id); return html`<th key=${t.id} title=${tr.title}>${tr.title.length > 22 ? tr.title.slice(0, 20) + '…' : tr.title}</th>`; })}</tr></thead>
+      <tbody>${scope.filter(p => p.active).map(p => html`<tr key=${p.id}><td>${p.name}</td><td>${(() => { const k = new Set(); (data.quizResults || []).filter(r => r.person_id === p.id && r.passed).forEach(r => k.add(r.item_id)); const att = new Set((data.quizResults || []).filter(r => r.person_id === p.id).map(r => r.item_id)); return html`<span class=${'badge ' + (att.size && k.size === att.size ? 'live' : att.size ? 'review' : 'draft')}>${k.size}/${(data.quizzes || []).length}</span>`; })()}</td>${liveTracks.map(t => { const steps = (t.steps || []).length; const d = (t.steps || []).filter(s => data.progress.some(pr => pr.person_id === p.id && pr.track_id === t.id && pr.item_id === s.item_id && pr.status === 'complete')).length; const pct = steps ? Math.round(100 * d / steps) : 0; return html`<td key=${t.id}><span class=${'badge ' + (pct === 100 ? 'live' : pct > 0 ? 'review' : 'draft')}>${pct}%</span></td>`; })}</tr>`)}</tbody></table></div></div>
     <${ItemTable} rows=${stale} data=${data} title="Live items overdue for review (no review in 12 months)"/>
     <${ItemTable} rows=${drafts} data=${data} title="Drafts and items in review"/>
   </div>`;
