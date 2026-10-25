@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.6.1 (Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.7 (mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -102,13 +102,36 @@ function Tree({ lib, data, current, onPick }) {
   </div>`)}</div>`;
 }
 
-function ItemTable({ rows, data, title }) {
+function ItemTable({ rows, data, title, empty }) {
   const fname = (id) => (data.folders.find(f => f.id === id) || {}).name || '';
   const dname = (id) => (data.departments.find(d => d.id === id) || {}).name || 'Company';
-  return html`<div class="card"><h3 style=${{ margin: '0 0 10px' }}>${title}</h3>
-    <table class="table"><thead><tr><th>State</th><th>Title</th><th>Department</th><th>Folder</th><th>Updated</th></tr></thead>
-    <tbody>${rows.map(i => html`<tr key=${i.id} onClick=${() => go(`/${i.type}/${i.slug}`)}><td><span class=${'badge ' + i.state}>${STATES[i.state]}</span></td><td>${i.title}</td><td>${dname(i.department_id)}</td><td>${fname(i.folder_id)}</td><td class="muted">${fmtDate(i.updated_at)}</td></tr>`)}
-    ${!rows.length && html`<tr><td colSpan="5" class="muted">Nothing here yet.</td></tr>`}</tbody></table></div>`;
+  return html`<div class="card list"><h3>${title}</h3>
+    ${rows.map(i => html`<a key=${i.id} class="lrow" href=${'#/' + i.type + '/' + i.slug}><span class=${'dot ' + i.state}></span><span class="t"><b>${i.title}</b><small>${dname(i.department_id)}${fname(i.folder_id) ? ' › ' + fname(i.folder_id) : ''}${i.updated_at ? ' · ' + fmtDate(i.updated_at) : ''}</small></span><span class="muted">›</span></a>`)}
+    ${!rows.length && html`<div class="muted">${empty || 'Nothing here yet.'}</div>`}</div>`;
+}
+
+// ---------- Browse (phone): library -> department -> folder -> pages
+function Browse({ lib, data }) {
+  const [path, setPath] = useState([]); const [q, setQ] = useState('');
+  const items = data.items.filter(i => i.type === lib); const folders = data.folders.filter(f => f.library === lib);
+  const depts = data.departments.filter(d => items.some(i => i.department_id === d.id) || folders.some(f => f.department_id === d.id));
+  const cur = path[path.length - 1];
+  const title = !cur ? LIBS[lib] : cur.kind === 'dept' ? cur.name : cur.name;
+  const results = q.trim() ? items.filter(i => i.title.toLowerCase().includes(q.toLowerCase())) : null;
+  const sub = (fid) => folders.filter(f => f.parent_id === fid);
+  const rows = (() => {
+    if (results) return results.map(i => ({ kind: 'item', i }));
+    if (!cur) return depts.length > 1 ? depts.map(d => ({ kind: 'dept', id: d.id, name: d.name, count: items.filter(i => i.department_id === d.id).length })) : [...folders.filter(f => !f.parent_id).map(f => ({ kind: 'folder', id: f.id, name: f.name, count: items.filter(i => i.folder_id === f.id).length })), ...items.filter(i => !i.folder_id).map(i => ({ kind: 'item', i }))];
+    if (cur.kind === 'dept') return [...folders.filter(f => f.department_id === cur.id && !f.parent_id).map(f => ({ kind: 'folder', id: f.id, name: f.name, count: items.filter(i => i.folder_id === f.id).length + sub(f.id).length })), ...items.filter(i => i.department_id === cur.id && !i.folder_id).map(i => ({ kind: 'item', i }))];
+    return [...sub(cur.id).map(f => ({ kind: 'folder', id: f.id, name: f.name, count: items.filter(i => i.folder_id === f.id).length })), ...items.filter(i => i.folder_id === cur.id).map(i => ({ kind: 'item', i }))];
+  })();
+  return html`<div class="browse">
+    <div class="bhead">${path.length > 0 && html`<button class="btn ghost sm" onClick=${() => setPath(path.slice(0, -1))}>‹ Back</button>`}<h1>${title}</h1></div>
+    <input class="searchbox" placeholder=${'Search ' + LIBS[lib].toLowerCase() + '…'} value=${q} onInput=${e => setQ(e.target.value)}/>
+    ${rows.map(r => r.kind === 'item' ? html`<a key=${r.i.id} class="brow" href=${'#/' + r.i.type + '/' + r.i.slug}><span class=${'dot ' + r.i.state}></span><span class="t"><b>${r.i.title}</b>${results && html`<small>${(data.folders.find(f => f.id === r.i.folder_id) || {}).name || (data.departments.find(d => d.id === r.i.department_id) || {}).name || ''}</small>`}</span><span class="chev">›</span></a>`
+      : html`<div key=${r.kind + r.id} class=${'brow ' + r.kind} onClick=${() => { setQ(''); setPath([...path, r]); }}><span class="ic">${r.kind === 'dept' ? r.name[0] : '▣'}</span><span class="t"><b>${r.name}</b><small>${r.count} ${r.count === 1 ? 'item' : 'items'}</small></span><span class="chev">›</span></div>`)}
+    ${!rows.length && html`<div class="card muted">Nothing here.</div>`}
+  </div>`;
 }
 
 async function markProgress(me, data, itemId) {
@@ -124,7 +147,7 @@ function TrackPanel({ track, data, me, onRun }) {
 }
 function ItemView({ slug, data, me, people, reload }) {
   const [item, setItem] = useState(null); const [check, setCheck] = useState(false); const [done, setDone] = useState({}); const [agreed, setAgreed] = useState(null); const [comments, setComments] = useState([]); const [c, setC] = useState('');
-  const [edit, setEdit] = useState(false); const [showHist, setShowHist] = useState(false); const [quizOpen, setQuizOpen] = useState(false);
+  const [edit, setEdit] = useState(false); const [showHist, setShowHist] = useState(false); const [quizOpen, setQuizOpen] = useState(false); const [showComments, setShowComments] = useState(false);
   const refresh = async () => { const { data: it } = await sb.from('items').select('*').eq('slug', slug).single(); setItem(it || null); if (reload) reload(); };
   useEffect(() => { (async () => {
     const { data: it } = await sb.from('items').select('*').eq('slug', slug).single(); setItem(it || null);
@@ -146,14 +169,16 @@ function ItemView({ slug, data, me, people, reload }) {
   const steps = check ? (item.body_md.match(/^\s*(?:\d+\.|[-*]\s*\[ \])\s+(.+)$/gm) || []).map(s => s.replace(/^\s*(?:\d+\.|[-*]\s*\[ \])\s+/, '')) : [];
   const canEdit = me.role === 'admin' || item.owner_id === me.id || (me.role === 'manager' && me.department_id === item.department_id);
   return html`<div>
-    <div class="crumb">${dept ? dept.name : 'Company'}${folder ? ' › ' + folder.name : ''}
-      ${ix > 0 && html` <a href=${'#/' + item.type + '/' + sibs[ix - 1].slug}>‹ prev</a>`}${ix < sibs.length - 1 && html` <a href=${'#/' + item.type + '/' + sibs[ix + 1].slug}>next ›</a>`}</div>
-    <h1 class="title"><span class=${'dot ' + item.state} style=${{ width: 12, height: 12 }}></span>${item.title}</h1>
-    <div class="row muted" style=${{ fontSize: 13, marginBottom: 12 }}><span class=${'badge ' + item.state}>${STATES[item.state]}</span>
-      ${owner && html`<span>Owner: ${owner.name}</span>`}${item.last_reviewed && html`<span>Last reviewed ${fmtDate(item.last_reviewed)}</span>`}${item.next_review && html`<span>Next review ${fmtDate(item.next_review)}</span>`}
-      ${isChecklist(item.body_md) && html`<button class=${'btn sm ' + (check ? '' : 'ghost')} onClick=${() => setCheck(!check)}>${check ? 'Reading mode' : 'Checklist mode'}</button>`}
-      <a class="btn sm ghost" href=${'#/ask/' + item.slug}>Ask about this</a>
-      ${canEdit && !edit && html`<button class="btn sm" onClick=${() => setEdit(true)}>Edit</button>`}${canEdit && !edit && html`<a class="btn sm ghost" href=${'#/fix/' + item.slug}>Draft a fix</a>`}${canEdit && html`<button class="btn sm ghost" onClick=${() => setShowHist(!showHist)}>${showHist ? 'Hide history' : 'History'}</button>`}</div>
+    <div class="page-head">
+      <div class="crumb"><a href=${'#/' + item.type}>${LIBS[item.type]}</a> › ${dept ? dept.name : 'Company'}${folder ? ' › ' + folder.name : ''}</div>
+      <h1 class="title">${item.title}</h1>
+      <div class="meta"><span class=${'badge ' + item.state}>${STATES[item.state]}</span>${owner && html`<span class="chip">Owner · ${owner.name}</span>`}${item.last_reviewed && html`<span class="chip">Reviewed ${fmtDate(item.last_reviewed)}</span>`}${item.next_review && html`<span class="chip">Next review ${fmtDate(item.next_review)}</span>`}${!item.last_reviewed && !item.next_review && html`<span class="chip" style=${{ color: '#B45309' }}>Not yet reviewed</span>`}</div>
+      <div class="actions">
+        ${isChecklist(item.body_md) && html`<button class=${'btn sm ' + (check ? '' : 'ghost')} onClick=${() => setCheck(!check)}>${check ? '📖 Reading mode' : '☑ Checklist mode'}</button>`}
+        <a class="btn sm ghost" href=${'#/ask/' + item.slug}>💬 Ask about this</a>
+        ${canEdit && !edit && html`<button class="btn sm" onClick=${() => setEdit(true)}>✎ Edit</button>`}${canEdit && !edit && html`<a class="btn sm ghost" href=${'#/fix/' + item.slug}>Draft a fix</a>`}${canEdit && html`<button class="btn sm ghost" onClick=${() => setShowHist(!showHist)}>${showHist ? 'Hide history' : 'History'}</button>`}
+        ${(ix > 0 || ix < sibs.length - 1) && html`<span class="chip">${ix > 0 ? html`<a href=${'#/' + item.type + '/' + sibs[ix - 1].slug}>‹ prev</a>` : ''}${ix > 0 && ix < sibs.length - 1 ? ' · ' : ''}${ix < sibs.length - 1 ? html`<a href=${'#/' + item.type + '/' + sibs[ix + 1].slug}>next ›</a>` : ''}</span>`}
+      </div></div>
     ${edit && html`<${Editor} item=${item} data=${data} me=${me} people=${people} onDone=${async (saved) => { setEdit(false); if (saved) await refresh(); }}/>`}
     ${showHist && html`<${History} item=${item} people=${people} canEdit=${canEdit} onRestored=${async () => { await refresh(); }}/>`}
     ${!edit && item.overview && html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>Overview</h3><${Md} md=${item.overview}/></div>`}
@@ -164,13 +189,13 @@ function ItemView({ slug, data, me, people, reload }) {
       : html`<${Md} md=${item.body_md}/>`}</div>`}
     ${(item.templates || []).length > 0 && html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>Templates</h3>${item.templates.map((t, n) => html`<div key=${n} class="tpl"><div class="row" style=${{ justifyContent: 'space-between' }}><strong>${t.name}</strong><button class="btn sm ghost" onClick=${() => navigator.clipboard.writeText(t.body || '')}>Copy</button></div><pre>${t.body}</pre></div>`)}</div>`}
     ${(item.attachments || []).length > 0 && html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>Attachments</h3>${item.attachments.map((a, n) => html`<div key=${n}><a href=${a.url} target="_blank" rel="noopener">${a.name || a.url}</a></div>`)}</div>`}
-    <div class="card"><h3 style=${{ margin: '0 0 6px' }}>Comments</h3>
-      ${comments.filter(cm => !cm.resolved).map(cm => html`<div key=${cm.id} style=${{ padding: '6px 0', borderBottom: '1px solid var(--line)' }}><div class="row" style=${{ justifyContent: 'space-between' }}><span class="muted" style=${{ fontSize: 12 }}>${(people.find(p => p.id === cm.author_id) || {}).name || 'Someone'} · ${fmtDate(cm.created_at)}</span>${(canEdit || cm.author_id === me.id) && html`<button class="btn ghost sm" onClick=${async () => { const { error } = await sb.from('comments').update({ resolved: true }).eq('id', cm.id); if (!error) setComments(comments.map(x => x.id === cm.id ? { ...x, resolved: true } : x)); }}>Resolve</button>`}</div><div>${cm.body}</div></div>`)}
+    <div class="card"><h3 style=${{ margin: '0 0 6px', cursor: 'pointer' }} onClick=${() => setShowComments(!showComments)}>Comments <span class="muted">· ${comments.filter(cm => !cm.resolved).length} open ${showComments ? '▾' : '▸'}</span></h3>
+      ${showComments && html`<div>${comments.filter(cm => !cm.resolved).map(cm => html`<div key=${cm.id} style=${{ padding: '6px 0', borderBottom: '1px solid var(--line)' }}><div class="row" style=${{ justifyContent: 'space-between' }}><span class="muted" style=${{ fontSize: 12 }}>${(people.find(p => p.id === cm.author_id) || {}).name || 'Someone'} · ${fmtDate(cm.created_at)}</span>${(canEdit || cm.author_id === me.id) && html`<button class="btn ghost sm" onClick=${async () => { const { error } = await sb.from('comments').update({ resolved: true }).eq('id', cm.id); if (!error) setComments(comments.map(x => x.id === cm.id ? { ...x, resolved: true } : x)); }}>Resolve</button>`}</div><div>${cm.body}</div></div>`)}
       ${comments.some(cm => cm.resolved) && html`<div class="muted" style=${{ fontSize: 12, marginTop: 4 }}>${comments.filter(cm => cm.resolved).length} resolved</div>`}
-      <div class="row" style=${{ marginTop: 10 }}><input style=${{ flex: 1, padding: 9, border: '1px solid var(--line)', borderRadius: 8 }} placeholder="Add a comment" value=${c} onInput=${e => setC(e.target.value)}/><button class="btn sm" onClick=${post}>Comment</button></div></div>
+      <div class="row" style=${{ marginTop: 10 }}><input style=${{ flex: 1, padding: 9, border: '1px solid var(--line)', borderRadius: 8 }} placeholder="Add a comment" value=${c} onInput=${e => setC(e.target.value)}/><button class="btn sm" onClick=${post}>Comment</button></div></div>`}</div>
     ${(() => { const quiz = quizFor(data, item.id); if (!quiz) return null; const best = bestQuiz(data, me.id, item.id); return quizOpen ? html`<${Quiz} quiz=${quiz} item=${item} me=${me} onPassed=${async () => { if (reload) await reload(); }} onClose=${() => setQuizOpen(false)}/>` : html`<div class="card row" style=${{ justifyContent: 'space-between' }}><span>Quick check: ${best ? (best.passed ? html`<strong style=${{ color: 'var(--live)' }}>passed ${best.score}%</strong>` : `best ${best.score}%, not passed`) : 'not taken'}</span><button class=${'btn sm ' + (best && best.passed ? 'ghost' : 'orange')} onClick=${() => setQuizOpen(true)}>${best && best.passed ? 'Retake' : 'Take the quick check'}</button></div>`; })()}
-    <div class="card row" style=${{ justifyContent: 'space-between' }}>
-      <div>${agreed ? html`<span class="muted">You agreed on ${fmtDate(agreed)}.</span>` : html`<span class="muted">Read it? Confirm you understand and will follow it.</span>`}</div>
+    <div class=${'card row' + (agreed ? '' : ' stickybar')} style=${{ justifyContent: 'space-between' }}>
+      <div class="muted" style=${{ fontSize: 14 }}>${agreed ? `You agreed on ${fmtDate(agreed)}.` : 'Read it? Confirm you understand and will follow it.'}</div>
       ${!agreed && html`<button class="btn orange" onClick=${agree}>Agree</button>`}</div>
     ${canEdit && html`<div class="muted" style=${{ fontSize: 12 }}>Edits made here sync to the Cowork brain nightly; edits made in the brain sync here.</div>`}
   </div>`;
@@ -182,18 +207,19 @@ function Runner({ trackId, n, data, me, people, reload }) {
   const idx = Math.min(Math.max(0, parseInt(n) || 0), steps.length - 1); const step = steps[idx]; const it = data.items.find(i => i.id === step.item_id);
   const training = data.items.find(i => i.id === track.training_id);
   const done = new Set(data.progress.filter(p => p.person_id === me.id && p.track_id === track.id && p.status === 'complete').map(p => p.item_id));
-  const [full, setFull] = useState(null); const [busy, setBusy] = useState(false); const [quizOpen, setQuizOpen] = useState(false);
-  useEffect(() => { setFull(null); setQuizOpen(false); if (it) sb.from('items').select('*').eq('id', it.id).single().then(({ data }) => setFull(data || null)); }, [step.item_id]);
+  const [full, setFull] = useState(null); const [busy, setBusy] = useState(false); const [quizOpen, setQuizOpen] = useState(false); const [stepsOpen, setStepsOpen] = useState(false);
+  useEffect(() => { setFull(null); setQuizOpen(false); setStepsOpen(false); window.scrollTo(0, 0); if (it) sb.from('items').select('*').eq('id', it.id).single().then(({ data }) => setFull(data || null)); }, [step.item_id]);
   const quiz = it ? quizFor(data, it.id) : null; const best = it ? bestQuiz(data, me.id, it.id) : null; const quizDone = !quiz || (best && best.passed);
   const vids = ((full && full.videos) || []).map(videoEmbed).filter(Boolean);
   const agree = async () => { setBusy(true); await sb.from('signoffs').insert({ person_id: me.id, item_id: step.item_id }); await markProgress(me, data, step.item_id); await reload(); setBusy(false); if (quiz && !(best && best.passed)) setQuizOpen(true); else if (idx < steps.length - 1) go(`/run/${track.id}/${idx + 1}`); };
   const next = () => { if (idx < steps.length - 1) go(`/run/${track.id}/${idx + 1}`); };
   const pct = steps.length ? Math.round(100 * steps.filter(s => done.has(s.item_id)).length / steps.length) : 0;
   return html`<div class="runner">
-    <aside class="side" style=${{ display: 'block', position: 'static', borderRight: '1px solid var(--line)' }}><div style=${{ fontWeight: 700, marginBottom: 6 }}>${training ? training.title : 'Learning track'}</div><div class="progress"><i style=${{ width: pct + '%' }}></i></div><div class="muted" style=${{ fontSize: 12, margin: '4px 0 10px' }}>${pct}% complete</div>
-      ${steps.map((st, i) => { const x = data.items.find(q => q.id === st.item_id); return html`<div key=${i} class=${'item' + (i === idx ? ' on' : '')} onClick=${() => go(`/run/${track.id}/${i}`)}><span class="dot" style=${{ background: done.has(st.item_id) ? 'var(--live)' : 'var(--draft)' }}></span>${x ? x.title : '?'}</div>`; })}</aside>
+    <aside class=${'side' + (stepsOpen ? ' open' : '')}><div class="row" style=${{ justifyContent: 'space-between' }}><div style=${{ fontWeight: 700, marginBottom: 6 }}>${training ? training.title : 'Learning track'}</div><button class="btn ghost sm only-phone" onClick=${() => setStepsOpen(false)}>Close</button></div><div class="progress"><i style=${{ width: pct + '%' }}></i></div><div class="muted" style=${{ fontSize: 12, margin: '4px 0 10px' }}>${pct}% complete</div>
+      ${steps.map((st, i) => { const x = data.items.find(q => q.id === st.item_id); return html`<div key=${i} class=${'item' + (i === idx ? ' on' : '')} style=${{ margin: 0, padding: '8px 8px' }} onClick=${() => { setStepsOpen(false); go(`/run/${track.id}/${i}`); }}><span class="dot" style=${{ background: done.has(st.item_id) ? 'var(--live)' : 'var(--draft)' }}></span>${x ? x.title : '?'}</div>`; })}</aside>
     <main class="main">
-      <div class="crumb">Step ${idx + 1} of ${steps.length} · ${step.minutes} min</div>
+      <div class="row" style=${{ justifyContent: 'space-between', marginBottom: 4 }}><button class="btn ghost sm steps-toggle" onClick=${() => setStepsOpen(true)}>☰ Step ${idx + 1} of ${steps.length} · ${pct}%</button><span class="crumb only-desktop" style=${{ margin: 0 }}>Step ${idx + 1} of ${steps.length} · ${step.minutes} min</span></div>
+      <div class="progress only-phone" style=${{ marginBottom: 10 }}><i style=${{ width: pct + '%' }}></i></div>
       <h1 class="title">${it ? it.title : 'Missing item'}</h1>
       ${!it ? html`<div class="card muted">This item isn't published yet or isn't visible to you. Skip to the next step.</div>` : !full ? html`<div class="muted">Loading…</div>` : html`<div>
         ${full.overview && html`<div class="card"><${Md} md=${full.overview}/></div>`}
@@ -201,9 +227,9 @@ function Runner({ trackId, n, data, me, people, reload }) {
         <div class="card"><${Md} md=${full.body_md}/></div></div>`}
       ${quizOpen && quiz && it && html`<${Quiz} quiz=${quiz} item=${it} me=${me} onPassed=${async () => { await reload(); }} onClose=${() => { setQuizOpen(false); if (bestQuiz(data, me.id, it.id)?.passed || quizDone) next(); }}/>`}
       ${!quizOpen && quiz && done.has(step.item_id) && !quizDone && html`<div class="card row" style=${{ justifyContent: 'space-between', borderLeft: '4px solid var(--orange)' }}><span>Quick check not passed yet${best ? ` (best ${best.score}%)` : ''}.</span><button class="btn orange sm" onClick=${() => setQuizOpen(true)}>Take the quick check</button></div>`}
-      <div class="card row" style=${{ justifyContent: 'space-between' }}>
-        <div>${done.has(step.item_id) ? html`<span class="muted">Completed. ${idx < steps.length - 1 ? '' : 'This was the last item.'}</span>` : html`<span class="muted">Read or watch it, then confirm you understand and will follow it.</span>`}</div>
-        <div class="row">${idx > 0 && html`<button class="btn ghost" onClick=${() => go(`/run/${track.id}/${idx - 1}`)}>‹ Back</button>`}
+      <div class="stickybar">
+        <div class="muted only-desktop" style=${{ fontSize: 14 }}>${done.has(step.item_id) ? `Completed. ${idx < steps.length - 1 ? '' : 'This was the last item.'}` : 'Read or watch it, then confirm you understand and will follow it.'}</div>
+        <div class="row" style=${{ flex: 1, justifyContent: 'flex-end' }}>${idx > 0 && html`<button class="btn ghost" style=${{ flex: '0 0 auto' }} onClick=${() => go(`/run/${track.id}/${idx - 1}`)}>‹</button>`}
           ${!done.has(step.item_id) && it ? html`<button class="btn orange" disabled=${busy} onClick=${agree}>Agree and continue</button>` : idx < steps.length - 1 ? html`<button class="btn" onClick=${() => go(`/run/${track.id}/${idx + 1}`)}>Next ›</button>` : html`<a class="btn" href=${'#/training/' + (training ? training.slug : '')}>Back to training</a>`}</div></div>
     </main></div>`;
 }
@@ -280,7 +306,7 @@ function Ask({ data, me, people, itemSlug, reload }) {
   const examples = item ? [`What are the steps in ${item.title}?`, `Who do I contact about this?`] : ['How do I add a job tag in Housecall Pro?', 'What is the dress code?', 'How do I register a Midea parts warranty?', 'A customer is unhappy - what do I do?'];
   return html`<div><h1 class="title">Ask Homestar</h1>
     <div class="card"><div class="muted" style=${{ fontSize: 13, marginBottom: 8 }}>Answers come only from Homestar's live systems, policies and training${item ? html`, starting with <strong>${item.title}</strong>` : ''}. Follow-up questions keep the thread. Rate answers - every 👎 and every "not covered" goes on Calvin's list to fix.</div>
-      <form class="row" onSubmit=${e => { e.preventDefault(); send(); }}><input ref=${boxRef} style=${{ flex: 1, padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 15 }} placeholder=${listening ? 'Listening…' : item ? 'Ask about ' + item.title : log.length ? 'Ask a follow-up…' : 'Ask a question…'} value=${q} onInput=${e => setQ(e.target.value)} autoFocus/>
+      <form class="askbox" onSubmit=${e => { e.preventDefault(); send(); }}><input ref=${boxRef} placeholder=${listening ? 'Listening…' : item ? 'Ask about ' + item.title : log.length ? 'Ask a follow-up…' : 'Ask a question…'} value=${q} onInput=${e => setQ(e.target.value)} autoFocus/>
         <button type="button" class=${'btn ghost' + (listening ? ' live-mic' : '')} title="Speak your question" onClick=${mic}>🎤</button><button class="btn orange" disabled=${busy || q.trim().length < 3}>${busy ? 'Thinking…' : 'Ask'}</button></form>
       ${!log.length && html`<div class="row" style=${{ gap: 6, flexWrap: 'wrap', marginTop: 10 }}>${examples.map(x => html`<button key=${x} class="btn ghost sm" onClick=${() => send(x)}>${x}</button>`)}</div>`}
       ${log.length > 0 && html`<div class="row" style=${{ marginTop: 8 }}><button class="btn ghost sm" onClick=${() => { setLog([]); setConv(null); }}>New conversation</button></div>`}</div>
@@ -390,7 +416,7 @@ function History({ item, people, canEdit, onRestored }) {
 function MyRecord({ data, me, people }) {
   const my = data.signoffs.filter(s => s.person_id === me.id).sort((a, b) => b.agreed_at.localeCompare(a.agreed_at));
   const myTracks = data.tracks.map(t => { const steps = t.steps || []; const d = steps.filter(s => data.progress.some(p => p.person_id === me.id && p.track_id === t.id && p.item_id === s.item_id && p.status === 'complete')).length; return { t, steps: steps.length, done: d, training: data.items.find(i => i.id === t.training_id) }; }).filter(x => x.done > 0 || (x.training && x.training.state === 'live'));
-  return html`<div class="print-record"><h1 class="title">My record <span class="muted print-only" style=${{ fontSize: 14, fontWeight: 400 }}>· ${me.name} · ${me.email || ''} · printed ${fmtDate(new Date().toISOString())}</span></h1>
+  return html`<div class="print-record"><div class="card row" style=${{ justifyContent: 'space-between' }}><div><div style=${{ fontWeight: 700 }}>${me.name}</div><div class="muted" style=${{ fontSize: 13 }}>${me.email || ''} · ${(data.departments.find(d => d.id === me.department_id) || {}).name || 'no department yet'} · ${me.role}</div></div><button class="btn ghost sm" onClick=${() => sb.auth.signOut()}>Sign out</button></div>${['admin', 'manager'].includes(me.role) && html`<div class="actions only-phone" style=${{ marginBottom: 10 }}><a class="btn sm ghost" href="#/dashboard">📊 Dashboard</a>${me.role === 'admin' && html`<a class="btn sm ghost" href="#/people">👥 People</a>`}<a class="btn sm ghost" href="#/policy">Policies</a></div>`}<h1 class="title">My record <span class="muted print-only" style=${{ fontSize: 14, fontWeight: 400 }}>· ${me.name} · ${me.email || ''} · printed ${fmtDate(new Date().toISOString())}</span></h1>
     <div class="card"><h3 style=${{ margin: '0 0 8px' }}>Training</h3>${myTracks.map(x => html`<div key=${x.t.id} class="row" style=${{ justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid var(--line)' }}><a href=${'#/training/' + (x.training ? x.training.slug : '')}>${x.training ? x.training.title : '?'}</a><span class="muted" style=${{ fontSize: 13 }}>${x.done}/${x.steps} · ${x.steps ? Math.round(100 * x.done / x.steps) : 0}%</span></div>`)}</div>
     ${(() => { const mine = (data.quizResults || []).filter(r => r.person_id === me.id); const byItem = {}; mine.forEach(r => { const b = byItem[r.item_id]; if (!b || r.score > b.score) byItem[r.item_id] = r; }); const rows = Object.values(byItem).sort((a, b) => b.attempted_at.localeCompare(a.attempted_at)); return rows.length ? html`<div class="card"><h3 style=${{ margin: '0 0 8px' }}>Quick checks (${rows.filter(r => r.passed).length} passed of ${rows.length})</h3><table class="table"><thead><tr><th>Item</th><th>Best score</th><th>Result</th><th>Date</th></tr></thead><tbody>${rows.map(r => { const it = data.items.find(i => i.id === r.item_id); return html`<tr key=${r.item_id} onClick=${() => it && go('/' + it.type + '/' + it.slug)}><td>${it ? it.title : '(removed)'}</td><td>${r.score}%</td><td><span class=${'badge ' + (r.passed ? 'live' : 'draft')}>${r.passed ? 'Passed' : 'Not passed'}</span></td><td class="muted">${fmtDate(r.attempted_at)}</td></tr>`; })}</tbody></table></div>` : null; })()}
     <div class="card"><h3 style=${{ margin: '0 0 8px' }}>Sign-offs (${my.length})</h3><table class="table"><thead><tr><th>Item</th><th>Type</th><th>Agreed</th></tr></thead><tbody>${my.map((s, n) => { const it = data.items.find(i => i.id === s.item_id); return html`<tr key=${n} onClick=${() => it && go('/' + it.type + '/' + it.slug)}><td>${it ? it.title : '(removed item)'}</td><td>${it ? LIBS[it.type] : ''}</td><td class="muted">${fmtDate(s.agreed_at)}</td></tr>`; })}</tbody></table>
@@ -404,8 +430,8 @@ function Dashboard({ data, me, people }) {
   const stale = data.items.filter(i => i.state === 'live' && ((i.next_review && i.next_review < today) || (!i.next_review && (i.last_reviewed || i.updated_at || '').slice(0, 10) < yearAgo)));
   const drafts = data.items.filter(i => i.state === 'draft' || i.state === 'review');
   return html`<div><h1 class="title">Dashboard</h1>
-    <div class="row" style=${{ marginBottom: 14 }}>${[['People', scope.filter(p => p.active).length], ['Live items', data.items.filter(i => i.state === 'live').length], ['Drafts / in review', drafts.length], ['Needs review', stale.length], ['Sign-offs', data.signoffs.length], ['Quick checks passed', (() => { const k = new Set(); (data.quizResults || []).filter(r => r.passed).forEach(r => k.add(r.person_id + r.item_id)); return k.size; })()]].map(([k, v]) => html`<div key=${k} class="card" style=${{ flex: 1, minWidth: 120, marginBottom: 0 }}><div class="muted" style=${{ fontSize: 12, textTransform: 'uppercase' }}>${k}</div><div style=${{ fontSize: 26, fontWeight: 700 }}>${v}</div></div>`)}</div>
-    <div class="card"><h3 style=${{ margin: '0 0 8px' }}>Training completion</h3><div style=${{ overflow: 'auto' }}><table class="table"><thead><tr><th>Person</th><th>Quick checks</th>${liveTracks.map(t => { const tr = data.items.find(i => i.id === t.training_id); return html`<th key=${t.id} title=${tr.title}>${tr.title.length > 22 ? tr.title.slice(0, 20) + '…' : tr.title}</th>`; })}</tr></thead>
+    <div class="stats">${[['People', scope.filter(p => p.active).length], ['Live items', data.items.filter(i => i.state === 'live').length], ['Drafts / in review', drafts.length], ['Needs review', stale.length], ['Sign-offs', data.signoffs.length], ['Quick checks passed', (() => { const k = new Set(); (data.quizResults || []).filter(r => r.passed).forEach(r => k.add(r.person_id + r.item_id)); return k.size; })()]].map(([k, v]) => html`<div key=${k} class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`)}</div>
+    <div class="card"><h3>Training completion</h3><div class="scrollx"><table class="table"><thead><tr><th>Person</th><th>Quick checks</th>${liveTracks.map(t => { const tr = data.items.find(i => i.id === t.training_id); return html`<th key=${t.id} title=${tr.title}>${tr.title.length > 22 ? tr.title.slice(0, 20) + '…' : tr.title}</th>`; })}</tr></thead>
       <tbody>${scope.filter(p => p.active).map(p => html`<tr key=${p.id}><td>${p.name}</td><td>${(() => { const k = new Set(); (data.quizResults || []).filter(r => r.person_id === p.id && r.passed).forEach(r => k.add(r.item_id)); const att = new Set((data.quizResults || []).filter(r => r.person_id === p.id).map(r => r.item_id)); return html`<span class=${'badge ' + (att.size && k.size === att.size ? 'live' : att.size ? 'review' : 'draft')}>${k.size}/${(data.quizzes || []).length}</span>`; })()}</td>${liveTracks.map(t => { const steps = (t.steps || []).length; const d = (t.steps || []).filter(s => data.progress.some(pr => pr.person_id === p.id && pr.track_id === t.id && pr.item_id === s.item_id && pr.status === 'complete')).length; const pct = steps ? Math.round(100 * d / steps) : 0; return html`<td key=${t.id}><span class=${'badge ' + (pct === 100 ? 'live' : pct > 0 ? 'review' : 'draft')}>${pct}%</span></td>`; })}</tr>`)}</tbody></table></div></div>
     <${AskStats} data=${data} me=${me} people=${people}/>
     <${ItemTable} rows=${stale} data=${data} title="Live items overdue for review (no review in 12 months)"/>
@@ -413,23 +439,31 @@ function Dashboard({ data, me, people }) {
   </div>`;
 }
 function Home({ data, me, people }) {
-  const recent = [...data.items].sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || '')).slice(0, 8);
-  const mine = data.items.filter(i => i.department_id === me.department_id && i.state === 'live');
+  const recent = [...data.items].filter(i => i.state === 'live').sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || '')).slice(0, 6);
+  const companyId = (data.departments.find(d => d.name === 'Company') || {}).id;
+  const open = data.tracks.map(t => { const steps = t.steps || []; const d = steps.filter(s => data.progress.some(p => p.person_id === me.id && p.track_id === t.id && p.item_id === s.item_id && p.status === 'complete')).length; return { t, steps: steps.length, done: d, training: data.items.find(i => i.id === t.training_id) }; })
+    .filter(x => x.training && x.training.state === 'live' && x.steps && x.done < x.steps && (x.training.department_id === me.department_id || !x.training.department_id || x.training.department_id === companyId))
+    .sort((a, b) => (b.done > 0) - (a.done > 0));
+  const primary = open[0]; const nextIdx = primary ? Math.max(0, (primary.t.steps || []).findIndex(s => !data.progress.some(p => p.person_id === me.id && p.track_id === primary.t.id && p.item_id === s.item_id && p.status === 'complete'))) : 0;
+  const hour = new Date().getHours(); const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const today = new Date().toISOString().slice(0, 10); const soon = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+  const due = data.items.filter(i => i.state === 'live' && i.next_review && i.next_review <= soon && (me.role === 'admin' || i.owner_id === me.id || (me.role === 'manager' && i.department_id === me.department_id)));
   return html`<div>
-    <h1 class="title">Welcome, ${me.name.split(' ')[0]}</h1>
-    <form class="card row" onSubmit=${e => { e.preventDefault(); const v = e.target.elements.q.value.trim(); if (v) go('/ask?' + encodeURIComponent(v)); }}><input name="q" style=${{ flex: 1, padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 15 }} placeholder="Ask Homestar: how do I…"/><button class="btn orange">Ask</button></form>
-    ${(() => { const today = new Date().toISOString().slice(0, 10); const soon = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
-      const due = data.items.filter(i => i.state === 'live' && i.next_review && i.next_review <= soon && (me.role === 'admin' || i.owner_id === me.id || (me.role === 'manager' && i.department_id === me.department_id)));
-      const open = data.openComments || 0;
-      return due.length ? html`<div class="card" style=${{ borderLeft: '4px solid var(--orange)' }}><strong>Reviews due</strong> <span class="muted" style=${{ fontSize: 13 }}>· ${due.filter(i => i.next_review < today).length} overdue, ${due.length} within 14 days</span>${due.slice(0, 8).map(i => html`<div key=${i.id} class="row" style=${{ justifyContent: 'space-between', padding: '4px 0' }}><a href=${'#/' + i.type + '/' + i.slug}>${i.title}</a><span class=${'badge ' + (i.next_review < today ? 'draft' : 'review')}>${i.next_review < today ? 'overdue ' : ''}${fmtDate(i.next_review)}</span></div>`)}</div>` : null; })()}
-    <div class="card"><strong>Your department:</strong> ${(data.departments.find(d => d.id === me.department_id) || {}).name || 'not set yet (ask Calvin)'} · <strong>Role:</strong> ${me.role}</div>
-    ${(() => { const open = data.tracks.map(t => { const steps = t.steps || []; const d = steps.filter(s => data.progress.some(p => p.person_id === me.id && p.track_id === t.id && p.item_id === s.item_id && p.status === 'complete')).length; return { t, steps: steps.length, done: d, training: data.items.find(i => i.id === t.training_id) }; }).filter(x => x.training && x.training.state === 'live' && x.done < x.steps && (x.training.department_id === me.department_id || !x.training.department_id || x.training.department_id === (data.departments.find(d => d.name === 'Company') || {}).id)).slice(0, 6);
-      return open.length ? html`<div class="card"><h3 style=${{ margin: '0 0 8px' }}>Your training</h3>${open.map(x => html`<div key=${x.t.id} class="row" style=${{ justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid var(--line)' }}><a href=${'#/training/' + x.training.slug}>${x.training.title}</a><div class="row"><div class="progress" style=${{ width: 120 }}><i style=${{ width: (x.steps ? 100 * x.done / x.steps : 0) + '%' }}></i></div><span class="muted" style=${{ fontSize: 13 }}>${x.done}/${x.steps}</span><a class="btn sm orange" href=${'#/run/' + x.t.id + '/' + Math.max(0, (x.t.steps || []).findIndex(s => !data.progress.some(p => p.person_id === me.id && p.track_id === x.t.id && p.item_id === s.item_id && p.status === 'complete')))}>${x.done ? 'Continue' : 'Start'}</a></div></div>`)}</div>` : null; })()}
-    <${ItemTable} rows=${mine.slice(0, 12)} data=${data} title="Live systems in your department"/>
+    <h1 class="title">${greet}, ${me.name.split(' ')[0]}</h1>
+    <form class="card askbox" onSubmit=${e => { e.preventDefault(); const v = e.target.elements.q.value.trim(); if (v) go('/ask?' + encodeURIComponent(v)); }}><input name="q" placeholder="Ask Homestar: how do I…"/><button class="btn orange">Ask</button></form>
+    ${primary && html`<div class="card hero"><h3 style=${{ margin: '0 0 4px' }}>${primary.done ? 'Continue your training' : 'Start your training'}</h3><div style=${{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>${primary.training.title}</div>
+      <div class="progress" style=${{ marginBottom: 6 }}><i style=${{ width: (100 * primary.done / primary.steps) + '%' }}></i></div>
+      <div class="row" style=${{ justifyContent: 'space-between' }}><span class="muted" style=${{ fontSize: 13 }}>${primary.done} of ${primary.steps} done${open.length > 1 ? ` · ${open.length - 1} more track${open.length > 2 ? 's' : ''} waiting` : ''}</span><a class="btn" style=${{ background: '#fff', color: 'var(--blue)' }} href=${'#/run/' + primary.t.id + '/' + nextIdx}>${primary.done ? 'Continue ›' : 'Start ›'}</a></div></div>`}
+    <div class="tiles">
+      <a class="tile" href="#/system"><b>Systems</b><small>${data.items.filter(i => i.type === 'system' && i.state === 'live').length} how-tos</small></a>
+      <a class="tile" href="#/policy"><b>Policies</b><small>${data.items.filter(i => i.type === 'policy' && i.state === 'live').length} company rules</small></a>
+      <a class="tile" href="#/training"><b>Training</b><small>${open.length ? open.length + ' open' : 'all done'}</small></a>
+      <a class="tile" href="#/me"><b>My record</b><small>${data.signoffs.filter(s => s.person_id === me.id).length} sign-offs</small></a>
+    </div>
+    ${due.length > 0 && html`<div class="card" style=${{ borderLeft: '4px solid var(--orange)' }}><h3>Reviews due <span class="muted">· ${due.filter(i => i.next_review < today).length} overdue, ${due.length} within 14 days</span></h3>${due.slice(0, 8).map(i => html`<div key=${i.id} class="row" style=${{ justifyContent: 'space-between', padding: '4px 0' }}><a href=${'#/' + i.type + '/' + i.slug}>${i.title}</a><span class=${'badge ' + (i.next_review < today ? 'draft' : 'review')}>${i.next_review < today ? 'overdue ' : ''}${fmtDate(i.next_review)}</span></div>`)}</div>`}
     <${ItemTable} rows=${recent} data=${data} title="Recently updated"/>
   </div>`;
 }
-
 function People({ data, people, me, reload }) {
   if (me.role !== 'admin') return html`<div class="card">Admins only.</div>`;
   const set = async (p, patch) => { await sb.from('people').update(patch).eq('id', p.id); reload(); };
@@ -442,7 +476,7 @@ function People({ data, people, me, reload }) {
 }
 
 function App() {
-  const route = useHash(); const [session, setSession] = useState(undefined); const [me, setMe] = useState(null); const [data, setData] = useState(null); const [people, setPeople] = useState([]); const [q, setQ] = useState(''); const [side, setSide] = useState(false);
+  const route = useHash(); const [session, setSession] = useState(undefined); const [me, setMe] = useState(null); const [data, setData] = useState(null); const [people, setPeople] = useState([]); const [q, setQ] = useState(''); const [searchOpen, setSearchOpen] = useState(false);
   useEffect(() => { sb.auth.getSession().then(({ data }) => setSession(data.session)); const { data: sub } = sb.auth.onAuthStateChange((_e, s) => setSession(s)); return () => sub.subscription.unsubscribe(); }, []);
   const reload = async () => { const { data: p } = await sb.from('people').select('*').order('name'); setPeople(p || []); setMe((p || []).find(x => x.id === session.user.id) || { id: session.user.id, name: session.user.email, role: 'member' }); setData(await loadAll()); };
   useEffect(() => { if (session) reload(); }, [session]);
@@ -452,18 +486,25 @@ function App() {
   if (me.active === false) return html`<div class="login"><img src="logo.png" alt=""/><h2 style=${{ textAlign: 'center' }}>Almost there</h2><p class="muted">Your account (${me.email}) is created but not activated yet. Calvin activates new accounts and sets your department. Check back shortly.</p><button class="btn ghost" style=${{ width: '100%' }} onClick=${() => sb.auth.signOut()}>Sign out</button></div>`;
   const parts = route.split('?')[0].split('/').filter(Boolean); const lib = ['system', 'policy', 'training'].includes(parts[0]) ? parts[0] : null; const slug = lib ? parts[1] : null;
   const results = q.trim() ? data.items.filter(i => (i.title + ' ' + (i.overview || '')).toLowerCase().includes(q.toLowerCase())) : null;
-  const navA = (p, label) => html`<a href=${'#' + p} class=${(route === p || (p !== '/' && route.startsWith(p))) ? 'on' : ''}>${label}</a>`;
-  if (parts[0] === 'run') return html`<div><header class="top"><img src="logo.png" alt=""/><span class="brand">System Hub</span><nav>${navA('/training', '‹ Training')}</nav><span class="grow"></span><button class="btn ghost sm" onClick=${() => sb.auth.signOut()}>Sign out</button></header><${Runner} key=${parts[1] + '/' + parts[2]} trackId=${parts[1]} n=${parts[2]} data=${data} me=${me} people=${people} reload=${reload}/></div>`;
-  return html`<div>
-    <header class="top"><button class="btn ghost sm menu-btn" onClick=${() => setSide(!side)}>☰</button><img src="logo.png" alt=""/><span class="brand">System Hub</span>
+  const on = (p) => (route === p || (p !== '/' && route.startsWith(p))) ? 'on' : '';
+  const navA = (p, label) => html`<a href=${'#' + p} class=${on(p)}>${label}</a>`;
+  const isPhone = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 900px)').matches;
+  const tabs = html`<nav class="tabs">${[['/', '⌂', 'Home'], ['/system', '▤', 'Browse'], ['/ask', '💬', 'Ask'], ['/training', '🎓', 'Training'], ['/me', '◯', 'Me']].map(([p, ic, l]) => html`<a key=${p} href=${'#' + p} class=${p === '/system' ? (on('/system') || on('/policy') ? 'on' : '') : on(p)}><span class="i">${ic}</span>${l}</a>`)}</nav>`;
+  const header = html`<header class="top"><a href="#/"><img src="logo.png" alt="Homestar"/></a><span class="brand">System Hub</span>
       <nav>${navA('/', 'Home')}${navA('/system', 'Systems')}${navA('/policy', 'Policies')}${navA('/training', 'Training')}${navA('/ask', 'Ask')}${navA('/me', 'My record')}${['admin', 'manager'].includes(me.role) && navA('/dashboard', 'Dashboard')}${me.role === 'admin' && navA('/people', 'People')}</nav>
-      <span class="grow"></span><input placeholder="Search…" value=${q} onInput=${e => setQ(e.target.value)}/>
-      <button class="btn ghost sm" onClick=${() => sb.auth.signOut()}>Sign out</button></header>
+      <span class="grow"></span><input class=${searchOpen ? 'open' : ''} placeholder="Search the hub…" value=${q} onInput=${e => setQ(e.target.value)} onBlur=${() => { if (!q) setSearchOpen(false); }}/>
+      <button class="btn ghost sm search-btn" onClick=${() => { setSearchOpen(!searchOpen); setTimeout(() => document.querySelector('.top input')?.focus(), 50); }}>🔍</button>
+      <button class="btn ghost sm signout" onClick=${() => sb.auth.signOut()}>Sign out</button></header>`;
+  if (parts[0] === 'run') return html`<div>${header}<${Runner} key=${parts[1] + '/' + parts[2]} trackId=${parts[1]} n=${parts[2]} data=${data} me=${me} people=${people} reload=${reload}/>${tabs}</div>`;
+  const libHome = lib && !slug;
+  return html`<div>
+    ${header}
     <div class="layout">
-      <aside class=${'side' + (side ? ' open' : '')}>${lib ? html`<${Tree} lib=${lib} data=${data} current=${slug} onPick=${i => { go(`/${i.type}/${i.slug}`); setSide(false); }}/>` : html`<div class="muted" style=${{ fontSize: 13 }}>Pick Systems, Policies or Training to browse the tree.</div>`}</aside>
+      <aside class="side">${lib ? html`<${Tree} lib=${lib} data=${data} current=${slug} onPick=${i => go(`/${i.type}/${i.slug}`)}/>` : html`<div class="muted" style=${{ fontSize: 13 }}>Pick Systems, Policies or Training to browse the tree.</div>`}</aside>
       <main class="main">
-        ${results ? html`<${ItemTable} rows=${results} data=${data} title=${`Search: ${q}`}/>`
+        ${results ? html`<${ItemTable} rows=${results} data=${data} title=${`Search: ${q}`} empty="No pages match."/>`
         : slug ? html`<${ItemView} key=${slug} slug=${slug} data=${data} me=${me} people=${people} reload=${reload}/>`
+        : libHome && isPhone ? html`<div><div class="actions" style=${{ marginBottom: 10 }}>${['system', 'policy', 'training'].map(l => html`<a key=${l} class=${'btn sm ' + (l === lib ? '' : 'ghost')} href=${'#/' + l}>${LIBS[l]}</a>`)}</div><${Browse} key=${lib} lib=${lib} data=${data}/></div>`
         : lib ? html`<${ItemTable} rows=${data.items.filter(i => i.type === lib)} data=${data} title=${LIBS[lib]}/>`
         : parts[0] === 'ask' ? html`<${Ask} key=${parts[1] || 'ask'} data=${data} me=${me} people=${people} itemSlug=${parts[1] || null} reload=${reload}/>`
         : parts[0] === 'fix' ? html`<${DraftFix} key=${parts[1]} data=${data} me=${me} people=${people} slug=${parts[1]} reload=${reload}/>`
@@ -475,6 +516,6 @@ function App() {
       <aside class="rail"><h4>Access</h4><div>${me.name}</div><div class="muted" style=${{ fontSize: 13 }}>${me.email || session.user.email}</div>
         <h4>States</h4>${Object.keys(STATES).map(s => html`<div key=${s} class="row" style=${{ fontSize: 13, padding: '2px 0' }}><span class=${'dot ' + s}></span>${STATES[s]}</div>`)}
         <h4>Counts</h4><div class="muted" style=${{ fontSize: 13 }}>${data.items.filter(i => i.type === 'system').length} systems · ${data.items.filter(i => i.type === 'policy').length} policies · ${data.items.filter(i => i.type === 'training').length} trainings</div></aside>
-    </div></div>`;
+    </div>${tabs}</div>`;
 }
 createRoot(document.getElementById('root')).render(html`<${App}/>`);
