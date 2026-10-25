@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.7.2 (browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.7.3 (tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -469,11 +469,11 @@ function Home({ data, me, people }) {
 function People({ data, people, me, reload }) {
   if (me.role !== 'admin') return html`<div class="card">Admins only.</div>`;
   const set = async (p, patch) => { await sb.from('people').update(patch).eq('id', p.id); reload(); };
-  return html`<div><h1 class="title">People</h1><div class="scrollx"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Role</th><th>Active</th></tr></thead><tbody>
+  return html`<div><h1 class="title">People</h1><div class="card" style=${{ padding: 0, overflow: 'hidden' }}><div class="scrollx" style=${{ border: 0, borderRadius: 0 }}><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Role</th><th>Active</th></tr></thead><tbody>
     ${people.map(p => html`<tr key=${p.id}><td>${p.name}</td><td>${p.email}</td>
       <td><select value=${p.department_id || ''} onChange=${e => set(p, { department_id: e.target.value || null })}><option value="">—</option>${data.departments.map(d => html`<option key=${d.id} value=${d.id}>${d.name}</option>`)}</select></td>
       <td><select value=${p.role} onChange=${e => set(p, { role: e.target.value })}><option>member</option><option>manager</option><option>admin</option></select></td>
-      <td><input type="checkbox" checked=${p.active} onChange=${e => set(p, { active: e.target.checked })}/></td></tr>`)}</tbody></table></div>
+      <td><input type="checkbox" checked=${p.active} onChange=${e => set(p, { active: e.target.checked })}/></td></tr>`)}</tbody></table></div></div>
     <p class="muted" style=${{ fontSize: 13 }}>New staff create their own account from the sign-in page; set their department and role here. The first account created is made admin by Claude.</p></div>`;
 }
 
@@ -489,7 +489,7 @@ function App() {
   if (me.active === false) return html`<div class="login"><img src="logo.png" alt=""/><h2 style=${{ textAlign: 'center' }}>Almost there</h2><p class="muted">Your account (${me.email}) is created but not activated yet. Calvin activates new accounts and sets your department. Check back shortly.</p><button class="btn ghost" style=${{ width: '100%' }} onClick=${() => sb.auth.signOut()}>Sign out</button></div>`;
   const parts = route.split('?')[0].split('/').filter(Boolean); const lib = ['system', 'policy', 'training'].includes(parts[0]) ? parts[0] : null; const browsing = lib && parts[1] === 'b'; const slug = lib && !browsing ? parts[1] : null; const bpath = browsing ? parts.slice(2).map(decodeURIComponent) : [];
   const results = q.trim() ? (() => { const k = q.trim().toLowerCase(); const r = data.items.filter(i => i.state !== 'retired' && (i.title + ' ' + (i.overview || '')).toLowerCase().includes(k)); return r.sort((a, b) => (b.title.toLowerCase().startsWith(k) - a.title.toLowerCase().startsWith(k)) || a.title.localeCompare(b.title)); })() : null;
-  const on = (p) => (route === p || (p !== '/' && route.startsWith(p))) ? 'on' : '';
+  const on = (p) => (!q.trim() && (route === p || (p !== '/' && route.startsWith(p)))) ? 'on' : '';
   const navA = (p, label) => html`<a href=${'#' + p} class=${on(p)}>${label}</a>`;
   const isPhone = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 900px)').matches;
   const tabs = html`<nav class="tabs">${[['/', '⌂', 'Home'], ['/system', '▤', 'Browse'], ['/ask', '💬', 'Ask'], ['/training', '🎓', 'Training'], ['/me', '◯', 'Me']].map(([p, ic, l]) => html`<a key=${p} href=${'#' + p} class=${p === '/system' ? (on('/system') || on('/policy') ? 'on' : '') : on(p)}><span class="i">${ic}</span>${l}</a>`)}</nav>`;
