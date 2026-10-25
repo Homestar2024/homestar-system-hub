@@ -47,3 +47,5 @@ h1.title{font-size:28px;margin:4px 0 14px;display:flex;gap:12px;align-items:cent
 .runner{display:grid;grid-template-columns:300px 1fr;min-height:calc(100vh - 52px)}
 @media(max-width:900px){.runner{grid-template-columns:1fr}.runner .side{max-height:200px;overflow:auto;border-bottom:1px solid var(--line)}}
 .btn[disabled]{opacity:.5;cursor:default}
+.editor label{display:block;font-size:13px;color:var(--muted);margin:6px 0}.editor input,.editor select,.editor textarea{display:block;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;margin-top:3px;background:#fff;box-sizing:border-box}.editor textarea.mono{font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.45}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:700px){.grid3{grid-template-columns:1fr}}
+.print-only{display:none}@media print{.top,.side,.rail,.btn,.menu-btn{display:none!important}.layout{display:block}.main{padding:0}.print-only{display:inline}.card{box-shadow:none;border:1px solid #ccc;break-inside:avoid}body{background:#fff}}

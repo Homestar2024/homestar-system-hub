@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.2.1 (Phase 2 stress-test fixes: policy tree, bucket images, runner guards: training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.3 (Phase 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -124,12 +124,14 @@ function TrackPanel({ track, data, me, onRun }) {
 }
 function ItemView({ slug, data, me, people, reload }) {
   const [item, setItem] = useState(null); const [check, setCheck] = useState(false); const [done, setDone] = useState({}); const [agreed, setAgreed] = useState(null); const [comments, setComments] = useState([]); const [c, setC] = useState('');
+  const [edit, setEdit] = useState(false); const [showHist, setShowHist] = useState(false);
+  const refresh = async () => { const { data: it } = await sb.from('items').select('*').eq('slug', slug).single(); setItem(it || null); if (reload) reload(); };
   useEffect(() => { (async () => {
     const { data: it } = await sb.from('items').select('*').eq('slug', slug).single(); setItem(it || null);
     if (it) {
       const { data: s } = await sb.from('signoffs').select('agreed_at').eq('item_id', it.id).eq('person_id', me.id).order('agreed_at', { ascending: false }).limit(1); setAgreed(s && s[0] ? s[0].agreed_at : null);
       const { data: cm } = await sb.from('comments').select('*').eq('item_id', it.id).order('created_at'); setComments(cm || []);
-      sb.from('activity_log').insert({ person_id: me.id, action: 'view', item_id: it.id });
+      sb.from('activity_log').insert({ person_id: me.id, action: 'view', item_id: it.id }).then(() => {});
     }
   })(); }, [slug]);
   if (item === null) return html`<div class="muted">Loading…</div>`;
@@ -149,22 +151,26 @@ function ItemView({ slug, data, me, people, reload }) {
     <h1 class="title"><span class=${'dot ' + item.state} style=${{ width: 12, height: 12 }}></span>${item.title}</h1>
     <div class="row muted" style=${{ fontSize: 13, marginBottom: 12 }}><span class=${'badge ' + item.state}>${STATES[item.state]}</span>
       ${owner && html`<span>Owner: ${owner.name}</span>`}${item.last_reviewed && html`<span>Last reviewed ${fmtDate(item.last_reviewed)}</span>`}${item.next_review && html`<span>Next review ${fmtDate(item.next_review)}</span>`}
-      ${isChecklist(item.body_md) && html`<button class=${'btn sm ' + (check ? '' : 'ghost')} onClick=${() => setCheck(!check)}>${check ? 'Reading mode' : 'Checklist mode'}</button>`}</div>
-    ${item.overview && html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>Overview</h3><${Md} md=${item.overview}/></div>`}
+      ${isChecklist(item.body_md) && html`<button class=${'btn sm ' + (check ? '' : 'ghost')} onClick=${() => setCheck(!check)}>${check ? 'Reading mode' : 'Checklist mode'}</button>`}
+      ${canEdit && !edit && html`<button class="btn sm" onClick=${() => setEdit(true)}>Edit</button>`}${canEdit && html`<button class="btn sm ghost" onClick=${() => setShowHist(!showHist)}>${showHist ? 'Hide history' : 'History'}</button>`}</div>
+    ${edit && html`<${Editor} item=${item} data=${data} me=${me} people=${people} onDone=${async (saved) => { setEdit(false); if (saved) await refresh(); }}/>`}
+    ${showHist && html`<${History} item=${item} people=${people} canEdit=${canEdit} onRestored=${async () => { await refresh(); }}/>`}
+    ${!edit && item.overview && html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>Overview</h3><${Md} md=${item.overview}/></div>`}
     ${track && html`<${TrackPanel} track=${track} data=${data} me=${me} onRun=${() => go('/run/' + track.id + '/0')}/>`}
     ${vids.map(v => html`<iframe key=${v} class="video" src=${v} allow="autoplay; fullscreen" allowfullscreen></iframe>`)}
-    <div class="card">${check ? html`<div><div class="progress" style=${{ marginBottom: 10 }}><i style=${{ width: (100 * Object.values(done).filter(Boolean).length / Math.max(1, steps.length)) + '%' }}></i></div>
+    ${!edit && html`<div class="card">${check ? html`<div><div class="progress" style=${{ marginBottom: 10 }}><i style=${{ width: (100 * Object.values(done).filter(Boolean).length / Math.max(1, steps.length)) + '%' }}></i></div>
         ${steps.map((s, n) => html`<label key=${n} class=${'check' + (done[n] ? ' done' : '')}><input type="checkbox" checked=${!!done[n]} onChange=${e => setDone({ ...done, [n]: e.target.checked })}/><span>${s}</span></label>`)}</div>`
-      : html`<${Md} md=${item.body_md}/>`}</div>
+      : html`<${Md} md=${item.body_md}/>`}</div>`}
     ${(item.templates || []).length > 0 && html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>Templates</h3>${item.templates.map((t, n) => html`<div key=${n} class="tpl"><div class="row" style=${{ justifyContent: 'space-between' }}><strong>${t.name}</strong><button class="btn sm ghost" onClick=${() => navigator.clipboard.writeText(t.body || '')}>Copy</button></div><pre>${t.body}</pre></div>`)}</div>`}
     ${(item.attachments || []).length > 0 && html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>Attachments</h3>${item.attachments.map((a, n) => html`<div key=${n}><a href=${a.url} target="_blank" rel="noopener">${a.name || a.url}</a></div>`)}</div>`}
     <div class="card"><h3 style=${{ margin: '0 0 6px' }}>Comments</h3>
-      ${comments.map(cm => html`<div key=${cm.id} style=${{ padding: '6px 0', borderBottom: '1px solid var(--line)' }}><span class="muted" style=${{ fontSize: 12 }}>${(people.find(p => p.id === cm.author_id) || {}).name || 'Someone'} · ${fmtDate(cm.created_at)}</span><div>${cm.body}</div></div>`)}
+      ${comments.filter(cm => !cm.resolved).map(cm => html`<div key=${cm.id} style=${{ padding: '6px 0', borderBottom: '1px solid var(--line)' }}><div class="row" style=${{ justifyContent: 'space-between' }}><span class="muted" style=${{ fontSize: 12 }}>${(people.find(p => p.id === cm.author_id) || {}).name || 'Someone'} · ${fmtDate(cm.created_at)}</span>${(canEdit || cm.author_id === me.id) && html`<button class="btn ghost sm" onClick=${async () => { const { error } = await sb.from('comments').update({ resolved: true }).eq('id', cm.id); if (!error) setComments(comments.map(x => x.id === cm.id ? { ...x, resolved: true } : x)); }}>Resolve</button>`}</div><div>${cm.body}</div></div>`)}
+      ${comments.some(cm => cm.resolved) && html`<div class="muted" style=${{ fontSize: 12, marginTop: 4 }}>${comments.filter(cm => cm.resolved).length} resolved</div>`}
       <div class="row" style=${{ marginTop: 10 }}><input style=${{ flex: 1, padding: 9, border: '1px solid var(--line)', borderRadius: 8 }} placeholder="Add a comment" value=${c} onInput=${e => setC(e.target.value)}/><button class="btn sm" onClick=${post}>Comment</button></div></div>
     <div class="card row" style=${{ justifyContent: 'space-between' }}>
       <div>${agreed ? html`<span class="muted">You agreed on ${fmtDate(agreed)}.</span>` : html`<span class="muted">Read it? Confirm you understand and will follow it.</span>`}</div>
       ${!agreed && html`<button class="btn orange" onClick=${agree}>Agree</button>`}</div>
-    ${canEdit && html`<div class="muted" style=${{ fontSize: 13 }}>Editing arrives in Phase 3. Until then, ask Claude to update this system in the Cowork folder.</div>`}
+    ${canEdit && html`<div class="muted" style=${{ fontSize: 12 }}>Edits made here sync to the Cowork brain nightly; edits made in the brain sync here. Images: ask Claude to add them for now.</div>`}
   </div>`;
 }
 
@@ -195,13 +201,58 @@ function Runner({ trackId, n, data, me, people, reload }) {
           ${!done.has(step.item_id) && it ? html`<button class="btn orange" disabled=${busy} onClick=${agree}>Agree and continue</button>` : idx < steps.length - 1 ? html`<button class="btn" onClick=${() => go(`/run/${track.id}/${idx + 1}`)}>Next ›</button>` : html`<a class="btn" href=${'#/training/' + (training ? training.slug : '')}>Back to training</a>`}</div></div>
     </main></div>`;
 }
+
+const VIDEO_RX = /https?:\/\/(?:www\.)?(?:loom\.com\/(?:share|embed)\/[a-f0-9]+|youtube\.com\/(?:watch\?v=|embed\/)[\w-]{11}|youtu\.be\/[\w-]{11}|fast\.wistia\.(?:net|com)\/embed\/iframe\/\w+|\w+\.wistia\.com\/medias\/\w+)[^\s)>\]"]*/g;
+function Editor({ item, data, me, people, onDone }) {
+  const [f, setF] = useState({ title: item.title, overview: item.overview || '', body_md: item.body_md || '', state: item.state, owner_id: item.owner_id || '', next_review: item.next_review || '', templates: item.templates || [], folder_id: item.folder_id || '' });
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [preview, setPreview] = useState(false);
+  const up = (k, v) => setF({ ...f, [k]: v });
+  const setT = (n, k, v) => up('templates', f.templates.map((t, i) => i === n ? { ...t, [k]: v } : t));
+  const save = async () => {
+    setBusy(true); setErr('');
+    const row = { title: f.title.trim(), overview: f.overview, body_md: f.body_md, state: f.state, owner_id: f.owner_id || null, next_review: f.next_review || null, templates: f.templates.filter(t => (t.name || t.body || '').trim()), folder_id: f.folder_id || null, videos: Array.from(new Set((f.body_md.match(VIDEO_RX) || []))), ...(f.state === 'live' && item.state !== 'live' ? { last_reviewed: new Date().toISOString().slice(0, 10) } : {}) };
+    const { error } = await sb.from('items').update(row).eq('id', item.id); setBusy(false);
+    if (error) setErr(error.message); else onDone(true);
+  };
+  const folders = data.folders.filter(x => x.library === item.type);
+  const ins = (txt) => up('body_md', f.body_md + (f.body_md.endsWith('\n') || !f.body_md ? '' : '\n') + txt);
+  return html`<div class="card editor">
+    <div class="row" style=${{ justifyContent: 'space-between', marginBottom: 10 }}><h3 style=${{ margin: 0 }}>Edit ${LIBS[item.type].replace(/s$/, '').toLowerCase()}</h3><div class="row"><button class="btn ghost sm" onClick=${() => setPreview(!preview)}>${preview ? 'Edit' : 'Preview'}</button><button class="btn ghost sm" onClick=${() => onDone(false)}>Cancel</button><button class="btn orange sm" disabled=${busy || !f.title.trim()} onClick=${save}>Save</button></div></div>
+    ${err && html`<div class="err">${err}</div>`}
+    <label>Title<input value=${f.title} onInput=${e => up('title', e.target.value)}/></label>
+    <div class="grid3">
+      <label>State<select value=${f.state} onChange=${e => up('state', e.target.value)}>${Object.keys(STATES).map(k => html`<option key=${k} value=${k}>${STATES[k]}</option>`)}</select></label>
+      <label>Owner<select value=${f.owner_id} onChange=${e => up('owner_id', e.target.value)}><option value="">—</option>${people.filter(p => p.active).map(p => html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}</select></label>
+      <label>Next review<input type="date" value=${f.next_review} onInput=${e => up('next_review', e.target.value)}/></label>
+    </div>
+    <label>Folder<select value=${f.folder_id} onChange=${e => up('folder_id', e.target.value)}><option value="">(none)</option>${folders.map(x => html`<option key=${x.id} value=${x.id}>${(data.departments.find(d => d.id === x.department_id) || {}).name || 'Company'} › ${x.name}</option>`)}</select></label>
+    <label>Overview (one or two lines shown at the top)<textarea rows="2" value=${f.overview} onInput=${e => up('overview', e.target.value)}></textarea></label>
+    <div class="row" style=${{ gap: 6, flexWrap: 'wrap', margin: '6px 0' }}><span class="muted" style=${{ fontSize: 12 }}>Insert:</span>${[['Heading', '\n## Step name\n'], ['Numbered steps', '\n1. First step\n2. Second step\n'], ['Checklist', '\n- [ ] Do this\n- [ ] Then this\n'], ['Table', '\n| Column | Column |\n|---|---|\n| a | b |\n'], ['Note', '\n> Note: \n'], ['Loom link', '\nhttps://www.loom.com/share/VIDEO_ID\n']].map(([n, t]) => html`<button key=${n} class="btn ghost sm" onClick=${() => ins(t)}>${n}</button>`)}</div>
+    ${preview ? html`<div class="card" style=${{ background: 'var(--bg)' }}><${Md} md=${f.body_md}/></div>` : html`<textarea class="mono" rows="22" value=${f.body_md} onInput=${e => up('body_md', e.target.value)} placeholder="Write the system in Markdown. Paste a Loom link on its own line and it embeds. Images: ask Claude to add them for now."></textarea>`}
+    <div class="muted" style=${{ fontSize: 12 }}>Markdown: **bold**, lists with "1." or "-", headings with "##", links [text](url). Numbered steps or "- [ ]" lines turn on Checklist mode for readers.</div>
+    <h4 style=${{ margin: '14px 0 6px' }}>Templates (copy-paste snippets)</h4>
+    ${f.templates.map((t, n) => html`<div key=${n} class="tpl"><div class="row"><input style=${{ flex: 1 }} placeholder="Template name" value=${t.name || ''} onInput=${e => setT(n, 'name', e.target.value)}/><button class="btn ghost sm" onClick=${() => up('templates', f.templates.filter((_, i) => i !== n))}>Remove</button></div><textarea rows="4" value=${t.body || ''} onInput=${e => setT(n, 'body', e.target.value)}></textarea></div>`)}
+    <button class="btn ghost sm" onClick=${() => up('templates', [...f.templates, { name: '', body: '' }])}>+ Template</button>
+    <div class="row" style=${{ justifyContent: 'flex-end', marginTop: 12 }}><button class="btn ghost sm" onClick=${() => onDone(false)}>Cancel</button><button class="btn orange" disabled=${busy || !f.title.trim()} onClick=${save}>Save</button></div>
+  </div>`;
+}
+function History({ item, people, canEdit, onRestored }) {
+  const [vs, setVs] = useState(null); const [open, setOpen] = useState(null); const [busy, setBusy] = useState(false);
+  useEffect(() => { sb.from('item_versions').select('id,title,body_md,author_id,source,saved_at').eq('item_id', item.id).order('saved_at', { ascending: false }).limit(50).then(({ data }) => setVs(data || [])); }, [item.id, item.updated_at]);
+  const who = (v) => v.source === 'brain' ? 'Claude (brain sync)' : v.source === 'import' ? 'Import' : (people.find(p => p.id === v.author_id) || {}).name || 'Someone';
+  const restore = async (v) => { if (!confirm('Restore this version? The current text is kept in history.')) return; setBusy(true); const { error } = await sb.from('items').update({ title: v.title, body_md: v.body_md }).eq('id', item.id); setBusy(false); if (!error) onRestored(); else alert(error.message); };
+  if (!vs) return null;
+  return html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>Version history <span class="muted" style=${{ fontWeight: 400, fontSize: 13 }}>· ${vs.length}</span></h3>
+    ${vs.map((v, n) => html`<div key=${v.id} style=${{ borderTop: '1px solid var(--line)', padding: '6px 0' }}><div class="row" style=${{ justifyContent: 'space-between' }}><span><strong>${n === 0 ? 'Current' : 'v' + (vs.length - n)}</strong> <span class="muted" style=${{ fontSize: 13 }}>· ${fmtDate(v.saved_at)} ${new Date(v.saved_at).toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' })} · ${who(v)} · ${(v.body_md || '').length} chars</span></span><div class="row"><button class="btn ghost sm" onClick=${() => setOpen(open === v.id ? null : v.id)}>${open === v.id ? 'Hide' : 'View'}</button>${n > 0 && canEdit && html`<button class="btn ghost sm" disabled=${busy} onClick=${() => restore(v)}>Restore</button>`}</div></div>
+      ${open === v.id && html`<div style=${{ background: 'var(--bg)', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }}><div class="muted" style=${{ fontSize: 12 }}>${v.title}</div><${Md} md=${v.body_md}/></div>`}</div>`)}</div>`;
+}
 function MyRecord({ data, me, people }) {
   const my = data.signoffs.filter(s => s.person_id === me.id).sort((a, b) => b.agreed_at.localeCompare(a.agreed_at));
   const myTracks = data.tracks.map(t => { const steps = t.steps || []; const d = steps.filter(s => data.progress.some(p => p.person_id === me.id && p.track_id === t.id && p.item_id === s.item_id && p.status === 'complete')).length; return { t, steps: steps.length, done: d, training: data.items.find(i => i.id === t.training_id) }; }).filter(x => x.done > 0 || (x.training && x.training.state === 'live'));
-  return html`<div><h1 class="title">My record</h1>
+  return html`<div class="print-record"><h1 class="title">My record <span class="muted print-only" style=${{ fontSize: 14, fontWeight: 400 }}>· ${me.name} · ${me.email || ''} · printed ${fmtDate(new Date().toISOString())}</span></h1>
     <div class="card"><h3 style=${{ margin: '0 0 8px' }}>Training</h3>${myTracks.map(x => html`<div key=${x.t.id} class="row" style=${{ justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid var(--line)' }}><a href=${'#/training/' + (x.training ? x.training.slug : '')}>${x.training ? x.training.title : '?'}</a><span class="muted" style=${{ fontSize: 13 }}>${x.done}/${x.steps} · ${x.steps ? Math.round(100 * x.done / x.steps) : 0}%</span></div>`)}</div>
     <div class="card"><h3 style=${{ margin: '0 0 8px' }}>Sign-offs (${my.length})</h3><table class="table"><thead><tr><th>Item</th><th>Type</th><th>Agreed</th></tr></thead><tbody>${my.map((s, n) => { const it = data.items.find(i => i.id === s.item_id); return html`<tr key=${n} onClick=${() => it && go('/' + it.type + '/' + it.slug)}><td>${it ? it.title : '(removed item)'}</td><td>${it ? LIBS[it.type] : ''}</td><td class="muted">${fmtDate(s.agreed_at)}</td></tr>`; })}</tbody></table>
-    <p class="muted" style=${{ fontSize: 13 }}>Print this page (Ctrl+P) for the HR file; a PDF export arrives with Phase 3.</p></div></div>`;
+    <div class="row" style=${{ marginTop: 8 }}><button class="btn sm" onClick=${() => window.print()}>Print / save as PDF</button><span class="muted" style=${{ fontSize: 13 }}>Choose "Save as PDF" in the print dialog for the HR file.</span></div></div></div>`;
 }
 function Dashboard({ data, me, people }) {
   if (!['admin', 'manager'].includes(me.role)) return html`<div class="card">Managers and admins only.</div>`;
@@ -223,6 +274,10 @@ function Home({ data, me, people }) {
   const mine = data.items.filter(i => i.department_id === me.department_id && i.state === 'live');
   return html`<div>
     <h1 class="title">Welcome, ${me.name.split(' ')[0]}</h1>
+    ${(() => { const today = new Date().toISOString().slice(0, 10); const soon = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+      const due = data.items.filter(i => i.state === 'live' && i.next_review && i.next_review <= soon && (me.role === 'admin' || i.owner_id === me.id || (me.role === 'manager' && i.department_id === me.department_id)));
+      const open = data.openComments || 0;
+      return due.length ? html`<div class="card" style=${{ borderLeft: '4px solid var(--orange)' }}><strong>Reviews due</strong> <span class="muted" style=${{ fontSize: 13 }}>· ${due.filter(i => i.next_review < today).length} overdue, ${due.length} within 14 days</span>${due.slice(0, 8).map(i => html`<div key=${i.id} class="row" style=${{ justifyContent: 'space-between', padding: '4px 0' }}><a href=${'#/' + i.type + '/' + i.slug}>${i.title}</a><span class=${'badge ' + (i.next_review < today ? 'draft' : 'review')}>${i.next_review < today ? 'overdue ' : ''}${fmtDate(i.next_review)}</span></div>`)}</div>` : null; })()}
     <div class="card"><strong>Your department:</strong> ${(data.departments.find(d => d.id === me.department_id) || {}).name || 'not set yet (ask Calvin)'} · <strong>Role:</strong> ${me.role}</div>
     ${(() => { const open = data.tracks.map(t => { const steps = t.steps || []; const d = steps.filter(s => data.progress.some(p => p.person_id === me.id && p.track_id === t.id && p.item_id === s.item_id && p.status === 'complete')).length; return { t, steps: steps.length, done: d, training: data.items.find(i => i.id === t.training_id) }; }).filter(x => x.training && x.training.state === 'live' && x.done < x.steps && (x.training.department_id === me.department_id || !x.training.department_id || x.training.department_id === (data.departments.find(d => d.name === 'Company') || {}).id)).slice(0, 6);
       return open.length ? html`<div class="card"><h3 style=${{ margin: '0 0 8px' }}>Your training</h3>${open.map(x => html`<div key=${x.t.id} class="row" style=${{ justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid var(--line)' }}><a href=${'#/training/' + x.training.slug}>${x.training.title}</a><div class="row"><div class="progress" style=${{ width: 120 }}><i style=${{ width: (x.steps ? 100 * x.done / x.steps : 0) + '%' }}></i></div><span class="muted" style=${{ fontSize: 13 }}>${x.done}/${x.steps}</span><a class="btn sm orange" href=${'#/run/' + x.t.id + '/' + Math.max(0, (x.t.steps || []).findIndex(s => !data.progress.some(p => p.person_id === me.id && p.track_id === x.t.id && p.item_id === s.item_id && p.status === 'complete')))}>${x.done ? 'Continue' : 'Start'}</a></div></div>`)}</div>` : null; })()}
