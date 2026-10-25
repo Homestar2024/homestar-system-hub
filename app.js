@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.5 (Phase 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.6 (Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -153,7 +153,7 @@ function ItemView({ slug, data, me, people, reload }) {
       ${owner && html`<span>Owner: ${owner.name}</span>`}${item.last_reviewed && html`<span>Last reviewed ${fmtDate(item.last_reviewed)}</span>`}${item.next_review && html`<span>Next review ${fmtDate(item.next_review)}</span>`}
       ${isChecklist(item.body_md) && html`<button class=${'btn sm ' + (check ? '' : 'ghost')} onClick=${() => setCheck(!check)}>${check ? 'Reading mode' : 'Checklist mode'}</button>`}
       <a class="btn sm ghost" href=${'#/ask/' + item.slug}>Ask about this</a>
-      ${canEdit && !edit && html`<button class="btn sm" onClick=${() => setEdit(true)}>Edit</button>`}${canEdit && html`<button class="btn sm ghost" onClick=${() => setShowHist(!showHist)}>${showHist ? 'Hide history' : 'History'}</button>`}</div>
+      ${canEdit && !edit && html`<button class="btn sm" onClick=${() => setEdit(true)}>Edit</button>`}${canEdit && !edit && html`<a class="btn sm ghost" href=${'#/fix/' + item.slug}>Draft a fix</a>`}${canEdit && html`<button class="btn sm ghost" onClick=${() => setShowHist(!showHist)}>${showHist ? 'Hide history' : 'History'}</button>`}</div>
     ${edit && html`<${Editor} item=${item} data=${data} me=${me} people=${people} onDone=${async (saved) => { setEdit(false); if (saved) await refresh(); }}/>`}
     ${showHist && html`<${History} item=${item} people=${people} canEdit=${canEdit} onRestored=${async () => { await refresh(); }}/>`}
     ${!edit && item.overview && html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>Overview</h3><${Md} md=${item.overview}/></div>`}
@@ -251,22 +251,89 @@ function Quiz({ quiz, item, me, onPassed, onClose }) {
   </div>`;
 }
 
-// ---------- Ask Homestar (Phase 4b) ----------
-function Ask({ data, itemSlug }) {
+// ---------- Ask Homestar v2 ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+function speak(text) { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(String(text).replace(/\[\d+\]/g, '').replace(/[*#_`>]/g, '')); u.rate = 1.05; speechSynthesis.speak(u); } catch (_) {} }
+function Ask({ data, me, people, itemSlug, reload }) {
   const item = itemSlug ? data.items.find(i => i.slug === itemSlug) : null;
-  const pre = (location.hash.split('?')[1] || ''); const [q, setQ] = useState(() => decodeURIComponent(pre)); const [busy, setBusy] = useState(false); const [log, setLog] = useState([]);
-  useEffect(() => { if (pre) { history.replaceState(null, '', '#/ask'); send(); } }, []);
-  const send = async (e) => { e && e.preventDefault(); const question = q.trim(); if (question.length < 3 || busy) return; setBusy(true); setQ('');
-    const { data: res, error } = await sb.functions.invoke('ask', { body: { q: question, item_id: item ? item.id : null } });
-    setLog(l => [{ q: question, a: error ? 'Something went wrong: ' + (error.message || error) : (res && res.error ? res.error : res.answer), sources: (res && res.sources) || [] }, ...l]); setBusy(false); };
-  const examples = item ? [`What are the steps in ${item.title}?`, `Who do I contact about this?`] : ['How do I add a job tag in Housecall Pro?', 'What is the dress code?', 'How do I register a Midea parts warranty?', 'What do I do when a customer complains?'];
+  const pre = (location.hash.split('?')[1] || '');
+  const [q, setQ] = useState(() => decodeURIComponent(pre)); const [busy, setBusy] = useState(false); const [log, setLog] = useState([]); const [conv, setConv] = useState(null); const [listening, setListening] = useState(false);
+  const recRef = useRef(null); const boxRef = useRef(null);
+  const openTracks = useMemo(() => data.tracks.map(t => { const steps = t.steps || []; const d = steps.filter(s => data.progress.some(p => p.person_id === me.id && p.track_id === t.id && p.item_id === s.item_id && p.status === 'complete')).length; const tr = data.items.find(i => i.id === t.training_id); return tr && tr.state === 'live' && d < steps.length ? tr.title : null; }).filter(Boolean), [data]);
+  const send = async (text) => { const question = (text || q).trim(); if (question.length < 3 || busy) return; setBusy(true); setQ('');
+    const history = log.slice(0, 3).reverse().flatMap(e => [{ role: 'user', content: e.q }, { role: 'assistant', content: e.a }]);
+    const { data: res, error } = await sb.functions.invoke('ask', { body: { q: question, item_id: item ? item.id : null, conversation_id: conv, history, context: { open_tracks: openTracks, current_item_title: item ? item.title : null } } });
+    if (res && res.conversation_id) setConv(res.conversation_id);
+    setLog(l => [{ id: res && res.log_id, q: question, a: error ? 'Something went wrong: ' + (error.message || error) : (res && res.error ? res.error : res.answer), covered: res ? res.covered !== false : true, sources: (res && res.sources) || [], rating: null, fb: '', fbOpen: false, show: false }, ...l]); setBusy(false); };
+  useEffect(() => { if (pre) { history.replaceState(null, '', '#/ask' + (itemSlug ? '/' + itemSlug : '')); send(decodeURIComponent(pre)); } }, []);
+  const rate = async (e, r) => { setLog(l => l.map(x => x === e ? { ...x, rating: r, fbOpen: r === -1 } : x)); if (e.id) await sb.from('ask_log').update({ rating: r }).eq('id', e.id); };
+  const sendFb = async (e) => { if (e.id) await sb.from('ask_log').update({ feedback: e.fb, rating: e.rating === null ? -1 : e.rating }).eq('id', e.id); setLog(l => l.map(x => x === e ? { ...x, fbOpen: false, fbSent: true } : x)); };
+  const report = async (e, src) => { const it = data.items.find(i => i.slug === src.slug); if (!it) return; const body = `Ask Homestar flagged by ${me.name}: the answer to "${e.q}" looked wrong. Please check this page.`; await sb.from('comments').insert({ item_id: it.id, author_id: me.id, body }); if (e.id) await sb.from('ask_log').update({ rating: -1, feedback: 'reported: ' + src.title }).eq('id', e.id); alert('Reported. A comment was added on "' + src.title + '" for its owner.'); };
+  const mic = () => { if (!SR) { alert('Voice input is not available in this browser. Chrome or Edge on the phone works.'); return; } if (listening) { recRef.current && recRef.current.stop(); return; } const r = new SR(); r.lang = 'en-CA'; r.interimResults = true; r.onresult = ev => { const t = [...ev.results].map(x => x[0].transcript).join(' '); setQ(t); if (ev.results[ev.results.length - 1].isFinal) { setListening(false); send(t); } }; r.onend = () => setListening(false); r.onerror = () => setListening(false); recRef.current = r; setListening(true); r.start(); };
+  const canEditItem = (slug) => { const it = data.items.find(i => i.slug === slug); return it && (me.role === 'admin' || it.owner_id === me.id || (me.role === 'manager' && me.department_id === it.department_id)); };
+  const actionsFor = (e) => { const acts = []; for (const s of e.sources.slice(0, 2)) { const it = data.items.find(i => i.slug === s.slug); if (!it) continue;
+      if (!data.signoffs.some(x => x.person_id === me.id && x.item_id === it.id)) acts.push({ label: `Mark "${it.title}" as read`, run: async () => { await sb.from('signoffs').insert({ person_id: me.id, item_id: it.id }); await markProgress(me, data, it.id); reload && reload(); } });
+      const tr = data.tracks.find(t => (t.steps || []).some(st => st.item_id === it.id) && !data.progress.some(p => p.person_id === me.id && p.track_id === t.id && p.item_id === it.id && p.status === 'complete')); const trItem = tr && data.items.find(i => i.id === tr.training_id);
+      if (trItem && trItem.state === 'live') acts.push({ label: `Continue track: ${trItem.title}`, run: () => go('/run/' + tr.id + '/' + Math.max(0, (tr.steps || []).findIndex(st => st.item_id === it.id))) });
+      if (isChecklist(it.body_md || '') || /checklist|closeout/i.test(it.title)) acts.push({ label: `Open ${it.title}`, run: () => go('/' + it.type + '/' + it.slug) }); }
+    return acts.slice(0, 3); };
+  const examples = item ? [`What are the steps in ${item.title}?`, `Who do I contact about this?`] : ['How do I add a job tag in Housecall Pro?', 'What is the dress code?', 'How do I register a Midea parts warranty?', 'A customer is unhappy - what do I do?'];
   return html`<div><h1 class="title">Ask Homestar</h1>
-    <div class="card"><div class="muted" style=${{ fontSize: 13, marginBottom: 8 }}>Answers come only from Homestar's live systems, policies and training${item ? html`, starting with <strong>${item.title}</strong>` : ''}. Every answer links its sources. If the hub doesn't cover it, it will say so.</div>
-      <form class="row" onSubmit=${send}><input style=${{ flex: 1, padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 15 }} placeholder=${item ? 'Ask about ' + item.title : 'Ask a question…'} value=${q} onInput=${e => setQ(e.target.value)} autoFocus/><button class="btn orange" disabled=${busy || q.trim().length < 3}>${busy ? 'Thinking…' : 'Ask'}</button></form>
-      ${!log.length && html`<div class="row" style=${{ gap: 6, flexWrap: 'wrap', marginTop: 10 }}>${examples.map(x => html`<button key=${x} class="btn ghost sm" onClick=${() => setQ(x)}>${x}</button>`)}</div>`}</div>
-    ${log.map((e, n) => html`<div key=${n} class="card"><div style=${{ fontWeight: 600, marginBottom: 6 }}>${e.q}</div><${Md} md=${e.a}/>
-      ${e.sources.length > 0 && html`<div class="muted" style=${{ fontSize: 13, marginTop: 8 }}>Sources: ${e.sources.map((s, i) => html`<span key=${s.slug}>${i ? ' · ' : ''}[${s.n}] <a href=${'#/' + s.type + '/' + s.slug}>${s.title}</a></span>`)}</div>`}</div>`)}
+    <div class="card"><div class="muted" style=${{ fontSize: 13, marginBottom: 8 }}>Answers come only from Homestar's live systems, policies and training${item ? html`, starting with <strong>${item.title}</strong>` : ''}. Follow-up questions keep the thread. Rate answers - every 👎 and every "not covered" goes on Calvin's list to fix.</div>
+      <form class="row" onSubmit=${e => { e.preventDefault(); send(); }}><input ref=${boxRef} style=${{ flex: 1, padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 15 }} placeholder=${listening ? 'Listening…' : item ? 'Ask about ' + item.title : log.length ? 'Ask a follow-up…' : 'Ask a question…'} value=${q} onInput=${e => setQ(e.target.value)} autoFocus/>
+        <button type="button" class=${'btn ghost' + (listening ? ' live-mic' : '')} title="Speak your question" onClick=${mic}>🎤</button><button class="btn orange" disabled=${busy || q.trim().length < 3}>${busy ? 'Thinking…' : 'Ask'}</button></form>
+      ${!log.length && html`<div class="row" style=${{ gap: 6, flexWrap: 'wrap', marginTop: 10 }}>${examples.map(x => html`<button key=${x} class="btn ghost sm" onClick=${() => send(x)}>${x}</button>`)}</div>`}
+      ${log.length > 0 && html`<div class="row" style=${{ marginTop: 8 }}><button class="btn ghost sm" onClick=${() => { setLog([]); setConv(null); }}>New conversation</button></div>`}</div>
+    ${log.map((e, n) => html`<div key=${n} class=${'card' + (e.covered ? '' : ' gap')}><div style=${{ fontWeight: 600, marginBottom: 6 }}>${e.q}</div><${Md} md=${e.a}/>
+      ${!e.covered && html`<div class="muted" style=${{ fontSize: 13, marginTop: 6 }}>Logged as a gap - this question goes on the list of pages to write.</div>`}
+      ${e.sources.length > 0 && html`<div class="muted" style=${{ fontSize: 13, marginTop: 8 }}>Sources: ${e.sources.map((s, i) => html`<span key=${s.slug}>${i ? ' · ' : ''}[${s.n}] <a href=${'#/' + s.type + '/' + s.slug}>${s.title}</a>${s.last_reviewed ? html` <span title="last reviewed">(reviewed ${fmtDate(s.last_reviewed)})</span>` : html` <span style=${{ color: '#B45309' }} title="never reviewed in the hub">(not yet reviewed)</span>`}</span>`)}</div>`}
+      ${(() => { const acts = actionsFor(e); return acts.length ? html`<div class="row" style=${{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>${acts.map(a => html`<button key=${a.label} class="btn sm ghost" onClick=${a.run}>${a.label}</button>`)}</div>` : null; })()}
+      <div class="row" style=${{ gap: 6, flexWrap: 'wrap', marginTop: 10, alignItems: 'center' }}>
+        <button class=${'btn sm ' + (e.rating === 1 ? '' : 'ghost')} onClick=${() => rate(e, 1)}>👍</button><button class=${'btn sm ' + (e.rating === -1 ? '' : 'ghost')} onClick=${() => rate(e, -1)}>👎</button>
+        <button class="btn sm ghost" onClick=${() => speak(e.a)}>🔊 Read it</button>
+        ${e.sources.length > 0 && html`<button class="btn sm ghost" onClick=${() => setLog(l => l.map(x => x === e ? { ...x, show: !x.show } : x))}>${e.show ? 'Hide' : 'Show'} what it used</button>`}
+        ${e.sources[0] && html`<button class="btn sm ghost" onClick=${() => report(e, e.sources[0])}>Report wrong answer</button>`}
+        ${e.sources[0] && canEditItem(e.sources[0].slug) && html`<a class="btn sm" href=${'#/fix/' + e.sources[0].slug + '?' + encodeURIComponent('Staff asked: "' + e.q + '". The page did not answer it well enough. Update the page so this question is answered clearly.')}>Draft a fix to "${e.sources[0].title}"</a>`}
+        ${!e.covered && me.role !== 'member' && html`<span class="muted" style=${{ fontSize: 12 }}>No page covers this - create one from the Systems tree, or ask Claude to write it.</span>`}</div>
+      ${e.fbOpen && html`<div class="row" style=${{ marginTop: 8 }}><input style=${{ flex: 1, padding: 8, border: '1px solid var(--line)', borderRadius: 8 }} placeholder="What were you looking for?" value=${e.fb} onInput=${ev => setLog(l => l.map(x => x === e ? { ...x, fb: ev.target.value } : x))}/><button class="btn sm" onClick=${() => sendFb(e)}>Send</button></div>`}
+      ${e.fbSent && html`<div class="muted" style=${{ fontSize: 12, marginTop: 4 }}>Thanks - sent to Calvin's gap list.</div>`}
+      ${e.show && html`<div style=${{ marginTop: 8 }}>${e.sources.map(s => html`<div key=${s.slug} style=${{ background: 'var(--bg)', borderRadius: 8, padding: 10, marginBottom: 6 }}><div style=${{ fontWeight: 600, fontSize: 13 }}>[${s.n}] ${s.title}</div>${(s.excerpts || []).map((x, k) => html`<div key=${k} class="muted" style=${{ fontSize: 13, marginTop: 4 }}><em>${x.heading}</em> - ${x.text}</div>`)}</div>`)}</div>`}
+    </div>`)}
   </div>`;
+}
+function DraftFix({ data, me, people, slug, reload }) {
+  const item = data.items.find(i => i.slug === slug); const pre = decodeURIComponent(location.hash.split('?')[1] || '');
+  const [instr, setInstr] = useState(pre); const [busy, setBusy] = useState(false); const [draft, setDraft] = useState(null); const [full, setFull] = useState(null); const [err, setErr] = useState('');
+  useEffect(() => { if (item) sb.from('items').select('*').eq('id', item.id).single().then(({ data }) => setFull(data)); }, [slug]);
+  if (!item) return html`<div class="card">Page not found.</div>`;
+  const canEdit = me.role === 'admin' || item.owner_id === me.id || (me.role === 'manager' && me.department_id === item.department_id);
+  if (!canEdit) return html`<div class="card">Only the owner, the department manager or an admin can draft changes to this page.</div>`;
+  const run = async () => { setBusy(true); setErr(''); const { data: res, error } = await sb.functions.invoke('ask', { body: { mode: 'draft_fix', item_id: item.id, instruction: instr } }); setBusy(false); if (error || (res && res.error)) setErr((error && error.message) || res.error); else setDraft(res.draft); };
+  const apply = async (asDraftState) => { setBusy(true); const row = { body_md: draft, ...(asDraftState ? { state: 'review' } : {}) }; const { error } = await sb.from('items').update(row).eq('id', item.id); setBusy(false); if (error) setErr(error.message); else { reload && reload(); go('/' + item.type + '/' + item.slug); } };
+  return html`<div><h1 class="title">Draft a fix: ${item.title}</h1>
+    <div class="card"><label class="muted" style=${{ fontSize: 13 }}>What should change? (a staff question the page failed to answer, a correction, a new step)</label>
+      <textarea rows="4" style=${{ width: '100%', boxSizing: 'border-box', padding: 10, border: '1px solid var(--line)', borderRadius: 8, font: 'inherit', marginTop: 6 }} value=${instr} onInput=${e => setInstr(e.target.value)}></textarea>
+      <div class="row" style=${{ justifyContent: 'space-between', marginTop: 8 }}><span class="muted" style=${{ fontSize: 12 }}>Claude rewrites the page from its current text; facts it doesn't have are marked [CONFIRM: …]. Nothing is saved until you choose.</span><button class="btn orange" disabled=${busy || instr.trim().length < 5} onClick=${run}>${busy ? 'Drafting…' : draft ? 'Draft again' : 'Draft the change'}</button></div>
+      ${err && html`<div class="err" style=${{ marginTop: 8 }}>${err}</div>`}</div>
+    ${draft && html`<div class="grid2">
+      <div class="card"><h3 style=${{ margin: '0 0 6px' }}>Current</h3><div style=${{ maxHeight: 520, overflow: 'auto' }}><${Md} md=${full ? full.body_md : ''}/></div></div>
+      <div class="card" style=${{ borderLeft: '4px solid var(--orange)' }}><h3 style=${{ margin: '0 0 6px' }}>Proposed ${/\[CONFIRM:/.test(draft) ? html`<span class="badge review">has [CONFIRM] items</span>` : ''}</h3><div style=${{ maxHeight: 520, overflow: 'auto' }}><${Md} md=${draft}/></div>
+        <textarea rows="8" class="mono" style=${{ width: '100%', boxSizing: 'border-box', marginTop: 8, fontFamily: 'ui-monospace,Consolas,monospace', fontSize: 12, padding: 8, border: '1px solid var(--line)', borderRadius: 8 }} value=${draft} onInput=${e => setDraft(e.target.value)}></textarea>
+        <div class="row" style=${{ justifyContent: 'flex-end', gap: 6, marginTop: 8 }}><a class="btn ghost sm" href=${'#/' + item.type + '/' + item.slug}>Discard</a><button class="btn sm" disabled=${busy} onClick=${() => apply(true)}>Save as In review</button><button class="btn orange sm" disabled=${busy || /\[CONFIRM:/.test(draft)} title=${/\[CONFIRM:/.test(draft) ? 'Resolve the [CONFIRM] items first' : ''} onClick=${() => apply(false)}>Save live</button></div></div></div>`}
+  </div>`;
+}
+function AskStats({ data, me, people }) {
+  const [rows, setRows] = useState(null);
+  useEffect(() => { sb.from('ask_log').select('id,person_id,question,covered,rating,feedback,sources,created_at').gte('created_at', new Date(Date.now() - 30 * 864e5).toISOString()).order('created_at', { ascending: false }).limit(500).then(({ data }) => setRows(data || [])); }, []);
+  if (!rows) return null;
+  const week = rows.filter(r => r.created_at >= new Date(Date.now() - 7 * 864e5).toISOString());
+  const gaps = rows.filter(r => !r.covered || r.rating === -1);
+  const cites = {}; rows.forEach(r => (r.sources || []).forEach(s => { cites[s.title] = (cites[s.title] || 0) + 1; })); const top = Object.entries(cites).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const live = data.items.filter(i => i.state === 'live'); const citedTitles = new Set(Object.keys(cites)); const never = live.filter(i => !citedTitles.has(i.title)).length;
+  return html`<div class="card"><h3 style=${{ margin: '0 0 8px' }}>Ask Homestar <span class="muted" style=${{ fontWeight: 400, fontSize: 13 }}>· last 30 days</span></h3>
+    <div class="row" style=${{ gap: 14, flexWrap: 'wrap', marginBottom: 10 }}>${[['Questions (7 d)', week.length], ['Questions (30 d)', rows.length], ['Not covered', rows.filter(r => !r.covered).length], ['👎', rows.filter(r => r.rating === -1).length], ['👍', rows.filter(r => r.rating === 1).length], ['Live pages never cited', never + '/' + live.length]].map(([k, v]) => html`<div key=${k}><div class="muted" style=${{ fontSize: 11, textTransform: 'uppercase' }}>${k}</div><div style=${{ fontSize: 20, fontWeight: 700 }}>${v}</div></div>`)}</div>
+    ${gaps.length > 0 && html`<h4 style=${{ margin: '8px 0 4px' }}>Gaps to fix (${gaps.length})</h4><table class="table"><thead><tr><th>Question</th><th>Who</th><th>Why</th><th>Feedback</th><th>When</th></tr></thead><tbody>${gaps.slice(0, 15).map(r => html`<tr key=${r.id}><td>${r.question}</td><td>${(people.find(p => p.id === r.person_id) || {}).name || ''}</td><td><span class=${'badge ' + (!r.covered ? 'draft' : 'review')}>${!r.covered ? 'not covered' : 'thumbs down'}</span></td><td class="muted">${r.feedback || ''}</td><td class="muted">${fmtDate(r.created_at)}</td></tr>`)}</tbody></table>`}
+    ${top.length > 0 && html`<div class="muted" style=${{ fontSize: 13, marginTop: 8 }}>Most cited: ${top.map(([t, c]) => `${t} (${c})`).join(' · ')}</div>`}</div>`;
 }
 const VIDEO_RX = /https?:\/\/(?:www\.)?(?:loom\.com\/(?:share|embed)\/[a-f0-9]+|youtube\.com\/(?:watch\?v=|embed\/)[\w-]{11}|youtu\.be\/[\w-]{11}|fast\.wistia\.(?:net|com)\/embed\/iframe\/\w+|\w+\.wistia\.com\/medias\/\w+)[^\s)>\]"]*/g;
 function Editor({ item, data, me, people, onDone }) {
@@ -340,6 +407,7 @@ function Dashboard({ data, me, people }) {
     <div class="row" style=${{ marginBottom: 14 }}>${[['People', scope.filter(p => p.active).length], ['Live items', data.items.filter(i => i.state === 'live').length], ['Drafts / in review', drafts.length], ['Needs review', stale.length], ['Sign-offs', data.signoffs.length], ['Quick checks passed', (() => { const k = new Set(); (data.quizResults || []).filter(r => r.passed).forEach(r => k.add(r.person_id + r.item_id)); return k.size; })()]].map(([k, v]) => html`<div key=${k} class="card" style=${{ flex: 1, minWidth: 120, marginBottom: 0 }}><div class="muted" style=${{ fontSize: 12, textTransform: 'uppercase' }}>${k}</div><div style=${{ fontSize: 26, fontWeight: 700 }}>${v}</div></div>`)}</div>
     <div class="card"><h3 style=${{ margin: '0 0 8px' }}>Training completion</h3><div style=${{ overflow: 'auto' }}><table class="table"><thead><tr><th>Person</th><th>Quick checks</th>${liveTracks.map(t => { const tr = data.items.find(i => i.id === t.training_id); return html`<th key=${t.id} title=${tr.title}>${tr.title.length > 22 ? tr.title.slice(0, 20) + '…' : tr.title}</th>`; })}</tr></thead>
       <tbody>${scope.filter(p => p.active).map(p => html`<tr key=${p.id}><td>${p.name}</td><td>${(() => { const k = new Set(); (data.quizResults || []).filter(r => r.person_id === p.id && r.passed).forEach(r => k.add(r.item_id)); const att = new Set((data.quizResults || []).filter(r => r.person_id === p.id).map(r => r.item_id)); return html`<span class=${'badge ' + (att.size && k.size === att.size ? 'live' : att.size ? 'review' : 'draft')}>${k.size}/${(data.quizzes || []).length}</span>`; })()}</td>${liveTracks.map(t => { const steps = (t.steps || []).length; const d = (t.steps || []).filter(s => data.progress.some(pr => pr.person_id === p.id && pr.track_id === t.id && pr.item_id === s.item_id && pr.status === 'complete')).length; const pct = steps ? Math.round(100 * d / steps) : 0; return html`<td key=${t.id}><span class=${'badge ' + (pct === 100 ? 'live' : pct > 0 ? 'review' : 'draft')}>${pct}%</span></td>`; })}</tr>`)}</tbody></table></div></div>
+    <${AskStats} data=${data} me=${me} people=${people}/>
     <${ItemTable} rows=${stale} data=${data} title="Live items overdue for review (no review in 12 months)"/>
     <${ItemTable} rows=${drafts} data=${data} title="Drafts and items in review"/>
   </div>`;
@@ -397,7 +465,8 @@ function App() {
         ${results ? html`<${ItemTable} rows=${results} data=${data} title=${`Search: ${q}`}/>`
         : slug ? html`<${ItemView} key=${slug} slug=${slug} data=${data} me=${me} people=${people} reload=${reload}/>`
         : lib ? html`<${ItemTable} rows=${data.items.filter(i => i.type === lib)} data=${data} title=${LIBS[lib]}/>`
-        : parts[0] === 'ask' ? html`<${Ask} data=${data} itemSlug=${parts[1] || null}/>`
+        : parts[0] === 'ask' ? html`<${Ask} key=${parts[1] || 'ask'} data=${data} me=${me} people=${people} itemSlug=${parts[1] || null} reload=${reload}/>`
+        : parts[0] === 'fix' ? html`<${DraftFix} key=${parts[1]} data=${data} me=${me} people=${people} slug=${parts[1]} reload=${reload}/>`
         : parts[0] === 'people' ? html`<${People} data=${data} people=${people} me=${me} reload=${reload}/>`
         : parts[0] === 'me' ? html`<${MyRecord} data=${data} me=${me} people=${people}/>`
         : parts[0] === 'dashboard' ? html`<${Dashboard} data=${data} me=${me} people=${people}/>`
