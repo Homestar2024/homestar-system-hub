@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.4 (Phase 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.5 (Phase 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -152,6 +152,7 @@ function ItemView({ slug, data, me, people, reload }) {
     <div class="row muted" style=${{ fontSize: 13, marginBottom: 12 }}><span class=${'badge ' + item.state}>${STATES[item.state]}</span>
       ${owner && html`<span>Owner: ${owner.name}</span>`}${item.last_reviewed && html`<span>Last reviewed ${fmtDate(item.last_reviewed)}</span>`}${item.next_review && html`<span>Next review ${fmtDate(item.next_review)}</span>`}
       ${isChecklist(item.body_md) && html`<button class=${'btn sm ' + (check ? '' : 'ghost')} onClick=${() => setCheck(!check)}>${check ? 'Reading mode' : 'Checklist mode'}</button>`}
+      <a class="btn sm ghost" href=${'#/ask/' + item.slug}>Ask about this</a>
       ${canEdit && !edit && html`<button class="btn sm" onClick=${() => setEdit(true)}>Edit</button>`}${canEdit && html`<button class="btn sm ghost" onClick=${() => setShowHist(!showHist)}>${showHist ? 'Hide history' : 'History'}</button>`}</div>
     ${edit && html`<${Editor} item=${item} data=${data} me=${me} people=${people} onDone=${async (saved) => { setEdit(false); if (saved) await refresh(); }}/>`}
     ${showHist && html`<${History} item=${item} people=${people} canEdit=${canEdit} onRestored=${async () => { await refresh(); }}/>`}
@@ -249,6 +250,24 @@ function Quiz({ quiz, item, me, onPassed, onClose }) {
         <div class="row">${!result.passed && html`<button class="btn orange sm" onClick=${() => { setPicks({}); setResult(null); }}>Try again</button>`}${onClose && html`<button class="btn sm" onClick=${onClose}>${result.passed ? 'Continue' : 'Close'}</button>`}</div></div>`}
   </div>`;
 }
+
+// ---------- Ask Homestar (Phase 4b) ----------
+function Ask({ data, itemSlug }) {
+  const item = itemSlug ? data.items.find(i => i.slug === itemSlug) : null;
+  const pre = (location.hash.split('?')[1] || ''); const [q, setQ] = useState(() => decodeURIComponent(pre)); const [busy, setBusy] = useState(false); const [log, setLog] = useState([]);
+  useEffect(() => { if (pre) { history.replaceState(null, '', '#/ask'); send(); } }, []);
+  const send = async (e) => { e && e.preventDefault(); const question = q.trim(); if (question.length < 3 || busy) return; setBusy(true); setQ('');
+    const { data: res, error } = await sb.functions.invoke('ask', { body: { q: question, item_id: item ? item.id : null } });
+    setLog(l => [{ q: question, a: error ? 'Something went wrong: ' + (error.message || error) : (res && res.error ? res.error : res.answer), sources: (res && res.sources) || [] }, ...l]); setBusy(false); };
+  const examples = item ? [`What are the steps in ${item.title}?`, `Who do I contact about this?`] : ['How do I add a job tag in Housecall Pro?', 'What is the dress code?', 'How do I register a Midea parts warranty?', 'What do I do when a customer complains?'];
+  return html`<div><h1 class="title">Ask Homestar</h1>
+    <div class="card"><div class="muted" style=${{ fontSize: 13, marginBottom: 8 }}>Answers come only from Homestar's live systems, policies and training${item ? html`, starting with <strong>${item.title}</strong>` : ''}. Every answer links its sources. If the hub doesn't cover it, it will say so.</div>
+      <form class="row" onSubmit=${send}><input style=${{ flex: 1, padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 15 }} placeholder=${item ? 'Ask about ' + item.title : 'Ask a question…'} value=${q} onInput=${e => setQ(e.target.value)} autoFocus/><button class="btn orange" disabled=${busy || q.trim().length < 3}>${busy ? 'Thinking…' : 'Ask'}</button></form>
+      ${!log.length && html`<div class="row" style=${{ gap: 6, flexWrap: 'wrap', marginTop: 10 }}>${examples.map(x => html`<button key=${x} class="btn ghost sm" onClick=${() => setQ(x)}>${x}</button>`)}</div>`}</div>
+    ${log.map((e, n) => html`<div key=${n} class="card"><div style=${{ fontWeight: 600, marginBottom: 6 }}>${e.q}</div><${Md} md=${e.a}/>
+      ${e.sources.length > 0 && html`<div class="muted" style=${{ fontSize: 13, marginTop: 8 }}>Sources: ${e.sources.map((s, i) => html`<span key=${s.slug}>${i ? ' · ' : ''}[${s.n}] <a href=${'#/' + s.type + '/' + s.slug}>${s.title}</a></span>`)}</div>`}</div>`)}
+  </div>`;
+}
 const VIDEO_RX = /https?:\/\/(?:www\.)?(?:loom\.com\/(?:share|embed)\/[a-f0-9]+|youtube\.com\/(?:watch\?v=|embed\/)[\w-]{11}|youtu\.be\/[\w-]{11}|fast\.wistia\.(?:net|com)\/embed\/iframe\/\w+|\w+\.wistia\.com\/medias\/\w+)[^\s)>\]"]*/g;
 function Editor({ item, data, me, people, onDone }) {
   const [f, setF] = useState({ title: item.title, overview: item.overview || '', body_md: item.body_md || '', state: item.state, owner_id: item.owner_id || '', next_review: item.next_review || '', templates: item.templates || [], folder_id: item.folder_id || '' });
@@ -330,6 +349,7 @@ function Home({ data, me, people }) {
   const mine = data.items.filter(i => i.department_id === me.department_id && i.state === 'live');
   return html`<div>
     <h1 class="title">Welcome, ${me.name.split(' ')[0]}</h1>
+    <form class="card row" onSubmit=${e => { e.preventDefault(); const v = e.target.elements.q.value.trim(); if (v) go('/ask?' + encodeURIComponent(v)); }}><input name="q" style=${{ flex: 1, padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 15 }} placeholder="Ask Homestar: how do I…"/><button class="btn orange">Ask</button></form>
     ${(() => { const today = new Date().toISOString().slice(0, 10); const soon = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
       const due = data.items.filter(i => i.state === 'live' && i.next_review && i.next_review <= soon && (me.role === 'admin' || i.owner_id === me.id || (me.role === 'manager' && i.department_id === me.department_id)));
       const open = data.openComments || 0;
@@ -362,13 +382,13 @@ function App() {
   if (!session) return html`<${Login}/>`;
   if (!data || !me) return html`<div class="boot">Loading your hub…</div>`;
   if (me.active === false) return html`<div class="login"><img src="logo.png" alt=""/><h2 style=${{ textAlign: 'center' }}>Almost there</h2><p class="muted">Your account (${me.email}) is created but not activated yet. Calvin activates new accounts and sets your department. Check back shortly.</p><button class="btn ghost" style=${{ width: '100%' }} onClick=${() => sb.auth.signOut()}>Sign out</button></div>`;
-  const parts = route.split('/').filter(Boolean); const lib = ['system', 'policy', 'training'].includes(parts[0]) ? parts[0] : null; const slug = lib ? parts[1] : null;
+  const parts = route.split('?')[0].split('/').filter(Boolean); const lib = ['system', 'policy', 'training'].includes(parts[0]) ? parts[0] : null; const slug = lib ? parts[1] : null;
   const results = q.trim() ? data.items.filter(i => (i.title + ' ' + (i.overview || '')).toLowerCase().includes(q.toLowerCase())) : null;
   const navA = (p, label) => html`<a href=${'#' + p} class=${(route === p || (p !== '/' && route.startsWith(p))) ? 'on' : ''}>${label}</a>`;
   if (parts[0] === 'run') return html`<div><header class="top"><img src="logo.png" alt=""/><span class="brand">System Hub</span><nav>${navA('/training', '‹ Training')}</nav><span class="grow"></span><button class="btn ghost sm" onClick=${() => sb.auth.signOut()}>Sign out</button></header><${Runner} key=${parts[1] + '/' + parts[2]} trackId=${parts[1]} n=${parts[2]} data=${data} me=${me} people=${people} reload=${reload}/></div>`;
   return html`<div>
     <header class="top"><button class="btn ghost sm menu-btn" onClick=${() => setSide(!side)}>☰</button><img src="logo.png" alt=""/><span class="brand">System Hub</span>
-      <nav>${navA('/', 'Home')}${navA('/system', 'Systems')}${navA('/policy', 'Policies')}${navA('/training', 'Training')}${navA('/me', 'My record')}${['admin', 'manager'].includes(me.role) && navA('/dashboard', 'Dashboard')}${me.role === 'admin' && navA('/people', 'People')}</nav>
+      <nav>${navA('/', 'Home')}${navA('/system', 'Systems')}${navA('/policy', 'Policies')}${navA('/training', 'Training')}${navA('/ask', 'Ask')}${navA('/me', 'My record')}${['admin', 'manager'].includes(me.role) && navA('/dashboard', 'Dashboard')}${me.role === 'admin' && navA('/people', 'People')}</nav>
       <span class="grow"></span><input placeholder="Search…" value=${q} onInput=${e => setQ(e.target.value)}/>
       <button class="btn ghost sm" onClick=${() => sb.auth.signOut()}>Sign out</button></header>
     <div class="layout">
@@ -377,6 +397,7 @@ function App() {
         ${results ? html`<${ItemTable} rows=${results} data=${data} title=${`Search: ${q}`}/>`
         : slug ? html`<${ItemView} key=${slug} slug=${slug} data=${data} me=${me} people=${people} reload=${reload}/>`
         : lib ? html`<${ItemTable} rows=${data.items.filter(i => i.type === lib)} data=${data} title=${LIBS[lib]}/>`
+        : parts[0] === 'ask' ? html`<${Ask} data=${data} itemSlug=${parts[1] || null}/>`
         : parts[0] === 'people' ? html`<${People} data=${data} people=${people} me=${me} reload=${reload}/>`
         : parts[0] === 'me' ? html`<${MyRecord} data=${data} me=${me} people=${people}/>`
         : parts[0] === 'dashboard' ? html`<${Dashboard} data=${data} me=${me} people=${people}/>`
