@@ -1,5 +1,5 @@
-// Homestar System Hub - v0.2 (Phase 2: training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
-import React, { useState, useEffect, useMemo } from 'react';
+// Homestar System Hub - v0.2.1 (Phase 2 stress-test fixes: policy tree, bucket images, runner guards: training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
 import { createClient } from '@supabase/supabase-js';
@@ -28,7 +28,18 @@ const videoEmbed = (url) => {
   return null;
 };
 marked.setOptions({ gfm: true, breaks: false });
-const render = (md) => ({ __html: DOMPurify.sanitize(marked.parse(md || ''), { ADD_TAGS: ['iframe'], ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'src'] }) });
+const render = (md) => ({ __html: DOMPurify.sanitize(marked.parse(md || '').replace(/src="hubimg:\/\/([^"]+)"/g, 'data-hubimg="$1"'), { ADD_TAGS: ['iframe'], ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'src'] }) });
+// images live in the private Storage bucket 'images' (key = <item uuid>__<file>); resolve to short-lived signed URLs after render
+const imgCache = new Map();
+async function signedImg(name) {
+  if (!imgCache.has(name)) imgCache.set(name, sb.storage.from('images').createSignedUrl(name, 3600).then(r => (r.data && r.data.signedUrl) || ''));
+  return imgCache.get(name);
+}
+function Md({ md }) {
+  const ref = useRef(null);
+  useEffect(() => { if (!ref.current) return; ref.current.querySelectorAll('img[data-hubimg]').forEach(img => { const n = decodeURIComponent(img.getAttribute('data-hubimg')); img.alt = img.alt || 'image'; img.loading = 'lazy'; signedImg(n).then(u => { if (u) img.src = u; else img.replaceWith(Object.assign(document.createElement('span'), { className: 'muted', textContent: '[image unavailable: ' + n.split('__').slice(1).join('__') + ']' })); }); }); }, [md]);
+  return html`<div class="md" ref=${ref} dangerouslySetInnerHTML=${render(md)}></div>`;
+}
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-CA') : '';
 const isChecklist = (md) => /^\s*(\d+\.|[-*]\s*\[ \])\s+/m.test(md || '');
 
@@ -82,7 +93,8 @@ function Tree({ lib, data, current, onPick }) {
       ${o && inFolder(f.id).map(i => html`<div key=${i.id} class=${'item' + (current === i.slug ? ' on' : '')} onClick=${() => onPick(i)}><span class=${'dot ' + i.state}></span>${i.title}</div>`)}
     </div>`;
   };
-  const depts = lib === 'policy' ? [{ id: null, name: 'Company Policies' }] : data.departments.filter(d => byDept(d.id).length || items.some(i => i.department_id === d.id && !i.folder_id));
+  const used = (dId) => byDept(dId).length || items.some(i => (i.department_id || null) === (dId || null) && !i.folder_id);
+  const depts = [...data.departments.filter(d => used(d.id)), ...(used(null) ? [{ id: null, name: 'Company' }] : [])];
   return html`<div class="tree">${depts.map(d => html`<div key=${d.id || 'co'}>
     <div class="dept">${d.name}</div>
     ${byDept(d.id).map(f => html`<${Folder} key=${f.id} f=${f} depth=${0}/>`)}
@@ -138,12 +150,12 @@ function ItemView({ slug, data, me, people, reload }) {
     <div class="row muted" style=${{ fontSize: 13, marginBottom: 12 }}><span class=${'badge ' + item.state}>${STATES[item.state]}</span>
       ${owner && html`<span>Owner: ${owner.name}</span>`}${item.last_reviewed && html`<span>Last reviewed ${fmtDate(item.last_reviewed)}</span>`}${item.next_review && html`<span>Next review ${fmtDate(item.next_review)}</span>`}
       ${isChecklist(item.body_md) && html`<button class=${'btn sm ' + (check ? '' : 'ghost')} onClick=${() => setCheck(!check)}>${check ? 'Reading mode' : 'Checklist mode'}</button>`}</div>
-    ${item.overview && html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>Overview</h3><div class="md" dangerouslySetInnerHTML=${render(item.overview)}></div></div>`}
+    ${item.overview && html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>Overview</h3><${Md} md=${item.overview}/></div>`}
     ${track && html`<${TrackPanel} track=${track} data=${data} me=${me} onRun=${() => go('/run/' + track.id + '/0')}/>`}
     ${vids.map(v => html`<iframe key=${v} class="video" src=${v} allow="autoplay; fullscreen" allowfullscreen></iframe>`)}
     <div class="card">${check ? html`<div><div class="progress" style=${{ marginBottom: 10 }}><i style=${{ width: (100 * Object.values(done).filter(Boolean).length / Math.max(1, steps.length)) + '%' }}></i></div>
         ${steps.map((s, n) => html`<label key=${n} class=${'check' + (done[n] ? ' done' : '')}><input type="checkbox" checked=${!!done[n]} onChange=${e => setDone({ ...done, [n]: e.target.checked })}/><span>${s}</span></label>`)}</div>`
-      : html`<div class="md" dangerouslySetInnerHTML=${render(item.body_md)}></div>`}</div>
+      : html`<${Md} md=${item.body_md}/>`}</div>
     ${(item.templates || []).length > 0 && html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>Templates</h3>${item.templates.map((t, n) => html`<div key=${n} class="tpl"><div class="row" style=${{ justifyContent: 'space-between' }}><strong>${t.name}</strong><button class="btn sm ghost" onClick=${() => navigator.clipboard.writeText(t.body || '')}>Copy</button></div><pre>${t.body}</pre></div>`)}</div>`}
     ${(item.attachments || []).length > 0 && html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>Attachments</h3>${item.attachments.map((a, n) => html`<div key=${n}><a href=${a.url} target="_blank" rel="noopener">${a.name || a.url}</a></div>`)}</div>`}
     <div class="card"><h3 style=${{ margin: '0 0 6px' }}>Comments</h3>
@@ -158,7 +170,8 @@ function ItemView({ slug, data, me, people, reload }) {
 
 function Runner({ trackId, n, data, me, people, reload }) {
   const track = data.tracks.find(t => t.id === trackId); if (!track) return html`<div class="card">Track not found.</div>`;
-  const steps = track.steps || []; const idx = Math.min(Math.max(0, parseInt(n) || 0), steps.length - 1); const step = steps[idx]; const it = data.items.find(i => i.id === step.item_id);
+  const steps = track.steps || []; if (!steps.length) return html`<div class="card">This track has no steps yet.</div>`;
+  const idx = Math.min(Math.max(0, parseInt(n) || 0), steps.length - 1); const step = steps[idx]; const it = data.items.find(i => i.id === step.item_id);
   const training = data.items.find(i => i.id === track.training_id);
   const done = new Set(data.progress.filter(p => p.person_id === me.id && p.track_id === track.id && p.status === 'complete').map(p => p.item_id));
   const [full, setFull] = useState(null); const [busy, setBusy] = useState(false);
@@ -172,14 +185,14 @@ function Runner({ trackId, n, data, me, people, reload }) {
     <main class="main">
       <div class="crumb">Step ${idx + 1} of ${steps.length} · ${step.minutes} min</div>
       <h1 class="title">${it ? it.title : 'Missing item'}</h1>
-      ${!full ? html`<div class="muted">Loading…</div>` : html`<div>
-        ${full.overview && html`<div class="card"><div class="md" dangerouslySetInnerHTML=${render(full.overview)}></div></div>`}
+      ${!it ? html`<div class="card muted">This item isn't published yet or isn't visible to you. Skip to the next step.</div>` : !full ? html`<div class="muted">Loading…</div>` : html`<div>
+        ${full.overview && html`<div class="card"><${Md} md=${full.overview}/></div>`}
         ${vids.map(v => html`<iframe key=${v} class="video" src=${v} allow="autoplay; fullscreen" allowfullscreen></iframe>`)}
-        <div class="card"><div class="md" dangerouslySetInnerHTML=${render(full.body_md)}></div></div></div>`}
+        <div class="card"><${Md} md=${full.body_md}/></div></div>`}
       <div class="card row" style=${{ justifyContent: 'space-between' }}>
         <div>${done.has(step.item_id) ? html`<span class="muted">Completed. ${idx < steps.length - 1 ? '' : 'This was the last item.'}</span>` : html`<span class="muted">Read or watch it, then confirm you understand and will follow it.</span>`}</div>
         <div class="row">${idx > 0 && html`<button class="btn ghost" onClick=${() => go(`/run/${track.id}/${idx - 1}`)}>‹ Back</button>`}
-          ${!done.has(step.item_id) ? html`<button class="btn orange" disabled=${busy} onClick=${agree}>Agree and continue</button>` : idx < steps.length - 1 ? html`<button class="btn" onClick=${() => go(`/run/${track.id}/${idx + 1}`)}>Next ›</button>` : html`<a class="btn" href=${'#/training/' + (training ? training.slug : '')}>Back to training</a>`}</div></div>
+          ${!done.has(step.item_id) && it ? html`<button class="btn orange" disabled=${busy} onClick=${agree}>Agree and continue</button>` : idx < steps.length - 1 ? html`<button class="btn" onClick=${() => go(`/run/${track.id}/${idx + 1}`)}>Next ›</button>` : html`<a class="btn" href=${'#/training/' + (training ? training.slug : '')}>Back to training</a>`}</div></div>
     </main></div>`;
 }
 function MyRecord({ data, me, people }) {
