@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.7 (mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.7.1 (search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -102,11 +102,11 @@ function Tree({ lib, data, current, onPick }) {
   </div>`)}</div>`;
 }
 
-function ItemTable({ rows, data, title, empty }) {
+function ItemTable({ rows, data, title, empty, onPick }) {
   const fname = (id) => (data.folders.find(f => f.id === id) || {}).name || '';
   const dname = (id) => (data.departments.find(d => d.id === id) || {}).name || 'Company';
   return html`<div class="card list"><h3>${title}</h3>
-    ${rows.map(i => html`<a key=${i.id} class="lrow" href=${'#/' + i.type + '/' + i.slug}><span class=${'dot ' + i.state}></span><span class="t"><b>${i.title}</b><small>${dname(i.department_id)}${fname(i.folder_id) ? ' › ' + fname(i.folder_id) : ''}${i.updated_at ? ' · ' + fmtDate(i.updated_at) : ''}</small></span><span class="muted">›</span></a>`)}
+    ${rows.map(i => html`<a key=${i.id} class="lrow" href=${'#/' + i.type + '/' + i.slug} onClick=${() => onPick && onPick(i)}><span class=${'dot ' + i.state}></span><span class="t"><b>${i.title}</b><small>${dname(i.department_id)}${fname(i.folder_id) ? ' › ' + fname(i.folder_id) : ''}${i.updated_at ? ' · ' + fmtDate(i.updated_at) : ''}</small></span><span class="muted">›</span></a>`)}
     ${!rows.length && html`<div class="muted">${empty || 'Nothing here yet.'}</div>`}</div>`;
 }
 
@@ -358,7 +358,7 @@ function AskStats({ data, me, people }) {
   const live = data.items.filter(i => i.state === 'live'); const citedTitles = new Set(Object.keys(cites)); const never = live.filter(i => !citedTitles.has(i.title)).length;
   return html`<div class="card"><h3 style=${{ margin: '0 0 8px' }}>Ask Homestar <span class="muted" style=${{ fontWeight: 400, fontSize: 13 }}>· last 30 days</span></h3>
     <div class="row" style=${{ gap: 14, flexWrap: 'wrap', marginBottom: 10 }}>${[['Questions (7 d)', week.length], ['Questions (30 d)', rows.length], ['Not covered', rows.filter(r => !r.covered).length], ['👎', rows.filter(r => r.rating === -1).length], ['👍', rows.filter(r => r.rating === 1).length], ['Live pages never cited', never + '/' + live.length]].map(([k, v]) => html`<div key=${k}><div class="muted" style=${{ fontSize: 11, textTransform: 'uppercase' }}>${k}</div><div style=${{ fontSize: 20, fontWeight: 700 }}>${v}</div></div>`)}</div>
-    ${gaps.length > 0 && html`<h4 style=${{ margin: '8px 0 4px' }}>Gaps to fix (${gaps.length})</h4><table class="table"><thead><tr><th>Question</th><th>Who</th><th>Why</th><th>Feedback</th><th>When</th></tr></thead><tbody>${gaps.slice(0, 15).map(r => html`<tr key=${r.id}><td>${r.question}</td><td>${(people.find(p => p.id === r.person_id) || {}).name || ''}</td><td><span class=${'badge ' + (!r.covered ? 'draft' : 'review')}>${!r.covered ? 'not covered' : 'thumbs down'}</span></td><td class="muted">${r.feedback || ''}</td><td class="muted">${fmtDate(r.created_at)}</td></tr>`)}</tbody></table>`}
+    ${gaps.length > 0 && html`<h4 style=${{ margin: '8px 0 4px' }}>Gaps to fix (${gaps.length})</h4><div class="scrollx"><table class="table"><thead><tr><th>Question</th><th>Who</th><th>Why</th><th>Feedback</th><th>When</th></tr></thead><tbody>${gaps.slice(0, 15).map(r => html`<tr key=${r.id}><td>${r.question}</td><td>${(people.find(p => p.id === r.person_id) || {}).name || ''}</td><td><span class=${'badge ' + (!r.covered ? 'draft' : 'review')}>${!r.covered ? 'not covered' : 'thumbs down'}</span></td><td class="muted">${r.feedback || ''}</td><td class="muted">${fmtDate(r.created_at)}</td></tr>`)}</tbody></table></div>`}
     ${top.length > 0 && html`<div class="muted" style=${{ fontSize: 13, marginTop: 8 }}>Most cited: ${top.map(([t, c]) => `${t} (${c})`).join(' · ')}</div>`}</div>`;
 }
 const VIDEO_RX = /https?:\/\/(?:www\.)?(?:loom\.com\/(?:share|embed)\/[a-f0-9]+|youtube\.com\/(?:watch\?v=|embed\/)[\w-]{11}|youtu\.be\/[\w-]{11}|fast\.wistia\.(?:net|com)\/embed\/iframe\/\w+|\w+\.wistia\.com\/medias\/\w+)[^\s)>\]"]*/g;
@@ -467,11 +467,11 @@ function Home({ data, me, people }) {
 function People({ data, people, me, reload }) {
   if (me.role !== 'admin') return html`<div class="card">Admins only.</div>`;
   const set = async (p, patch) => { await sb.from('people').update(patch).eq('id', p.id); reload(); };
-  return html`<div><h1 class="title">People</h1><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Role</th><th>Active</th></tr></thead><tbody>
+  return html`<div><h1 class="title">People</h1><div class="scrollx"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Role</th><th>Active</th></tr></thead><tbody>
     ${people.map(p => html`<tr key=${p.id}><td>${p.name}</td><td>${p.email}</td>
       <td><select value=${p.department_id || ''} onChange=${e => set(p, { department_id: e.target.value || null })}><option value="">—</option>${data.departments.map(d => html`<option key=${d.id} value=${d.id}>${d.name}</option>`)}</select></td>
       <td><select value=${p.role} onChange=${e => set(p, { role: e.target.value })}><option>member</option><option>manager</option><option>admin</option></select></td>
-      <td><input type="checkbox" checked=${p.active} onChange=${e => set(p, { active: e.target.checked })}/></td></tr>`)}</tbody></table>
+      <td><input type="checkbox" checked=${p.active} onChange=${e => set(p, { active: e.target.checked })}/></td></tr>`)}</tbody></table></div>
     <p class="muted" style=${{ fontSize: 13 }}>New staff create their own account from the sign-in page; set their department and role here. The first account created is made admin by Claude.</p></div>`;
 }
 
@@ -480,19 +480,20 @@ function App() {
   useEffect(() => { sb.auth.getSession().then(({ data }) => setSession(data.session)); const { data: sub } = sb.auth.onAuthStateChange((_e, s) => setSession(s)); return () => sub.subscription.unsubscribe(); }, []);
   const reload = async () => { const { data: p } = await sb.from('people').select('*').order('name'); setPeople(p || []); setMe((p || []).find(x => x.id === session.user.id) || { id: session.user.id, name: session.user.email, role: 'member' }); setData(await loadAll()); };
   useEffect(() => { if (session) reload(); }, [session]);
+  useEffect(() => { setQ(''); setSearchOpen(false); window.scrollTo(0, 0); }, [route]);
   if (session === undefined) return html`<div class="boot">Loading…</div>`;
   if (!session) return html`<${Login}/>`;
   if (!data || !me) return html`<div class="boot">Loading your hub…</div>`;
   if (me.active === false) return html`<div class="login"><img src="logo.png" alt=""/><h2 style=${{ textAlign: 'center' }}>Almost there</h2><p class="muted">Your account (${me.email}) is created but not activated yet. Calvin activates new accounts and sets your department. Check back shortly.</p><button class="btn ghost" style=${{ width: '100%' }} onClick=${() => sb.auth.signOut()}>Sign out</button></div>`;
   const parts = route.split('?')[0].split('/').filter(Boolean); const lib = ['system', 'policy', 'training'].includes(parts[0]) ? parts[0] : null; const slug = lib ? parts[1] : null;
-  const results = q.trim() ? data.items.filter(i => (i.title + ' ' + (i.overview || '')).toLowerCase().includes(q.toLowerCase())) : null;
+  const results = q.trim() ? (() => { const k = q.trim().toLowerCase(); const r = data.items.filter(i => i.state !== 'retired' && (i.title + ' ' + (i.overview || '')).toLowerCase().includes(k)); return r.sort((a, b) => (b.title.toLowerCase().startsWith(k) - a.title.toLowerCase().startsWith(k)) || a.title.localeCompare(b.title)); })() : null;
   const on = (p) => (route === p || (p !== '/' && route.startsWith(p))) ? 'on' : '';
   const navA = (p, label) => html`<a href=${'#' + p} class=${on(p)}>${label}</a>`;
   const isPhone = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 900px)').matches;
   const tabs = html`<nav class="tabs">${[['/', '⌂', 'Home'], ['/system', '▤', 'Browse'], ['/ask', '💬', 'Ask'], ['/training', '🎓', 'Training'], ['/me', '◯', 'Me']].map(([p, ic, l]) => html`<a key=${p} href=${'#' + p} class=${p === '/system' ? (on('/system') || on('/policy') ? 'on' : '') : on(p)}><span class="i">${ic}</span>${l}</a>`)}</nav>`;
   const header = html`<header class="top"><a href="#/"><img src="logo.png" alt="Homestar"/></a><span class="brand">System Hub</span>
       <nav>${navA('/', 'Home')}${navA('/system', 'Systems')}${navA('/policy', 'Policies')}${navA('/training', 'Training')}${navA('/ask', 'Ask')}${navA('/me', 'My record')}${['admin', 'manager'].includes(me.role) && navA('/dashboard', 'Dashboard')}${me.role === 'admin' && navA('/people', 'People')}</nav>
-      <span class="grow"></span><input class=${searchOpen ? 'open' : ''} placeholder="Search the hub…" value=${q} onInput=${e => setQ(e.target.value)} onBlur=${() => { if (!q) setSearchOpen(false); }}/>
+      <span class="grow"></span><input class=${searchOpen ? 'open' : ''} placeholder="Search the hub…" value=${q} onInput=${e => setQ(e.target.value)} onBlur=${() => { if (!q) setSearchOpen(false); }} onKeyDown=${e => { if (e.key === 'Enter' && results && results[0]) { go('/' + results[0].type + '/' + results[0].slug); } if (e.key === 'Escape') { setQ(''); setSearchOpen(false); } }}/>
       <button class="btn ghost sm search-btn" onClick=${() => { setSearchOpen(!searchOpen); setTimeout(() => document.querySelector('.top input')?.focus(), 50); }}>🔍</button>
       <button class="btn ghost sm signout" onClick=${() => sb.auth.signOut()}>Sign out</button></header>`;
   if (parts[0] === 'run') return html`<div>${header}<${Runner} key=${parts[1] + '/' + parts[2]} trackId=${parts[1]} n=${parts[2]} data=${data} me=${me} people=${people} reload=${reload}/>${tabs}</div>`;
@@ -502,7 +503,7 @@ function App() {
     <div class="layout">
       <aside class="side">${lib ? html`<${Tree} lib=${lib} data=${data} current=${slug} onPick=${i => go(`/${i.type}/${i.slug}`)}/>` : html`<div class="muted" style=${{ fontSize: 13 }}>Pick Systems, Policies or Training to browse the tree.</div>`}</aside>
       <main class="main">
-        ${results ? html`<${ItemTable} rows=${results} data=${data} title=${`Search: ${q}`} empty="No pages match."/>`
+        ${results ? html`<${ItemTable} rows=${results} data=${data} title=${`Search: ${q}`} empty="No pages match." onPick=${() => { setQ(''); setSearchOpen(false); }}/>`
         : slug ? html`<${ItemView} key=${slug} slug=${slug} data=${data} me=${me} people=${people} reload=${reload}/>`
         : libHome && isPhone ? html`<div><div class="actions" style=${{ marginBottom: 10 }}>${['system', 'policy', 'training'].map(l => html`<a key=${l} class=${'btn sm ' + (l === lib ? '' : 'ghost')} href=${'#/' + l}>${LIBS[l]}</a>`)}</div><${Browse} key=${lib} lib=${lib} data=${data}/></div>`
         : lib ? html`<${ItemTable} rows=${data.items.filter(i => i.type === lib)} data=${data} title=${LIBS[lib]}/>`
