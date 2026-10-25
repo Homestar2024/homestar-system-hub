@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.7.1 (search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.7.2 (browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -111,8 +111,10 @@ function ItemTable({ rows, data, title, empty, onPick }) {
 }
 
 // ---------- Browse (phone): library -> department -> folder -> pages
-function Browse({ lib, data }) {
-  const [path, setPath] = useState([]); const [q, setQ] = useState('');
+function Browse({ lib, data, bpath }) {
+  const path = (bpath || []).map(seg => { const [kind, id] = seg.split(':'); const src = kind === 'dept' ? data.departments : data.folders; const o = src.find(x => x.id === id); return o ? { kind, id, name: o.name } : null; }).filter(Boolean);
+  const setPath = (np) => go('/' + lib + (np.length ? '/b/' + np.map(x => x.kind + ':' + x.id).join('/') : ''));
+  const [q, setQ] = useState('');
   const items = data.items.filter(i => i.type === lib); const folders = data.folders.filter(f => f.library === lib);
   const depts = data.departments.filter(d => items.some(i => i.department_id === d.id) || folders.some(f => f.department_id === d.id));
   const cur = path[path.length - 1];
@@ -126,7 +128,7 @@ function Browse({ lib, data }) {
     return [...sub(cur.id).map(f => ({ kind: 'folder', id: f.id, name: f.name, count: items.filter(i => i.folder_id === f.id).length })), ...items.filter(i => i.folder_id === cur.id).map(i => ({ kind: 'item', i }))];
   })();
   return html`<div class="browse">
-    <div class="bhead">${path.length > 0 && html`<button class="btn ghost sm" onClick=${() => setPath(path.slice(0, -1))}>‹ Back</button>`}<h1>${title}</h1></div>
+    <div class="bhead">${path.length > 0 && html`<button class="btn ghost sm" onClick=${() => history.back()}>‹ Back</button>`}<h1>${title}</h1></div>
     <input class="searchbox" placeholder=${'Search ' + LIBS[lib].toLowerCase() + '…'} value=${q} onInput=${e => setQ(e.target.value)}/>
     ${rows.map(r => r.kind === 'item' ? html`<a key=${r.i.id} class="brow" href=${'#/' + r.i.type + '/' + r.i.slug}><span class=${'dot ' + r.i.state}></span><span class="t"><b>${r.i.title}</b>${results && html`<small>${(data.folders.find(f => f.id === r.i.folder_id) || {}).name || (data.departments.find(d => d.id === r.i.department_id) || {}).name || ''}</small>`}</span><span class="chev">›</span></a>`
       : html`<div key=${r.kind + r.id} class=${'brow ' + r.kind} onClick=${() => { setQ(''); setPath([...path, r]); }}><span class="ic">${r.kind === 'dept' ? r.name[0] : '▣'}</span><span class="t"><b>${r.name}</b><small>${r.count} ${r.count === 1 ? 'item' : 'items'}</small></span><span class="chev">›</span></div>`)}
@@ -485,7 +487,7 @@ function App() {
   if (!session) return html`<${Login}/>`;
   if (!data || !me) return html`<div class="boot">Loading your hub…</div>`;
   if (me.active === false) return html`<div class="login"><img src="logo.png" alt=""/><h2 style=${{ textAlign: 'center' }}>Almost there</h2><p class="muted">Your account (${me.email}) is created but not activated yet. Calvin activates new accounts and sets your department. Check back shortly.</p><button class="btn ghost" style=${{ width: '100%' }} onClick=${() => sb.auth.signOut()}>Sign out</button></div>`;
-  const parts = route.split('?')[0].split('/').filter(Boolean); const lib = ['system', 'policy', 'training'].includes(parts[0]) ? parts[0] : null; const slug = lib ? parts[1] : null;
+  const parts = route.split('?')[0].split('/').filter(Boolean); const lib = ['system', 'policy', 'training'].includes(parts[0]) ? parts[0] : null; const browsing = lib && parts[1] === 'b'; const slug = lib && !browsing ? parts[1] : null; const bpath = browsing ? parts.slice(2).map(decodeURIComponent) : [];
   const results = q.trim() ? (() => { const k = q.trim().toLowerCase(); const r = data.items.filter(i => i.state !== 'retired' && (i.title + ' ' + (i.overview || '')).toLowerCase().includes(k)); return r.sort((a, b) => (b.title.toLowerCase().startsWith(k) - a.title.toLowerCase().startsWith(k)) || a.title.localeCompare(b.title)); })() : null;
   const on = (p) => (route === p || (p !== '/' && route.startsWith(p))) ? 'on' : '';
   const navA = (p, label) => html`<a href=${'#' + p} class=${on(p)}>${label}</a>`;
@@ -505,8 +507,8 @@ function App() {
       <main class="main">
         ${results ? html`<${ItemTable} rows=${results} data=${data} title=${`Search: ${q}`} empty="No pages match." onPick=${() => { setQ(''); setSearchOpen(false); }}/>`
         : slug ? html`<${ItemView} key=${slug} slug=${slug} data=${data} me=${me} people=${people} reload=${reload}/>`
-        : libHome && isPhone ? html`<div><div class="actions" style=${{ marginBottom: 10 }}>${['system', 'policy', 'training'].map(l => html`<a key=${l} class=${'btn sm ' + (l === lib ? '' : 'ghost')} href=${'#/' + l}>${LIBS[l]}</a>`)}</div><${Browse} key=${lib} lib=${lib} data=${data}/></div>`
-        : lib ? html`<${ItemTable} rows=${data.items.filter(i => i.type === lib)} data=${data} title=${LIBS[lib]}/>`
+        : libHome && isPhone ? html`<div><div class="actions" style=${{ marginBottom: 10 }}>${['system', 'policy', 'training'].map(l => html`<a key=${l} class=${'btn sm ' + (l === lib ? '' : 'ghost')} href=${'#/' + l}>${LIBS[l]}</a>`)}</div><${Browse} key=${lib} lib=${lib} data=${data} bpath=${bpath}/></div>`
+        : libHome ? html`<${ItemTable} rows=${data.items.filter(i => i.type === lib)} data=${data} title=${LIBS[lib]}/>`
         : parts[0] === 'ask' ? html`<${Ask} key=${parts[1] || 'ask'} data=${data} me=${me} people=${people} itemSlug=${parts[1] || null} reload=${reload}/>`
         : parts[0] === 'fix' ? html`<${DraftFix} key=${parts[1]} data=${data} me=${me} people=${people} slug=${parts[1]} reload=${reload}/>`
         : parts[0] === 'people' ? html`<${People} data=${data} people=${people} me=${me} reload=${reload}/>`
