@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.3 (Phase 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.3.1 (Phase 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -170,7 +170,7 @@ function ItemView({ slug, data, me, people, reload }) {
     <div class="card row" style=${{ justifyContent: 'space-between' }}>
       <div>${agreed ? html`<span class="muted">You agreed on ${fmtDate(agreed)}.</span>` : html`<span class="muted">Read it? Confirm you understand and will follow it.</span>`}</div>
       ${!agreed && html`<button class="btn orange" onClick=${agree}>Agree</button>`}</div>
-    ${canEdit && html`<div class="muted" style=${{ fontSize: 12 }}>Edits made here sync to the Cowork brain nightly; edits made in the brain sync here. Images: ask Claude to add them for now.</div>`}
+    ${canEdit && html`<div class="muted" style=${{ fontSize: 12 }}>Edits made here sync to the Cowork brain nightly; edits made in the brain sync here.</div>`}
   </div>`;
 }
 
@@ -202,10 +202,36 @@ function Runner({ trackId, n, data, me, people, reload }) {
     </main></div>`;
 }
 
+
+// ---- image upload (Phase 3c): downscale to <=1600px, store as <item uuid>__<safe name> in the private bucket, insert ![](hubimg://key)
+async function shrinkImage(file) {
+  if (!/^image\/(png|jpe?g|webp)$/.test(file.type) || file.size < 400 * 1024) return file;
+  const bmp = await createImageBitmap(file); const max = 1600; const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  if (k === 1 && file.size < 1.5e6) return file;
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+  const blob = await new Promise(r => c.toBlob(r, type, 0.88)); return new File([blob], file.name.replace(/\.\w+$/, type === 'image/png' ? '.png' : '.jpg'), { type });
+}
+async function uploadImage(itemId, file) {
+  if (!/^image\//.test(file.type)) throw new Error('Not an image: ' + file.name);
+  const f = await shrinkImage(file); if (f.size > 8e6) throw new Error('Image too large (max 8 MB after resizing)');
+  const safe = (f.name || 'image.png').replace(/[^\w.\-]+/g, '_').replace(/^_+/, '').slice(-80) || 'image.png';
+  const key = `${itemId}__${Date.now().toString(36)}-${safe}`;
+  const { error } = await sb.storage.from('images').upload(key, f, { contentType: f.type, upsert: false }); if (error) throw error;
+  return key;
+}
 const VIDEO_RX = /https?:\/\/(?:www\.)?(?:loom\.com\/(?:share|embed)\/[a-f0-9]+|youtube\.com\/(?:watch\?v=|embed\/)[\w-]{11}|youtu\.be\/[\w-]{11}|fast\.wistia\.(?:net|com)\/embed\/iframe\/\w+|\w+\.wistia\.com\/medias\/\w+)[^\s)>\]"]*/g;
 function Editor({ item, data, me, people, onDone }) {
   const [f, setF] = useState({ title: item.title, overview: item.overview || '', body_md: item.body_md || '', state: item.state, owner_id: item.owner_id || '', next_review: item.next_review || '', templates: item.templates || [], folder_id: item.folder_id || '' });
   const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [preview, setPreview] = useState(false);
+  const [uploading, setUploading] = useState(0); const taRef = useRef(null); const fileRef = useRef(null);
+  const addImages = async (files) => {
+    const list = [...files].filter(f => /^image\//.test(f.type)); if (!list.length) return; setUploading(list.length); setErr('');
+    for (const file of list) { try { const key = await uploadImage(item.id, file); insertAtCursor(`\n![${file.name.replace(/\.\w+$/, '')}](hubimg://${key})\n`); } catch (e) { setErr('Image upload failed: ' + (e.message || e)); } setUploading(n => n - 1); }
+  };
+  const insertAtCursor = (txt) => { const ta = taRef.current; setF(prev => { const v = prev.body_md; if (!ta) return { ...prev, body_md: v + txt }; const a = ta.selectionStart ?? v.length, b = ta.selectionEnd ?? v.length; const nv = v.slice(0, a) + txt + v.slice(b); setTimeout(() => { try { ta.focus(); ta.selectionStart = ta.selectionEnd = a + txt.length; } catch (_) {} }, 0); return { ...prev, body_md: nv }; }); };
+  const onPaste = (e) => { const files = [...(e.clipboardData?.items || [])].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean); if (files.length) { e.preventDefault(); addImages(files); } };
+  const onDrop = (e) => { e.preventDefault(); if (e.dataTransfer?.files?.length) addImages(e.dataTransfer.files); };
   const up = (k, v) => setF({ ...f, [k]: v });
   const setT = (n, k, v) => up('templates', f.templates.map((t, i) => i === n ? { ...t, [k]: v } : t));
   const save = async () => {
@@ -215,7 +241,7 @@ function Editor({ item, data, me, people, onDone }) {
     if (error) setErr(error.message); else onDone(true);
   };
   const folders = data.folders.filter(x => x.library === item.type);
-  const ins = (txt) => up('body_md', f.body_md + (f.body_md.endsWith('\n') || !f.body_md ? '' : '\n') + txt);
+  const ins = (txt) => insertAtCursor(txt);
   return html`<div class="card editor">
     <div class="row" style=${{ justifyContent: 'space-between', marginBottom: 10 }}><h3 style=${{ margin: 0 }}>Edit ${LIBS[item.type].replace(/s$/, '').toLowerCase()}</h3><div class="row"><button class="btn ghost sm" onClick=${() => setPreview(!preview)}>${preview ? 'Edit' : 'Preview'}</button><button class="btn ghost sm" onClick=${() => onDone(false)}>Cancel</button><button class="btn orange sm" disabled=${busy || !f.title.trim()} onClick=${save}>Save</button></div></div>
     ${err && html`<div class="err">${err}</div>`}
@@ -227,9 +253,9 @@ function Editor({ item, data, me, people, onDone }) {
     </div>
     <label>Folder<select value=${f.folder_id} onChange=${e => up('folder_id', e.target.value)}><option value="">(none)</option>${folders.map(x => html`<option key=${x.id} value=${x.id}>${(data.departments.find(d => d.id === x.department_id) || {}).name || 'Company'} › ${x.name}</option>`)}</select></label>
     <label>Overview (one or two lines shown at the top)<textarea rows="2" value=${f.overview} onInput=${e => up('overview', e.target.value)}></textarea></label>
-    <div class="row" style=${{ gap: 6, flexWrap: 'wrap', margin: '6px 0' }}><span class="muted" style=${{ fontSize: 12 }}>Insert:</span>${[['Heading', '\n## Step name\n'], ['Numbered steps', '\n1. First step\n2. Second step\n'], ['Checklist', '\n- [ ] Do this\n- [ ] Then this\n'], ['Table', '\n| Column | Column |\n|---|---|\n| a | b |\n'], ['Note', '\n> Note: \n'], ['Loom link', '\nhttps://www.loom.com/share/VIDEO_ID\n']].map(([n, t]) => html`<button key=${n} class="btn ghost sm" onClick=${() => ins(t)}>${n}</button>`)}</div>
-    ${preview ? html`<div class="card" style=${{ background: 'var(--bg)' }}><${Md} md=${f.body_md}/></div>` : html`<textarea class="mono" rows="22" value=${f.body_md} onInput=${e => up('body_md', e.target.value)} placeholder="Write the system in Markdown. Paste a Loom link on its own line and it embeds. Images: ask Claude to add them for now."></textarea>`}
-    <div class="muted" style=${{ fontSize: 12 }}>Markdown: **bold**, lists with "1." or "-", headings with "##", links [text](url). Numbered steps or "- [ ]" lines turn on Checklist mode for readers.</div>
+    <div class="row" style=${{ gap: 6, flexWrap: 'wrap', margin: '6px 0' }}><span class="muted" style=${{ fontSize: 12 }}>Insert:</span>${[['Heading', '\n## Step name\n'], ['Numbered steps', '\n1. First step\n2. Second step\n'], ['Checklist', '\n- [ ] Do this\n- [ ] Then this\n'], ['Table', '\n| Column | Column |\n|---|---|\n| a | b |\n'], ['Note', '\n> Note: \n'], ['Loom link', '\nhttps://www.loom.com/share/VIDEO_ID\n']].map(([n, t]) => html`<button key=${n} class="btn ghost sm" onClick=${() => ins(t)}>${n}</button>`)}<button class="btn sm" disabled=${uploading > 0} onClick=${() => fileRef.current && fileRef.current.click()}>${uploading ? `Uploading ${uploading}…` : '📷 Add image'}</button><input ref=${fileRef} type="file" accept="image/*" multiple style=${{ display: 'none' }} onChange=${e => { addImages(e.target.files); e.target.value = ''; }}/></div>
+    ${preview ? html`<div class="card" style=${{ background: 'var(--bg)' }}><${Md} md=${f.body_md}/></div>` : html`<textarea ref=${taRef} class="mono" rows="22" value=${f.body_md} onInput=${e => up('body_md', e.target.value)} onPaste=${onPaste} onDrop=${onDrop} onDragOver=${e => e.preventDefault()} placeholder="Write the system in Markdown. Paste a Loom link on its own line and it embeds. Paste or drop screenshots straight in here, or use Add image."></textarea>`}
+    <div class="muted" style=${{ fontSize: 12 }}>Markdown: **bold**, lists with "1." or "-", headings with "##", links [text](url). Numbered steps or "- [ ]" lines turn on Checklist mode for readers. Screenshots: paste (Ctrl+V), drag in, or Add image - they upload to the hub and land where your cursor is.</div>
     <h4 style=${{ margin: '14px 0 6px' }}>Templates (copy-paste snippets)</h4>
     ${f.templates.map((t, n) => html`<div key=${n} class="tpl"><div class="row"><input style=${{ flex: 1 }} placeholder="Template name" value=${t.name || ''} onInput=${e => setT(n, 'name', e.target.value)}/><button class="btn ghost sm" onClick=${() => up('templates', f.templates.filter((_, i) => i !== n))}>Remove</button></div><textarea rows="4" value=${t.body || ''} onInput=${e => setT(n, 'body', e.target.value)}></textarea></div>`)}
     <button class="btn ghost sm" onClick=${() => up('templates', [...f.templates, { name: '', body: '' }])}>+ Template</button>
