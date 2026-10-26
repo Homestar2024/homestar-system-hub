@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.8 (QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.9 (natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -80,6 +80,16 @@ async function loadAll() {
   return { departments: d.data || [], folders: f.data || [], items: i.data || [], tracks: t.data || [], progress: p.data || [], signoffs: so.data || [], quizzes: qz.data || [], quizResults: qr.data || [], error: d.error || f.error || i.error };
 }
 
+// ---------- sorting: natural order ("01." before "02." before "10."), "!" overview pages first; user-selectable mode kept in localStorage
+const SORTS = { name: 'A to Z', updated: 'Recently updated', state: 'Status' };
+const STATE_ORDER = { live: 0, review: 1, draft: 2, retired: 3 };
+const natCmp = (a, b) => { const A = String(a || ''), B = String(b || ''); const ea = /^!/.test(A), eb = /^!/.test(B); if (ea !== eb) return ea ? -1 : 1; return dt(A).localeCompare(dt(B), 'en', { numeric: true, sensitivity: 'base' }); };
+const sortRows = (rows, mode, name, upd, st) => [...rows].sort((a, b) => (mode === 'updated' ? String(upd(b) || '').localeCompare(String(upd(a) || '')) : mode === 'state' ? ((STATE_ORDER[st(a)] ?? 9) - (STATE_ORDER[st(b)] ?? 9)) : 0) || natCmp(name(a), name(b)));
+const sortItems = (rows, mode = 'name') => sortRows(rows, mode, r => r.title, r => r.updated_at, r => r.state);
+const getSort = () => { try { return SORTS[localStorage.getItem('hub.sort')] ? localStorage.getItem('hub.sort') : 'name'; } catch (e) { return 'name'; } };
+function useSort() { const [mode, setMode] = useState(getSort()); return [mode, (m) => { setMode(m); try { localStorage.setItem('hub.sort', m); } catch (e) { } }]; }
+const SortPick = ({ mode, onChange }) => html`<label class="sortpick muted">Sort <select value=${mode} onChange=${e => onChange(e.target.value)}>${Object.entries(SORTS).map(([k, v]) => html`<option key=${k} value=${k}>${v}</option>`)}</select></label>`;
+
 // ---------- components ----------
 function Tree({ lib, data, current, onPick }) {
   const [open, setOpen] = useState({});
@@ -88,28 +98,33 @@ function Tree({ lib, data, current, onPick }) {
   const byDept = (dId) => folders.filter(f => (f.department_id || null) === (dId || null) && !f.parent_id);
   const kids = (fid) => folders.filter(f => f.parent_id === fid);
   const inFolder = (fid) => items.filter(i => i.folder_id === fid);
+  // folders and pages share one natural-ordered list ("! How X works", 01., 02., 03. ... whether folder or page)
+  const mixed = (fs, is) => [...fs.map(f => ({ k: 'f', n: f.name, f })), ...is.map(i => ({ k: 'i', n: i.title, i }))].sort((a, b) => natCmp(a.n, b.n));
+  const Row = ({ i }) => html`<div class=${'item' + (current === i.slug ? ' on' : '')} onClick=${() => onPick(i)}><span class=${'dot ' + i.state}></span>${dt(i.title)}</div>`;
   const Folder = ({ f, depth }) => {
     const o = open[f.id] !== false;
     return html`<div style=${{ marginLeft: depth * 10 }}>
-      <div class="folder" onClick=${() => setOpen({ ...open, [f.id]: !o })}>${o ? '▾' : '▸'} ${f.name}</div>
-      ${o && kids(f.id).map(k => html`<${Folder} key=${k.id} f=${k} depth=${depth + 1}/>`)}
-      ${o && inFolder(f.id).map(i => html`<div key=${i.id} class=${'item' + (current === i.slug ? ' on' : '')} onClick=${() => onPick(i)}><span class=${'dot ' + i.state}></span>${dt(i.title)}</div>`)}
+      <div class="folder" onClick=${() => setOpen({ ...open, [f.id]: !o })}>${o ? '▾' : '▸'} ${dt(f.name)}</div>
+      ${o && mixed(kids(f.id), inFolder(f.id)).map(r => r.k === 'f' ? html`<${Folder} key=${r.f.id} f=${r.f} depth=${depth + 1}/>` : html`<${Row} key=${r.i.id} i=${r.i}/>`)}
     </div>`;
   };
   const used = (dId) => byDept(dId).length || items.some(i => (i.department_id || null) === (dId || null) && !i.folder_id);
   const depts = [...data.departments.filter(d => used(d.id)), ...(used(null) ? [{ id: null, name: 'Company' }] : [])];
   return html`<div class="tree">${depts.map(d => html`<div key=${d.id || 'co'}>
     <div class="dept">${d.name}</div>
-    ${byDept(d.id).map(f => html`<${Folder} key=${f.id} f=${f} depth=${0}/>`)}
-    ${items.filter(i => (i.department_id || null) === (d.id || null) && !i.folder_id).map(i => html`<div key=${i.id} class=${'item' + (current === i.slug ? ' on' : '')} onClick=${() => onPick(i)}><span class=${'dot ' + i.state}></span>${dt(i.title)}</div>`)}
+    ${mixed(byDept(d.id), items.filter(i => (i.department_id || null) === (d.id || null) && !i.folder_id)).map(r => r.k === 'f' ? html`<${Folder} key=${r.f.id} f=${r.f} depth=${0}/>` : html`<${Row} key=${r.i.id} i=${r.i}/>`)}
   </div>`)}</div>`;
 }
 
-function ItemTable({ rows, data, title, empty, onPick }) {
+function ItemTable({ rows, data, title, empty, onPick, sortable }) {
   const fname = (id) => (data.folders.find(f => f.id === id) || {}).name || '';
   const dname = (id) => (data.departments.find(d => d.id === id) || {}).name || 'Company';
-  return html`<div class="card list"><h3>${title}</h3>
-    ${rows.map(i => html`<a key=${i.id} class="lrow" href=${'#/' + i.type + '/' + i.slug} onClick=${() => onPick && onPick(i)}><span class=${'dot ' + i.state}></span><span class="t"><b>${dt(i.title)}</b><small>${dname(i.department_id)}${fname(i.folder_id) ? ' › ' + fname(i.folder_id) : ''}${i.updated_at ? ' · ' + fmtDate(i.updated_at) : ''}</small></span><span class="muted">›</span></a>`)}
+  const [mode, setMode] = useSort();
+  // library lists: group by department, then folder path, then natural title order (or the chosen sort mode)
+  const fpath = (id) => { const p = []; let f = data.folders.find(x => x.id === id); while (f) { p.unshift(f.name); f = data.folders.find(x => x.id === f.parent_id); } return p.join(' › '); };
+  const shown = sortable ? (mode === 'name' ? [...rows].sort((a, b) => natCmp(dname(a.department_id), dname(b.department_id)) || natCmp(fpath(a.folder_id), fpath(b.folder_id)) || natCmp(a.title, b.title)) : sortItems(rows, mode)) : rows;
+  return html`<div class="card list"><div class="row" style=${{ justifyContent: 'space-between', alignItems: 'baseline' }}><h3>${title}</h3>${sortable && html`<${SortPick} mode=${mode} onChange=${setMode}/>`}</div>
+    ${shown.map(i => html`<a key=${i.id} class="lrow" href=${'#/' + i.type + '/' + i.slug} onClick=${() => onPick && onPick(i)}><span class=${'dot ' + i.state}></span><span class="t"><b>${dt(i.title)}</b><small>${dname(i.department_id)}${fname(i.folder_id) ? ' › ' + fname(i.folder_id) : ''}${i.updated_at ? ' · ' + fmtDate(i.updated_at) : ''}</small></span><span class="muted">›</span></a>`)}
     ${!rows.length && html`<div class="muted">${empty || 'Nothing here yet.'}</div>`}</div>`;
 }
 
@@ -131,11 +146,17 @@ function Browse({ lib, data, bpath }) {
     if (!cur) return depts.length > 1 ? depts.map(d => ({ kind: 'dept', id: d.id, name: d.name, count: items.filter(i => i.department_id === d.id).length })) : [...folders.filter(f => !f.parent_id).map(f => ({ kind: 'folder', id: f.id, name: f.name, count: deep(f.id) })), ...items.filter(i => !i.folder_id).map(i => ({ kind: 'item', i }))];
     if (cur.kind === 'dept') return [...folders.filter(f => f.department_id === cur.id && !f.parent_id).map(f => ({ kind: 'folder', id: f.id, name: f.name, count: deep(f.id) })), ...items.filter(i => i.department_id === cur.id && !i.folder_id).map(i => ({ kind: 'item', i }))];
     return [...sub(cur.id).map(f => ({ kind: 'folder', id: f.id, name: f.name, count: deep(f.id) })), ...items.filter(i => i.folder_id === cur.id).map(i => ({ kind: 'item', i }))];
-  })().sort((a, b) => (lib === 'training' ? (isTrack(b) - isTrack(a)) : 0));
+  })();
+  const [mode, setMode] = useSort();
+  // departments keep their own order; folders and pages sort together (natural order, "!" first); tracks stay first in Training
+  const rname = (r) => r.kind === 'item' ? r.i.title : r.name;
+  const rupd = (r) => r.kind === 'item' ? r.i.updated_at : (() => { const all = (fid) => [...items.filter(i => i.folder_id === fid).map(i => i.updated_at || ''), ...sub(fid).map(all).flat()]; return all(r.id).sort().pop() || ''; })();
+  const rstate = (r) => r.kind === 'item' ? r.i.state : 'live';
+  const sorted = rows.length && rows[0].kind === 'dept' ? rows : sortRows(rows, mode, rname, rupd, rstate).sort((a, b) => (lib === 'training' ? (isTrack(b) - isTrack(a)) : 0));
   return html`<div class="browse">
-    <div class="bhead">${path.length > 0 && html`<button class="btn ghost sm" onClick=${() => history.back()}>‹ Back</button>`}<h1>${title}</h1></div>
+    <div class="bhead">${path.length > 0 && html`<button class="btn ghost sm" onClick=${() => history.back()}>‹ Back</button>`}<h1>${title}</h1>${sorted.length > 1 && sorted[0].kind !== 'dept' && html`<${SortPick} mode=${mode} onChange=${setMode}/>`}</div>
     <input class="searchbox" placeholder=${'Search ' + LIBS[lib].toLowerCase() + '…'} value=${q} onInput=${e => setQ(e.target.value)}/>
-    ${rows.map(r => r.kind === 'item' ? html`<a key=${r.i.id} class="brow" href=${'#/' + r.i.type + '/' + r.i.slug}><span class=${'dot ' + r.i.state}></span><span class="t"><b>${dt(r.i.title)}${isTrack(r) ? html` <span class="badge review" style=${{ marginLeft: 6 }}>Track</span>` : ''}</b>${results && html`<small>${(data.folders.find(f => f.id === r.i.folder_id) || {}).name || (data.departments.find(d => d.id === r.i.department_id) || {}).name || ''}</small>`}</span><span class="chev">›</span></a>`
+    ${sorted.map(r => r.kind === 'item' ? html`<a key=${r.i.id} class="brow" href=${'#/' + r.i.type + '/' + r.i.slug}><span class=${'dot ' + r.i.state}></span><span class="t"><b>${dt(r.i.title)}${isTrack(r) ? html` <span class="badge review" style=${{ marginLeft: 6 }}>Track</span>` : ''}</b>${results && html`<small>${(data.folders.find(f => f.id === r.i.folder_id) || {}).name || (data.departments.find(d => d.id === r.i.department_id) || {}).name || ''}</small>`}</span><span class="chev">›</span></a>`
       : html`<div key=${r.kind + r.id} class=${'brow ' + r.kind} onClick=${() => { setQ(''); setPath([...path, r]); }}><span class="ic">${r.kind === 'dept' ? r.name[0] : '▣'}</span><span class="t"><b>${dt(r.name)}</b><small>${plural(r.count, 'item')}</small></span><span class="chev">›</span></div>`)}
     ${!rows.length && html`<div class="card muted">Nothing here.</div>`}
   </div>`;
@@ -202,9 +223,9 @@ function ItemView({ slug, data, me, people, reload }) {
       <div class="row" style=${{ marginTop: 10 }}><input style=${{ flex: 1, padding: 9, border: '1px solid var(--line)', borderRadius: 8 }} placeholder="Add a comment" value=${c} onInput=${e => setC(e.target.value)}/><button class="btn sm" disabled=${!c.trim()} onClick=${post}>Comment</button></div>
       ${comments.some(cm => cm.resolved) && html`<details style=${{ marginTop: 8 }}><summary class="muted" style=${{ fontSize: 12, cursor: 'pointer' }}>Show resolved</summary>${comments.filter(cm => cm.resolved).map(cm => html`<div key=${cm.id} class="muted" style=${{ padding: '6px 0', borderTop: '1px solid var(--line)', fontSize: 13 }}>${(people.find(p => p.id === cm.author_id) || {}).name || 'Someone'} · ${fmtDate(cm.created_at)} - ${cm.body} ${(canEdit || cm.author_id === me.id) && html`<a href="#" onClick=${async ev => { ev.preventDefault(); const { error } = await sb.from('comments').update({ resolved: false }).eq('id', cm.id); if (!error) setComments(comments.map(x => x.id === cm.id ? { ...x, resolved: false } : x)); }}>reopen</a>`}</div>`)}</details>`}</div>`}</div>
     ${(() => { const quiz = quizFor(data, item.id); if (!quiz) return null; const best = bestQuiz(data, me.id, item.id); return quizOpen ? html`<${Quiz} quiz=${quiz} item=${item} me=${me} onPassed=${async () => { if (reload) await reload(); }} onClose=${() => setQuizOpen(false)}/>` : html`<div class="card row" style=${{ justifyContent: 'space-between' }}><span>Quick check: ${best ? (best.passed ? html`<strong style=${{ color: 'var(--live)' }}>passed ${best.score}%</strong>` : `best ${best.score}%, not passed`) : 'not taken'}</span><button class=${'btn sm ' + (best && best.passed ? 'ghost' : 'orange')} onClick=${() => setQuizOpen(true)}>${best && best.passed ? 'Retake' : 'Take the quick check'}</button></div>`; })()}
-    <div class=${'card row' + (agreed ? '' : ' stickybar')} style=${{ justifyContent: 'space-between' }}>
+    ${item.type !== 'system' && html`<div class=${'card row' + (agreed ? '' : ' stickybar')} style=${{ justifyContent: 'space-between' }}>
       <div class="muted" style=${{ fontSize: 14 }}>${agreed ? `You agreed on ${fmtDate(agreed)}.` : 'Read it? Confirm you understand and will follow it.'}</div>
-      ${!agreed && html`<button class="btn orange" onClick=${agree}>Agree</button>`}</div>
+      ${!agreed && html`<button class="btn orange" onClick=${agree}>Agree</button>`}</div>`}
     ${me.role === 'admin' && html`<div class="muted" style=${{ fontSize: 12 }}>Admin note: edits made here sync to the Cowork brain nightly, and brain edits sync here.</div>`}
   </div>`;
 }
@@ -525,7 +546,7 @@ function App() {
         ${results ? html`<${ItemTable} rows=${results} data=${data} title=${`Search: ${q}`} empty="No pages match." onPick=${() => { setQ(''); setSearchOpen(false); }}/>`
         : slug ? html`<${ItemView} key=${slug} slug=${slug} data=${data} me=${me} people=${people} reload=${reload}/>`
         : libHome && isPhone ? html`<div><div class="actions" style=${{ marginBottom: 10 }}>${['system', 'policy', 'training'].map(l => html`<a key=${l} class=${'btn sm ' + (l === lib ? '' : 'ghost')} href=${'#/' + l}>${LIBS[l]}</a>`)}</div><${Browse} key=${lib} lib=${lib} data=${data} bpath=${bpath}/></div>`
-        : libHome ? html`<${ItemTable} rows=${data.items.filter(i => i.type === lib)} data=${data} title=${LIBS[lib]}/>`
+        : libHome ? html`<${ItemTable} rows=${data.items.filter(i => i.type === lib)} data=${data} title=${LIBS[lib]} sortable=${true}/>`
         : parts[0] === 'ask' ? html`<${Ask} key=${parts[1] || 'ask'} data=${data} me=${me} people=${people} itemSlug=${parts[1] || null} reload=${reload}/>`
         : parts[0] === 'fix' ? html`<${DraftFix} key=${parts[1]} data=${data} me=${me} people=${people} slug=${parts[1]} reload=${reload}/>`
         : parts[0] === 'people' ? html`<${People} data=${data} people=${people} me=${me} reload=${reload}/>`
