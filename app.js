@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.9.1 (Mark reviewed button, prev/next in natural order, gap footer text; natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.9.2 (are-you-sure dialogs on People, publish/retire/unpublish, template remove, draft-fix save/discard, agree, mark-as-read; own role + Active locked; Mark reviewed button, prev/next in natural order, gap footer text; natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -192,7 +192,7 @@ function ItemView({ slug, data, me, people, reload }) {
   const folder = data.folders.find(f => f.id === item.folder_id); const dept = data.departments.find(d => d.id === item.department_id);
   const owner = people.find(p => p.id === item.owner_id);
   const vids = (item.videos || []).map(videoEmbed).filter(Boolean);
-  const agree = async () => { const { error } = await sb.from('signoffs').insert({ person_id: me.id, item_id: item.id }); if (!error) { setAgreed(new Date().toISOString()); await markProgress(me, data, item.id); if (reload) reload(); } };
+  const agree = async () => { if (!confirm(`Agree to "${dt(item.title)}"? This records that you have read it and will follow it.`)) return; const { error } = await sb.from('signoffs').insert({ person_id: me.id, item_id: item.id }); if (!error) { setAgreed(new Date().toISOString()); await markProgress(me, data, item.id); if (reload) reload(); } };
   const track = item.type === 'training' ? data.tracks.find(t => t.training_id === item.id) : null;
   const post = async () => { if (!c.trim()) return; const { data: row } = await sb.from('comments').insert({ item_id: item.id, author_id: me.id, body: c.trim() }).select().single(); if (row) { setComments([...comments, row]); setC(''); } };
   const steps = check ? (item.body_md.match(/^\s*(?:\d+\.|[-*]\s*\[ \])\s+(.+)$/gm) || []).map(s => s.replace(/^\s*(?:\d+\.|[-*]\s*\[ \])\s+/, '')) : [];
@@ -332,7 +332,7 @@ function Ask({ data, me, people, itemSlug, reload }) {
   const mic = () => { if (!SR) { alert('Voice input is not available in this browser. Chrome or Edge on the phone works.'); return; } if (listening) { recRef.current && recRef.current.stop(); return; } const r = new SR(); r.lang = 'en-CA'; r.interimResults = true; r.onresult = ev => { const t = [...ev.results].map(x => x[0].transcript).join(' '); setQ(t); if (ev.results[ev.results.length - 1].isFinal) { setListening(false); send(t); } }; r.onend = () => setListening(false); r.onerror = () => setListening(false); recRef.current = r; setListening(true); r.start(); };
   const canEditItem = (slug) => { const it = data.items.find(i => i.slug === slug); return it && (me.role === 'admin' || it.owner_id === me.id || (me.role === 'manager' && me.department_id === it.department_id)); };
   const actionsFor = (e) => { const acts = []; for (const s of e.sources.slice(0, 2)) { const it = data.items.find(i => i.slug === s.slug); if (!it) continue;
-      if (!data.signoffs.some(x => x.person_id === me.id && x.item_id === it.id)) acts.push({ label: `Mark "${dt(it.title)}" as read`, run: async () => { await sb.from('signoffs').insert({ person_id: me.id, item_id: it.id }); await markProgress(me, data, it.id); setLog(l => l.map(x => x === e ? { ...x, note: `Marked "${dt(it.title)}" as read ✓` } : x)); reload && reload(); } });
+      if (!data.signoffs.some(x => x.person_id === me.id && x.item_id === it.id)) acts.push({ label: `Mark "${dt(it.title)}" as read`, run: async () => { if (!confirm(`Record that you have read "${dt(it.title)}"? This shows on your record.`)) return; await sb.from('signoffs').insert({ person_id: me.id, item_id: it.id }); await markProgress(me, data, it.id); setLog(l => l.map(x => x === e ? { ...x, note: `Marked "${dt(it.title)}" as read ✓` } : x)); reload && reload(); } });
       const tr = data.tracks.find(t => (t.steps || []).some(st => st.item_id === it.id) && !data.progress.some(p => p.person_id === me.id && p.track_id === t.id && p.item_id === it.id && p.status === 'complete')); const trItem = tr && data.items.find(i => i.id === tr.training_id);
       if (trItem && trItem.state === 'live') acts.push({ label: `Continue track: ${dt(trItem.title)}`, run: () => go('/run/' + tr.id + '/' + Math.max(0, (tr.steps || []).findIndex(st => st.item_id === it.id))) });
       if (isChecklist(it.body_md || '') || /checklist|closeout/i.test(it.title)) acts.push({ label: `Open ${dt(it.title)}`, run: () => go('/' + it.type + '/' + it.slug) }); }
@@ -370,7 +370,7 @@ function DraftFix({ data, me, people, slug, reload }) {
   const canEdit = me.role === 'admin' || item.owner_id === me.id || (me.role === 'manager' && me.department_id === item.department_id);
   if (!canEdit) return html`<div class="card">Only the owner, the department manager or an admin can draft changes to this page.</div>`;
   const run = async () => { setBusy(true); setErr(''); const { data: res, error } = await sb.functions.invoke('ask', { body: { mode: 'draft_fix', item_id: item.id, instruction: instr } }); setBusy(false); if (error || (res && res.error)) setErr((error && error.message) || res.error); else setDraft(res.draft); };
-  const apply = async (asDraftState) => { setBusy(true); const row = { body_md: draft, ...(asDraftState ? { state: 'review' } : {}) }; const { error } = await sb.from('items').update(row).eq('id', item.id); setBusy(false); if (error) setErr(error.message); else { reload && reload(); go('/' + item.type + '/' + item.slug); } };
+  const apply = async (asDraftState) => { if (!confirm(asDraftState ? 'Save this change and set the page to In review?' : 'Publish this change Live for everyone now?')) return; setBusy(true); const row = { body_md: draft, ...(asDraftState ? { state: 'review' } : {}) }; const { error } = await sb.from('items').update(row).eq('id', item.id); setBusy(false); if (error) setErr(error.message); else { reload && reload(); go('/' + item.type + '/' + item.slug); } };
   return html`<div><h1 class="title">Draft a fix: ${dt(item.title)}</h1>
     <div class="card"><label class="muted" style=${{ fontSize: 13 }}>What should change? (a staff question the page failed to answer, a correction, a new step)</label>
       <textarea rows="4" style=${{ width: '100%', boxSizing: 'border-box', padding: 10, border: '1px solid var(--line)', borderRadius: 8, font: 'inherit', marginTop: 6 }} value=${instr} onInput=${e => setInstr(e.target.value)}></textarea>
@@ -381,7 +381,7 @@ function DraftFix({ data, me, people, slug, reload }) {
       <div class="card"><h3 style=${{ margin: '0 0 6px' }}>Current</h3><div style=${{ maxHeight: 520, overflow: 'auto' }}><${Md} md=${full ? full.body_md : ''}/></div></div>
       <div class="card" style=${{ borderLeft: '4px solid var(--orange)' }}><h3 style=${{ margin: '0 0 6px' }}>Proposed ${/\[CONFIRM:/.test(draft) ? html`<span class="badge review">has [CONFIRM] items</span>` : ''}</h3><div style=${{ maxHeight: 520, overflow: 'auto' }}><${Md} md=${draft}/></div>
         <textarea rows="8" class="mono" style=${{ width: '100%', boxSizing: 'border-box', marginTop: 8, fontFamily: 'ui-monospace,Consolas,monospace', fontSize: 12, padding: 8, border: '1px solid var(--line)', borderRadius: 8 }} value=${draft} onInput=${e => setDraft(e.target.value)}></textarea>
-        <div class="row" style=${{ justifyContent: 'flex-end', gap: 6, marginTop: 8 }}><a class="btn ghost sm" href=${'#/' + item.type + '/' + item.slug}>Discard</a><button class="btn sm" disabled=${busy} onClick=${() => apply(true)}>Save as In review</button><button class="btn orange sm" disabled=${busy || /\[CONFIRM:/.test(draft)} title=${/\[CONFIRM:/.test(draft) ? 'Resolve the [CONFIRM] items first' : ''} onClick=${() => apply(false)}>Save live</button></div></div></div>`}
+        <div class="row" style=${{ justifyContent: 'flex-end', gap: 6, marginTop: 8 }}><a class="btn ghost sm" href=${'#/' + item.type + '/' + item.slug} onClick=${ev => { if (!confirm('Discard this proposed change?')) ev.preventDefault(); }}>Discard</a><button class="btn sm" disabled=${busy} onClick=${() => apply(true)}>Save as In review</button><button class="btn orange sm" disabled=${busy || /\[CONFIRM:/.test(draft)} title=${/\[CONFIRM:/.test(draft) ? 'Resolve the [CONFIRM] items first' : ''} onClick=${() => apply(false)}>Save live</button></div></div></div>`}
   </div>`;
 }
 function AskStats({ data, me, people }) {
@@ -414,6 +414,10 @@ function Editor({ item, data, me, people, onDone }) {
   const cancel = () => { if (!dirty() || confirm('Discard your unsaved changes?')) onDone(false); };
   const setT = (n, k, v) => up('templates', f.templates.map((t, i) => i === n ? { ...t, [k]: v } : t));
   const save = async () => {
+    if (f.state !== item.state) {
+      const msg = f.state === 'retired' ? 'Retire this page? Staff will no longer see it in lists or search.' : item.state === 'live' ? `Take this page off Live (to ${STATES[f.state]})? Staff will stop seeing it until it is Live again.` : f.state === 'live' ? 'Publish this page Live for everyone?' : null;
+      if (msg && !confirm(msg)) return;
+    }
     setBusy(true); setErr('');
     const row = { title: f.title.trim(), overview: f.overview, body_md: f.body_md, state: f.state, owner_id: f.owner_id || null, next_review: f.next_review || null, templates: f.templates.filter(t => (t.name || t.body || '').trim()), folder_id: f.folder_id || null, videos: Array.from(new Set((f.body_md.match(VIDEO_RX) || []))), ...(f.state === 'live' && item.state !== 'live' ? { last_reviewed: new Date().toISOString().slice(0, 10) } : {}) };
     const { error } = await sb.from('items').update(row).eq('id', item.id); setBusy(false);
@@ -436,7 +440,7 @@ function Editor({ item, data, me, people, onDone }) {
     ${preview ? html`<div class="card" style=${{ background: 'var(--bg)' }}><${Md} md=${f.body_md}/></div>` : html`<textarea ref=${taRef} class="mono" rows="22" value=${f.body_md} onInput=${e => up('body_md', e.target.value)} onPaste=${onPaste} onDrop=${onDrop} onDragOver=${e => e.preventDefault()} onFocus=${e => { e.target.dataset.touched = '1'; }} placeholder="Write the system in Markdown. Paste a Loom link on its own line and it embeds. Paste or drop screenshots straight in here, or use Add image."></textarea>`}
     <div class="muted" style=${{ fontSize: 12 }}>Markdown: **bold**, lists with "1." or "-", headings with "##", links [text](url). Numbered steps or "- [ ]" lines turn on Checklist mode for readers. Screenshots: paste (Ctrl+V), drag in, or Add image - they upload to the hub and land where your cursor is.</div>
     <h4 style=${{ margin: '14px 0 6px' }}>Templates (copy-paste snippets)</h4>
-    ${f.templates.map((t, n) => html`<div key=${n} class="tpl"><div class="row"><input style=${{ flex: 1 }} placeholder="Template name" value=${t.name || ''} onInput=${e => setT(n, 'name', e.target.value)}/><button class="btn ghost sm" onClick=${() => up('templates', f.templates.filter((_, i) => i !== n))}>Remove</button></div><textarea rows="4" value=${t.body || ''} onInput=${e => setT(n, 'body', e.target.value)}></textarea></div>`)}
+    ${f.templates.map((t, n) => html`<div key=${n} class="tpl"><div class="row"><input style=${{ flex: 1 }} placeholder="Template name" value=${t.name || ''} onInput=${e => setT(n, 'name', e.target.value)}/><button class="btn ghost sm" onClick=${() => { if (confirm(`Remove the template "${t.name || 'untitled'}"? It is only gone once you save.`)) up('templates', f.templates.filter((_, i) => i !== n)); }}>Remove</button></div><textarea rows="4" value=${t.body || ''} onInput=${e => setT(n, 'body', e.target.value)}></textarea></div>`)}
     <button class="btn ghost sm" onClick=${() => up('templates', [...f.templates, { name: '', body: '' }])}>+ Template</button>
     <div class="row" style=${{ justifyContent: 'flex-end', marginTop: 12 }}><button class="btn ghost sm" onClick=${cancel}>Cancel</button><button class="btn orange" disabled=${busy || !f.title.trim()} onClick=${save}>Save</button></div>
   </div>`;
@@ -506,13 +510,20 @@ function Home({ data, me, people }) {
 }
 function People({ data, people, me, reload }) {
   if (me.role !== 'admin') return html`<div class="card">Admins only.</div>`;
-  const set = async (p, patch) => { await sb.from('people').update(patch).eq('id', p.id); reload(); };
+  const [err, setErr] = useState('');
+  // every change asks first; your own role and Active box are locked so an admin can never lock themselves out (DB enforces the same, db/011)
+  const set = async (p, patch, ask, el) => {
+    if (ask && !confirm(ask)) { if (el) { if (el.type === 'checkbox') el.checked = !el.checked; else el.value = 'role' in patch ? p.role : (p.department_id || ''); } return; }
+    setErr(''); const { error } = await sb.from('people').update(patch).eq('id', p.id); if (error) setErr(error.message); reload();
+  };
+  const dname = (id) => (data.departments.find(d => d.id === id) || {}).name || 'no department';
   return html`<div><h1 class="title">People</h1><div class="card" style=${{ padding: 0, overflow: 'hidden' }}><div class="scrollx" style=${{ border: 0, borderRadius: 0 }}><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Role</th><th>Active</th></tr></thead><tbody>
     ${people.map(p => html`<tr key=${p.id}><td>${p.name}</td><td>${p.email}</td>
-      <td><select value=${p.department_id || ''} onChange=${e => set(p, { department_id: e.target.value || null })}><option value="">—</option>${data.departments.map(d => html`<option key=${d.id} value=${d.id}>${d.name}</option>`)}</select></td>
-      <td><select value=${p.role} onChange=${e => set(p, { role: e.target.value })}><option>member</option><option>manager</option><option>admin</option></select></td>
-      <td><input type="checkbox" checked=${p.active} onChange=${e => set(p, { active: e.target.checked })}/></td></tr>`)}</tbody></table></div></div>
-    <p class="muted" style=${{ fontSize: 13 }}>New staff create their own account from the sign-in page, then an admin sets their department and role here and ticks Active. Changes save as you make them.</p></div>`;
+      <td><select value=${p.department_id || ''} onChange=${e => set(p, { department_id: e.target.value || null }, `Move ${p.name} to ${dname(e.target.value || null)}? This changes which pages they can edit.`, e.target)}><option value="">—</option>${data.departments.map(d => html`<option key=${d.id} value=${d.id}>${d.name}</option>`)}</select></td>
+      <td><select value=${p.role} disabled=${p.id === me.id} title=${p.id === me.id ? "You can't change your own role" : ''} onChange=${e => set(p, { role: e.target.value }, `Change ${p.name}'s role from ${p.role} to ${e.target.value}?`, e.target)}><option>member</option><option>manager</option><option>admin</option></select></td>
+      <td><label class="row" style=${{ gap: 6 }}><input type="checkbox" checked=${p.active} disabled=${p.id === me.id} title=${p.id === me.id ? "You can't deactivate your own account" : ''} onChange=${e => set(p, { active: e.target.checked }, e.target.checked ? `Activate ${p.name}? They will be able to sign in and see all live pages.` : `Deactivate ${p.name}? They will be signed out and can't get back in until an admin re-activates them.`, e.target)}/>${p.id === me.id ? html`<span class="muted" style=${{ fontSize: 12 }}>you</span>` : ''}</label></td></tr>`)}</tbody></table></div></div>
+    ${err && html`<div class="card" style=${{ color: '#B42318' }}>${err}</div>`}
+    <p class="muted" style=${{ fontSize: 13 }}>New staff create their own account from the sign-in page, then an admin sets their department and role here and ticks Active. Every change asks you to confirm first. Your own role and Active box are locked so you can't lock yourself out.</p></div>`;
 }
 
 function App() {
