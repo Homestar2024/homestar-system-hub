@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.9.2 (are-you-sure dialogs on People, publish/retire/unpublish, template remove, draft-fix save/discard, agree, mark-as-read; own role + Active locked; Mark reviewed button, prev/next in natural order, gap footer text; natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.10 (Change log page + kill switch, db/012); v0.9.2 (are-you-sure dialogs on People, publish/retire/unpublish, template remove, draft-fix save/discard, agree, mark-as-read; own role + Active locked; Mark reviewed button, prev/next in natural order, gap footer text; natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -458,7 +458,7 @@ function History({ item, people, canEdit, onRestored }) {
 function MyRecord({ data, me, people }) {
   const my = data.signoffs.filter(s => s.person_id === me.id).sort((a, b) => b.agreed_at.localeCompare(a.agreed_at));
   const myTracks = data.tracks.map(t => { const steps = t.steps || []; const d = steps.filter(s => data.progress.some(p => p.person_id === me.id && p.track_id === t.id && p.item_id === s.item_id && p.status === 'complete')).length; return { t, steps: steps.length, done: d, training: data.items.find(i => i.id === t.training_id) }; }).filter(x => x.done > 0 || (x.training && x.training.state === 'live'));
-  return html`<div class="print-record"><div class="card row" style=${{ justifyContent: 'space-between' }}><div><div style=${{ fontWeight: 700 }}>${me.name}</div><div class="muted" style=${{ fontSize: 13 }}>${me.email || ''} · ${(data.departments.find(d => d.id === me.department_id) || {}).name || 'no department yet'} · ${me.role}</div></div><button class="btn ghost sm" onClick=${() => sb.auth.signOut()}>Sign out</button></div>${['admin', 'manager'].includes(me.role) && html`<div class="actions only-phone" style=${{ marginBottom: 10 }}><a class="btn sm ghost" href="#/dashboard">📊 Dashboard</a>${me.role === 'admin' && html`<a class="btn sm ghost" href="#/people">👥 People</a>`}</div>`}<h1 class="title">My record <span class="muted print-only" style=${{ fontSize: 14, fontWeight: 400 }}>· ${me.name} · ${me.email || ''} · printed ${fmtDate(new Date().toISOString())}</span></h1>
+  return html`<div class="print-record"><div class="card row" style=${{ justifyContent: 'space-between' }}><div><div style=${{ fontWeight: 700 }}>${me.name}</div><div class="muted" style=${{ fontSize: 13 }}>${me.email || ''} · ${(data.departments.find(d => d.id === me.department_id) || {}).name || 'no department yet'} · ${me.role}</div></div><button class="btn ghost sm" onClick=${() => sb.auth.signOut()}>Sign out</button></div>${['admin', 'manager'].includes(me.role) && html`<div class="actions only-phone" style=${{ marginBottom: 10 }}><a class="btn sm ghost" href="#/dashboard">📊 Dashboard</a>${me.role === 'admin' && html`<a class="btn sm ghost" href="#/people">👥 People</a><a class="btn sm ghost" href="#/changes">↶ Changes</a>`}</div>`}<h1 class="title">My record <span class="muted print-only" style=${{ fontSize: 14, fontWeight: 400 }}>· ${me.name} · ${me.email || ''} · printed ${fmtDate(new Date().toISOString())}</span></h1>
     <div class="card list"><h3>Learning tracks</h3>${myTracks.filter(x => x.steps > 1).map(x => html`<a key=${x.t.id} class="lrow" href=${'#/training/' + (x.training ? x.training.slug : '')}><span class="t"><b>${x.training ? dt(x.training.title) : '?'}</b><small>${x.done} of ${x.steps} steps</small></span><span class=${'badge ' + (x.done === x.steps ? 'live' : x.done ? 'review' : 'draft')}>${x.steps ? Math.round(100 * x.done / x.steps) : 0}%</span></a>`)}${!myTracks.some(x => x.steps > 1) && html`<div class="muted">No tracks assigned yet.</div>`}</div>
     <div class="card list"><h3>Short lessons <span class="muted">· ${myTracks.filter(x => x.steps === 1 && x.done).length} of ${myTracks.filter(x => x.steps === 1).length} done</span></h3>${myTracks.filter(x => x.steps === 1).map(x => html`<a key=${x.t.id} class="lrow" href=${'#/training/' + (x.training ? x.training.slug : '')}><span class="t"><b>${x.training ? dt(x.training.title) : '?'}</b><small>${(data.folders.find(f => f.id === (x.training || {}).folder_id) || {}).name || ''}</small></span><span class=${'badge ' + (x.done ? 'live' : 'draft')}>${x.done ? 'Done' : 'Not yet'}</span></a>`)}</div>
     ${(() => { const mine = (data.quizResults || []).filter(r => r.person_id === me.id); const byItem = {}; mine.forEach(r => { const b = byItem[r.item_id]; if (!b || r.score > b.score) byItem[r.item_id] = r; }); const rows = Object.values(byItem).sort((a, b) => b.attempted_at.localeCompare(a.attempted_at)); return rows.length ? html`<div class="card"><h3 style=${{ margin: '0 0 8px' }}>Quick checks (${rows.filter(r => r.passed).length} passed of ${rows.length})</h3><table class="table"><thead><tr><th>Item</th><th>Best score</th><th>Result</th><th>Date</th></tr></thead><tbody>${rows.map(r => { const it = data.items.find(i => i.id === r.item_id); return html`<tr key=${r.item_id} onClick=${() => it && go('/' + it.type + '/' + it.slug)}><td>${it ? html`<a href=${'#/' + it.type + '/' + it.slug}>${dt(it.title)}</a>` : '(removed)'}</td><td>${r.score}%</td><td><span class=${'badge ' + (r.passed ? 'live' : 'draft')}>${r.passed ? 'Passed' : 'Not passed'}</span></td><td class="muted">${fmtDate(r.attempted_at)}</td></tr>`; })}</tbody></table></div>` : null; })()}
@@ -526,6 +526,87 @@ function People({ data, people, me, reload }) {
     <p class="muted" style=${{ fontSize: 13 }}>New staff create their own account from the sign-in page, then an admin sets their department and role here and ticks Active. Every change asks you to confirm first. Your own role and Active box are locked so you can't lock yourself out.</p></div>`;
 }
 
+// ---------- Change log + kill switch (admin; db/012) ----------
+const SYSTEMS = { hub: 'Hub', board: 'Board', hcp: 'HCP', onedrive: 'OneDrive', outlook: 'Outlook', qbo: 'QuickBooks', supplier: 'Supplier', other: 'Other' };
+const clip = (v, n = 160) => { const s = typeof v === 'string' ? v : JSON.stringify(v); return s == null ? '—' : (s.length > n ? s.slice(0, n) + '…' : s); };
+const NOISE = new Set(['updated_at', 'search_tsv']);
+function diffRows(c) {
+  const b = c.before || {}, a = c.after || {};
+  if (c.action === 'insert' || !c.before) return Object.keys(a).filter(k => !NOISE.has(k) && a[k] != null).slice(0, 8).map(k => [k, null, a[k]]);
+  if (c.action === 'delete' || !c.after) return Object.keys(b).filter(k => !NOISE.has(k) && b[k] != null).slice(0, 8).map(k => [k, b[k], null]);
+  return [...new Set([...Object.keys(b), ...Object.keys(a)])].filter(k => !NOISE.has(k) && JSON.stringify(b[k]) !== JSON.stringify(a[k])).map(k => [k, b[k], a[k]]);
+}
+function ChangeLog({ data, people, me }) {
+  if (me.role !== 'admin') return html`<div class="card">Admins only.</div>`;
+  const [rows, setRows] = useState(null); const [paused, setPaused] = useState(null); const [queue, setQueue] = useState(0);
+  const [sys, setSys] = useState(''); const [who, setWho] = useState(''); const [k, setK] = useState(''); const [showUndone, setShowUndone] = useState(true);
+  const [limit, setLimit] = useState(100); const [open, setOpen] = useState(null); const [msg, setMsg] = useState(''); const [busy, setBusy] = useState(false);
+  const load = async () => {
+    let qy = sb.from('change_log').select('*').order('id', { ascending: false }).limit(limit);
+    if (sys) qy = qy.eq('system', sys);
+    const [{ data: r, error }, { data: oc }, { count }] = await Promise.all([qy, sb.from('ops_control').select('value').eq('key', 'automations_paused').maybeSingle(), sb.from('undo_queue').select('id', { count: 'exact', head: true }).eq('status', 'pending')]);
+    if (error) setMsg(error.message); setRows(r || []); setPaused(oc ? oc.value === true : null); setQueue(count || 0);
+  };
+  useEffect(() => { load(); }, [sys, limit]);
+  const pname = (id) => (people.find(p => p.id === id) || {}).name;
+  const actorName = (c) => c.actor_kind === 'person' ? (pname(c.actor) || 'Someone') : c.actor === 'service' ? 'System (admin key)' : c.actor;
+  const targetName = (c) => {
+    const [t, id] = [c.target.split('/')[0], c.target.slice(c.target.indexOf('/') + 1)];
+    if (c.system === 'hub' && t === 'items') { const it = data.items.find(i => i.id === id); return 'Page: ' + (it ? dt(it.title) : (c.after || c.before || {}).title || id); }
+    if (c.system === 'hub' && t === 'people') return 'Person: ' + (pname(id) || (c.after || c.before || {}).name || id);
+    if (c.system === 'hub' && t === 'ops_control') return 'Setting: ' + id.replace(/_/g, ' ');
+    return c.target;
+  };
+  const toggle = async () => {
+    const next = !paused;
+    if (!confirm(next ? 'PAUSE ALL AUTOMATIONS?\n\nEvery scheduled task will stop at its next check and do nothing until you resume. Your own chats with Claude are not affected.' : 'Resume automations?\n\nScheduled tasks run again from their next scheduled time.')) return;
+    setBusy(true); const { error } = await sb.from('ops_control').update({ value: next, updated_at: new Date().toISOString() }).eq('key', 'automations_paused'); setBusy(false);
+    setMsg(error ? error.message : (next ? 'All automations paused.' : 'Automations resumed.')); load();
+  };
+  const undo = async (c) => {
+    if (!confirm(`Undo this change?\n\n${actorName(c)} · ${c.action} · ${targetName(c)}\n\n${c.system === 'hub' ? 'It is reversed right away.' : 'It goes on the undo list; the task that owns ' + (SYSTEMS[c.system] || c.system) + ' reverses it on its next run.'}`)) return;
+    setBusy(true); const { data: r, error } = await sb.rpc('undo_change', { p_id: c.id }); setBusy(false);
+    setMsg(error ? 'Not undone: ' + error.message : (r === 'undone' ? 'Undone.' : r === 'queued for agent' ? 'Queued: the owning task reverses it on its next run.' : r)); load();
+  };
+  const undoBatch = async (c) => {
+    const n = (rows || []).filter(x => x.batch_id === c.batch_id && !x.undone_at && !x.undo_of).length;
+    if (!confirm(`Undo the whole run (${n} change${n === 1 ? '' : 's'})? Newest first.`)) return;
+    setBusy(true); const { data: r, error } = await sb.rpc('undo_batch', { p_batch: c.batch_id }); setBusy(false);
+    setMsg(error ? 'Stopped: ' + error.message : `${r} change${r === 1 ? '' : 's'} undone or queued.`); load();
+  };
+  const kk = k.trim().toLowerCase(), ww = who.trim().toLowerCase();
+  const shown = (rows || []).filter(c => (showUndone || !c.undone_at) && (!ww || actorName(c).toLowerCase().includes(ww)) && (!kk || (targetName(c) + ' ' + (c.reason || '') + ' ' + (c.source || '') + ' ' + c.action).toLowerCase().includes(kk)));
+  const canUndo = (c) => c.reversible && !c.undone_at && !c.undo_of && c.action !== 'undo';
+  const today = (rows || []).filter(c => new Date(c.at) > new Date(Date.now() - 864e5)).length;
+  return html`<div>
+    <h1 class="title">Change log</h1>
+    <div class="card" style=${{ borderColor: paused ? '#B42318' : undefined, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div style=${{ flex: 1, minWidth: 200 }}><div style=${{ fontWeight: 800, fontSize: 17, color: paused ? '#B42318' : '#067647' }}>${paused == null ? 'Automations: unknown' : paused ? '⏸ All automations PAUSED' : '● Automations running'}</div>
+        <div class="muted" style=${{ fontSize: 13 }}>${paused ? 'Scheduled tasks stop at their next check and change nothing.' : 'Every scheduled task checks this switch before it does anything.'}</div></div>
+      <button class="btn" disabled=${busy || paused == null} onClick=${toggle} style=${paused ? {} : { background: '#B42318', borderColor: '#B42318', color: '#fff' }}>${paused ? '▶ Resume automations' : '⏸ Pause all automations'}</button>
+    </div>
+    <div class="stats"><div class="stat"><div class="k">Last 24 h</div><div class="v">${rows ? today : '…'}</div></div><div class="stat"><div class="k">Shown</div><div class="v">${rows ? shown.length : '…'}</div></div><div class="stat"><div class="k">Undo queue</div><div class="v">${queue}</div></div></div>
+    ${msg && html`<div class="card" style=${{ fontSize: 14 }}>${msg}</div>`}
+    <div class="actions" style=${{ marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
+      <select value=${sys} onChange=${e => setSys(e.target.value)}><option value="">All systems</option>${Object.entries(SYSTEMS).map(([v, l]) => html`<option key=${v} value=${v}>${l}</option>`)}</select>
+      <input placeholder="Who" value=${who} onInput=${e => setWho(e.target.value)} style=${{ width: 120 }}/>
+      <input placeholder="Search record, reason…" value=${k} onInput=${e => setK(e.target.value)} style=${{ flex: 1, minWidth: 140 }}/>
+      <label class="row muted" style=${{ gap: 4, fontSize: 13 }}><input type="checkbox" checked=${showUndone} onChange=${e => setShowUndone(e.target.checked)}/>show undone</label>
+    </div>
+    ${rows == null ? html`<div class="card muted">Loading…</div>` : !shown.length ? html`<div class="card muted">No changes logged${sys || ww || kk ? ' for this filter' : ' yet'}.</div>` : html`<div class="card" style=${{ padding: 0 }}>${shown.map(c => html`<div key=${c.id} style=${{ borderBottom: '1px solid var(--line)', padding: '10px 14px', opacity: c.undone_at ? .55 : 1 }}>
+      <div class="row" style=${{ gap: 8, flexWrap: 'wrap', cursor: 'pointer' }} onClick=${() => setOpen(open === c.id ? null : c.id)}>
+        <span class="chip">${SYSTEMS[c.system] || c.system}</span><b style=${{ fontSize: 14 }}>${c.action}</b><span style=${{ flex: 1, minWidth: 160, fontSize: 14 }}>${targetName(c)}</span>
+        <span class="muted" style=${{ fontSize: 12 }}>${actorName(c)} · ${new Date(c.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · #${c.id}</span>
+      </div>
+      ${(c.reason || c.source || c.undone_at || c.undo_of || c.approved_by) && html`<div class="muted" style=${{ fontSize: 12, marginTop: 3 }}>${[c.reason, c.source && 'source: ' + c.source, c.approved_by && 'OK: ' + c.approved_by, c.undo_of && 'undo of #' + c.undo_of, c.undone_at && 'undone ' + new Date(c.undone_at).toLocaleDateString() + (c.undone_by ? ' by ' + (pname(c.undone_by) || c.undone_by) : '')].filter(Boolean).join(' · ')}</div>`}
+      ${open === c.id && html`<div style=${{ marginTop: 8, fontSize: 13 }}>${diffRows(c).length ? html`<div class="scrollx"><table class="table"><thead><tr><th>Field</th><th>Before</th><th>After</th></tr></thead><tbody>${diffRows(c).map(([f, b, a]) => html`<tr key=${f}><td>${f}</td><td>${clip(b)}</td><td>${clip(a)}</td></tr>`)}</tbody></table></div>` : html`<div class="muted">No field changes recorded.</div>`}</div>`}
+      ${(canUndo(c) || (c.batch_id && canUndo(c))) && html`<div class="actions" style=${{ marginTop: 6, gap: 6 }}>${canUndo(c) && html`<button class="btn sm ghost" disabled=${busy} onClick=${() => undo(c)}>↶ Undo</button>`}${c.batch_id && html`<button class="btn sm ghost" disabled=${busy} onClick=${() => undoBatch(c)}>↶ Undo whole run</button>`}</div>`}
+    </div>`)}</div>
+    ${rows.length >= limit && html`<button class="btn ghost" style=${{ width: '100%' }} onClick=${() => setLimit(limit + 100)}>Load older changes</button>`}`}
+    <p class="muted" style=${{ fontSize: 13 }}>Every change to the hub is recorded here automatically, and Claude's scheduled tasks record their changes to the board, Housecall Pro and OneDrive. Tap a row to see before and after. Hub changes undo right away; changes in other systems are queued for the task that made them. Undo is refused if the record changed again later; undo the newer change first. Nobody can edit or delete this log.</p>
+  </div>`;
+}
+
 function App() {
   const route = useHash(); const [session, setSession] = useState(undefined); const [me, setMe] = useState(null); const [data, setData] = useState(null); const [people, setPeople] = useState([]); const [q, setQ] = useState(''); const [searchOpen, setSearchOpen] = useState(false);
   useEffect(() => { sb.auth.getSession().then(({ data }) => setSession(data.session)); const { data: sub } = sb.auth.onAuthStateChange((_e, s) => setSession(s)); return () => sub.subscription.unsubscribe(); }, []);
@@ -541,9 +622,9 @@ function App() {
   const on = (p) => (!q.trim() && (route === p || (p !== '/' && route.startsWith(p)))) ? 'on' : '';
   const navA = (p, label) => html`<a href=${'#' + p} class=${on(p)}>${label}</a>`;
   const isPhone = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 900px)').matches;
-  const tabs = html`<nav class="tabs">${[['/', '⌂', 'Home'], ['/system', '▤', 'Browse'], ['/ask', '💬', 'Ask'], ['/training', '🎓', 'Training'], ['/me', '◯', 'Me']].map(([p, ic, l]) => html`<a key=${p} href=${'#' + p} onClick=${() => { setQ(''); setSearchOpen(false); }} class=${p === '/system' ? (on('/system') || on('/policy') ? 'on' : '') : p === '/me' ? (on('/me') || on('/dashboard') || on('/people') ? 'on' : '') : on(p)}><span class="i">${ic}</span>${l}</a>`)}</nav>`;
+  const tabs = html`<nav class="tabs">${[['/', '⌂', 'Home'], ['/system', '▤', 'Browse'], ['/ask', '💬', 'Ask'], ['/training', '🎓', 'Training'], ['/me', '◯', 'Me']].map(([p, ic, l]) => html`<a key=${p} href=${'#' + p} onClick=${() => { setQ(''); setSearchOpen(false); }} class=${p === '/system' ? (on('/system') || on('/policy') ? 'on' : '') : p === '/me' ? (on('/me') || on('/dashboard') || on('/people') || on('/changes') ? 'on' : '') : on(p)}><span class="i">${ic}</span>${l}</a>`)}</nav>`;
   const header = html`<header class="top"><a href="#/"><img src="logo.png" alt="Homestar"/></a><span class="brand">System Hub</span>
-      <nav>${navA('/', 'Home')}${navA('/system', 'Systems')}${navA('/policy', 'Policies')}${navA('/training', 'Training')}${navA('/ask', 'Ask')}${navA('/me', 'My record')}${['admin', 'manager'].includes(me.role) && navA('/dashboard', 'Dashboard')}${me.role === 'admin' && navA('/people', 'People')}</nav>
+      <nav>${navA('/', 'Home')}${navA('/system', 'Systems')}${navA('/policy', 'Policies')}${navA('/training', 'Training')}${navA('/ask', 'Ask')}${navA('/me', 'My record')}${['admin', 'manager'].includes(me.role) && navA('/dashboard', 'Dashboard')}${me.role === 'admin' && navA('/people', 'People')}${me.role === 'admin' && navA('/changes', 'Changes')}</nav>
       <span class="grow"></span><input class=${searchOpen ? 'open' : ''} placeholder="Search the hub…" value=${q} onInput=${e => setQ(e.target.value)} onBlur=${() => { if (!q) setSearchOpen(false); }} onKeyDown=${e => { if (e.key === 'Enter' && results && results[0]) { go('/' + results[0].type + '/' + results[0].slug); } if (e.key === 'Escape') { setQ(''); setSearchOpen(false); } }}/>
       <button class="btn ghost sm search-btn" onClick=${() => { setSearchOpen(!searchOpen); setTimeout(() => document.querySelector('.top input')?.focus(), 50); }}>🔍</button>
       <button class="btn ghost sm signout" onClick=${() => sb.auth.signOut()}>Sign out</button></header>`;
@@ -560,6 +641,7 @@ function App() {
         : libHome ? html`<${ItemTable} rows=${data.items.filter(i => i.type === lib)} data=${data} title=${LIBS[lib]} sortable=${true}/>`
         : parts[0] === 'ask' ? html`<${Ask} key=${parts[1] || 'ask'} data=${data} me=${me} people=${people} itemSlug=${parts[1] || null} reload=${reload}/>`
         : parts[0] === 'fix' ? html`<${DraftFix} key=${parts[1]} data=${data} me=${me} people=${people} slug=${parts[1]} reload=${reload}/>`
+        : parts[0] === 'changes' ? html`<${ChangeLog} data=${data} people=${people} me=${me}/>`
         : parts[0] === 'people' ? html`<${People} data=${data} people=${people} me=${me} reload=${reload}/>`
         : parts[0] === 'me' ? html`<${MyRecord} data=${data} me=${me} people=${people}/>`
         : parts[0] === 'dashboard' ? html`<${Dashboard} data=${data} me=${me} people=${people}/>`
