@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.13 (email links carry ?th=<token hash>&ty=invite|recovery and are only used when the person taps Continue - Microsoft 365 Safe Links pre-opens links and burned the one-time token, so Jacob's invite said expired; verifyOtp on tap); v0.12.1 (Sign in link under Create your password - signs the invite session out); v0.12 (invites stay inactive + 'Pending registration' until a password is created (db/013 complete_registration); pending people are always sent to Create your password; Resend invite + Delete on People); v0.11 (Invite team member on People: email invite via Edge Function 'invite' + Create-your-password page for invite and password-reset links; expired-link notice); v0.10.1 (undo label fix; v0.10 Change log page + kill switch, db/012); v0.9.2 (are-you-sure dialogs on People, publish/retire/unpublish, template remove, draft-fix save/discard, agree, mark-as-read; own role + Active locked; Mark reviewed button, prev/next in natural order, gap footer text; natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.14 (8-digit code sign-up: emails carry a code + a link to #/code; Jacob's mail scanner pressed Continue too, so links never carry a token now); v0.13 (email links carry ?th=<token hash>&ty=invite|recovery and are only used when the person taps Continue - Microsoft 365 Safe Links pre-opens links and burned the one-time token, so Jacob's invite said expired; verifyOtp on tap); v0.12.1 (Sign in link under Create your password - signs the invite session out); v0.12 (invites stay inactive + 'Pending registration' until a password is created (db/013 complete_registration); pending people are always sent to Create your password; Resend invite + Delete on People); v0.11 (Invite team member on People: email invite via Edge Function 'invite' + Create-your-password page for invite and password-reset links; expired-link notice); v0.10.1 (undo label fix; v0.10 Change log page + kill switch, db/012); v0.9.2 (are-you-sure dialogs on People, publish/retire/unpublish, template remove, draft-fix save/discard, agree, mark-as-read; own role + Active locked; Mark reviewed button, prev/next in natural order, gap footer text; natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -56,7 +56,7 @@ function Login({ notice }) {
     e.preventDefault(); setErr(''); setMsg('');
     if (mode === 'in') { const { error } = await sb.auth.signInWithPassword({ email, password: pw }); if (error) setErr(error.message); }
     else if (mode === 'up') { const { error } = await sb.auth.signUp({ email, password: pw, options: { data: { name } } }); if (error) setErr(error.message); else setMsg('Account created. Sign in now; Calvin will activate your access.'); }
-    else { const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname }); if (error) setErr(error.message); else setMsg('Reset email sent.'); }
+    else { const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname }); if (error) setErr(error.message); else { setMsg('Email sent. Enter the 8-digit code from it here.'); setTimeout(() => { location.hash = '/code?ty=recovery'; }, 1500); } }
   };
   return html`<form class="login" onSubmit=${submit}>
     <img src="logo.png" alt="Homestar HVAC Solutions"/>
@@ -70,9 +70,37 @@ function Login({ notice }) {
     <div class="row muted" style=${{ marginTop: 12, justifyContent: 'space-between', fontSize: 13 }}>
       <a href="#" onClick=${e => { e.preventDefault(); setMode(mode === 'in' ? 'up' : 'in'); }}>${mode === 'in' ? 'New here? Create account' : 'Have an account? Sign in'}</a>
       ${mode !== 'reset' && html`<a href="#" onClick=${e => { e.preventDefault(); setMode('reset'); }}>Forgot password</a>`}
-    </div></form>`;
+    </div>
+    <div class="muted" style=${{ marginTop: 10, textAlign: 'center', fontSize: 13 }}>Got a code in an email? <a href="#/code">Enter your code</a></div></form>`;
 }
-// email links open this first; the one-time code is only used when a person taps Continue (link scanners don't tap)
+// #/code: type the 8-digit code from the invite or password email (no token in any link, so mail scanners can't use it up)
+function CodeEntry() {
+  const q = new URLSearchParams((location.hash.split('?')[1] || ''));
+  const [email, setEmail] = useState(''); const [code, setCode] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const submit = async (e) => {
+    e.preventDefault(); setErr('');
+    const token = code.replace(/\D/g, ''); const em = email.trim().toLowerCase();
+    if (token.length < 6) { setErr('Enter the code from the email.'); return; }
+    setBusy(true);
+    const first = q.get('ty') === 'recovery' ? 'recovery' : 'invite';
+    let { error } = await sb.auth.verifyOtp({ email: em, token, type: first });
+    if (error) ({ error } = await sb.auth.verifyOtp({ email: em, token, type: first === 'invite' ? 'recovery' : 'invite' }));
+    setBusy(false);
+    if (error) { setErr("That code didn't work. Check the email address and the newest email's code, or ask Calvin to re-send it. Codes work for 24 hours and only once."); return; }
+    location.hash = '/';
+  };
+  return html`<form class="login" onSubmit=${submit}>
+    <img src="logo.png" alt="Homestar HVAC Solutions"/>
+    <h2 style=${{ margin: '0 0 6px', textAlign: 'center' }}>Enter your code</h2>
+    <p class="muted" style=${{ textAlign: 'center', marginTop: 0 }}>Type your email and the 8-digit code from your System Hub email. Then you'll create your password.</p>
+    ${err && html`<div class="err">${err}</div>`}
+    <label>Email<input type="email" value=${email} onInput=${e => setEmail(e.target.value)} required autocomplete="username" placeholder="you@homestarhvac.ca"/></label>
+    <label>Code<input inputMode="numeric" autocomplete="one-time-code" value=${code} onInput=${e => setCode(e.target.value)} required placeholder="12345678" style=${{ letterSpacing: 4, fontSize: 20 }}/></label>
+    <button class="btn" style=${{ width: '100%' }} disabled=${busy}>${busy ? 'Checking…' : 'Continue'}</button>
+    <div class="muted" style=${{ marginTop: 14, textAlign: 'center', fontSize: 13 }}>Already have an account? <a href="#/">Sign in</a></div>
+  </form>`;
+}
+// (v0.13) email links open this first; the one-time code is only used when a person taps Continue
 function LinkGate({ gate, done }) {
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const go2 = async () => {
@@ -704,7 +732,7 @@ function App() {
   useEffect(() => { setQ(''); setSearchOpen(false); window.scrollTo(0, 0); }, [route]);
   if (gate) return html`<${LinkGate} gate=${gate} done=${(ty) => { setGate(null); if (ty === 'recovery') setPwFlow('recovery'); }}/>`;
   if (session === undefined) return html`<div class="boot">Loading…</div>`;
-  if (!session) return html`<${Login} notice=${LINK.err}/>`;
+  if (!session) return route.startsWith('/code') ? html`<${CodeEntry}/>` : html`<${Login} notice=${LINK.err}/>`;
   if (pwFlow === 'recovery' && !(me && me.invited_at && !me.registered_at)) return html`<${SetPassword} kind="recovery" user=${session.user} done=${() => { setPwFlow(null); go('/'); }}/>`;
   if (!data || !me) return html`<div class="boot">Loading your hub…</div>`;
   // invited but no password yet: nothing else until they create one (the invite link signs them in, so this also catches a closed tab)
