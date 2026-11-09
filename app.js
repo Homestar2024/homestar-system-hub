@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.10.1 (undo label fix; v0.10 Change log page + kill switch, db/012); v0.9.2 (are-you-sure dialogs on People, publish/retire/unpublish, template remove, draft-fix save/discard, agree, mark-as-read; own role + Active locked; Mark reviewed button, prev/next in natural order, gap footer text; natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.11 (Invite team member on People: email invite via Edge Function 'invite' + Create-your-password page for invite and password-reset links; expired-link notice); v0.10.1 (undo label fix; v0.10 Change log page + kill switch, db/012); v0.9.2 (are-you-sure dialogs on People, publish/retire/unpublish, template remove, draft-fix save/discard, agree, mark-as-read; own role + Active locked; Mark reviewed button, prev/next in natural order, gap footer text; natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -9,6 +9,8 @@ import DOMPurify from 'dompurify';
 const html = htm.bind(React.createElement);
 const SUPABASE_URL = 'https://ovkdrtxgemvnpflebrxh.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92a2RydHhnZW12bnBmbGVicnhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI4ODQwMDEsImV4cCI6MjEwODQ2MDAwMX0.MCy_aqM6O6bUnOcyZ6vbVMrAJE69qZndZ8FBSsMWnf4';
+// invite / password-reset links arrive as #access_token=...&type=invite|recovery (or #error=...): read it before supabase-js consumes the hash
+const LINK = (() => { const h = location.hash || ''; const t = h.match(/[#&]type=(invite|recovery)/); const e = h.match(/[#&]error_description=([^&]+)/); return { type: t ? t[1] : null, err: e ? decodeURIComponent(e[1].replace(/\+/g, ' ')) : null }; })();
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 const LIBS = { system: 'Systems', policy: 'Policies', training: 'Training' };
 const STATES = { draft: 'Draft', review: 'In review', live: 'Live', retired: 'Retired' };
@@ -47,8 +49,8 @@ const LIB_ONE = { system: 'system', policy: 'policy', training: 'training' };
 const isChecklist = (md) => /^\s*(\d+\.|[-*]\s*\[ \])\s+/m.test(md || '');
 
 // ---------- auth ----------
-function Login() {
-  const [mode, setMode] = useState('in'); const [email, setEmail] = useState(''); const [pw, setPw] = useState(''); const [name, setName] = useState(''); const [err, setErr] = useState(''); const [msg, setMsg] = useState('');
+function Login({ notice }) {
+  const [mode, setMode] = useState(notice ? 'reset' : 'in'); const [email, setEmail] = useState(''); const [pw, setPw] = useState(''); const [name, setName] = useState(''); const [err, setErr] = useState(''); const [msg, setMsg] = useState('');
   const submit = async (e) => {
     e.preventDefault(); setErr(''); setMsg('');
     if (mode === 'in') { const { error } = await sb.auth.signInWithPassword({ email, password: pw }); if (error) setErr(error.message); }
@@ -58,6 +60,7 @@ function Login() {
   return html`<form class="login" onSubmit=${submit}>
     <img src="logo.png" alt="Homestar HVAC Solutions"/>
     <h2 style=${{ margin: '0 0 14px', textAlign: 'center' }}>Homestar System Hub</h2>
+    ${notice && !msg && html`<div class="err">That link has expired or was already used (${notice}). Enter your email below to get a new one, or ask Calvin to re-send your invite.</div>`}
     ${err && html`<div class="err">${err}</div>`}${msg && html`<div class="muted" style=${{ marginBottom: 8 }}>${msg}</div>`}
     ${mode === 'up' && html`<label>Name<input value=${name} onInput=${e => setName(e.target.value)} required/></label>`}
     <label>Email<input type="email" placeholder="you@homestarhvac.ca" value=${email} onInput=${e => setEmail(e.target.value)} required autocomplete="username"/></label>
@@ -67,6 +70,27 @@ function Login() {
       <a href="#" onClick=${e => { e.preventDefault(); setMode(mode === 'in' ? 'up' : 'in'); }}>${mode === 'in' ? 'New here? Create account' : 'Have an account? Sign in'}</a>
       ${mode !== 'reset' && html`<a href="#" onClick=${e => { e.preventDefault(); setMode('reset'); }}>Forgot password</a>`}
     </div></form>`;
+}
+// shown after an invite link (first password) or a password-reset link; the link already signed them in
+function SetPassword({ kind, user, done }) {
+  const [pw, setPw] = useState(''); const [pw2, setPw2] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const first = (user.user_metadata && user.user_metadata.name || '').split(' ')[0];
+  const submit = async (e) => {
+    e.preventDefault(); setErr('');
+    if (pw !== pw2) { setErr("The two passwords don't match."); return; }
+    setBusy(true); const { error } = await sb.auth.updateUser({ password: pw }); setBusy(false);
+    if (error) setErr(error.message); else done();
+  };
+  return html`<form class="login" onSubmit=${submit}>
+    <img src="logo.png" alt="Homestar HVAC Solutions"/>
+    <h2 style=${{ margin: '0 0 6px', textAlign: 'center' }}>${kind === 'invite' ? 'Welcome to the System Hub' : 'Choose a new password'}</h2>
+    <p class="muted" style=${{ textAlign: 'center', marginTop: 0 }}>${kind === 'invite' ? `${first ? 'Hi ' + first + ', c' : 'C'}reate a password to finish setting up your account.` : 'Enter a new password for your account.'}</p>
+    ${err && html`<div class="err">${err}</div>`}
+    <label>Email<input value=${user.email || ''} readOnly autocomplete="username"/></label>
+    <label>New password <span class="muted" style=${{ fontWeight: 400 }}>(8+ characters)</span><input type="password" value=${pw} onInput=${e => setPw(e.target.value)} required minLength="8" autocomplete="new-password"/></label>
+    <label>Type it again<input type="password" value=${pw2} onInput=${e => setPw2(e.target.value)} required minLength="8" autocomplete="new-password"/></label>
+    <button class="btn" style=${{ width: '100%' }} disabled=${busy}>${busy ? 'Saving…' : kind === 'invite' ? 'Create my account' : 'Save new password'}</button>
+  </form>`;
 }
 
 // ---------- data ----------
@@ -508,6 +532,34 @@ function Home({ data, me, people }) {
     <${ItemTable} rows=${recent} data=${data} title="Recently updated"/>
   </div>`;
 }
+function InviteCard({ data, reload }) {
+  const blank = { name: '', email: '', department_id: '', role: 'member' };
+  const [f, setF] = useState(blank); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(''); const [err, setErr] = useState('');
+  const up = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const dn = (id) => (data.departments.find(d => d.id === id) || {}).name || 'no department';
+  const send = async (e) => {
+    e.preventDefault(); setErr(''); setMsg('');
+    if (!confirm(`Send an invite to ${f.email}?\n\n${f.name} joins as ${f.role} in ${dn(f.department_id)} and is active as soon as they choose a password.`)) return;
+    setBusy(true);
+    const { data: r, error } = await sb.functions.invoke('invite', { body: { ...f, department_id: f.department_id || null, redirect: location.origin + location.pathname } });
+    setBusy(false);
+    let m = r && r.error; if (error && !m) { try { m = (await error.context.json()).error; } catch (_) { m = error.message; } }
+    if (m) { setErr(m); return; }
+    setMsg(`${r.resend ? 'Invite re-sent' : 'Invite sent'} to ${f.email}. The link in the email works for 24 hours.`); setF(blank); reload();
+  };
+  return html`<form class="card" onSubmit=${send}>
+    <h3 style=${{ margin: '0 0 4px' }}>Invite a team member</h3>
+    <p class="muted" style=${{ margin: '0 0 10px', fontSize: 13 }}>They get an email from the hub, tap the link, choose a password and land in the hub with the department and role you pick here.</p>
+    <div class="row" style=${{ flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+      <label style=${{ flex: '1 1 160px' }}>Name<input value=${f.name} onInput=${up('name')} required minLength="2" placeholder="First Last"/></label>
+      <label style=${{ flex: '1 1 220px' }}>Email<input type="email" value=${f.email} onInput=${up('email')} required placeholder="name@homestarhvac.ca"/></label>
+      <label style=${{ flex: '1 1 160px' }}>Department<select value=${f.department_id} onChange=${up('department_id')}><option value="">—</option>${data.departments.map(d => html`<option key=${d.id} value=${d.id}>${d.name}</option>`)}</select></label>
+      <label style=${{ flex: '0 1 130px' }}>Role<select value=${f.role} onChange=${up('role')}><option>member</option><option>manager</option><option>admin</option></select></label>
+      <button class="btn" disabled=${busy} style=${{ flex: '0 0 auto' }}>${busy ? 'Sending…' : 'Send invite'}</button>
+    </div>
+    ${msg && html`<div style=${{ marginTop: 10, color: '#067647' }}>${msg}</div>`}${err && html`<div style=${{ marginTop: 10, color: '#B42318' }}>${err}</div>`}
+  </form>`;
+}
 function People({ data, people, me, reload }) {
   if (me.role !== 'admin') return html`<div class="card">Admins only.</div>`;
   const [err, setErr] = useState('');
@@ -517,13 +569,13 @@ function People({ data, people, me, reload }) {
     setErr(''); const { error } = await sb.from('people').update(patch).eq('id', p.id); if (error) setErr(error.message); reload();
   };
   const dname = (id) => (data.departments.find(d => d.id === id) || {}).name || 'no department';
-  return html`<div><h1 class="title">People</h1><div class="card" style=${{ padding: 0, overflow: 'hidden' }}><div class="scrollx" style=${{ border: 0, borderRadius: 0 }}><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Role</th><th>Active</th></tr></thead><tbody>
+  return html`<div><h1 class="title">People</h1><${InviteCard} data=${data} reload=${reload}/><div class="card" style=${{ padding: 0, overflow: 'hidden' }}><div class="scrollx" style=${{ border: 0, borderRadius: 0 }}><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Role</th><th>Active</th></tr></thead><tbody>
     ${people.map(p => html`<tr key=${p.id}><td>${p.name}</td><td>${p.email}</td>
       <td><select value=${p.department_id || ''} onChange=${e => set(p, { department_id: e.target.value || null }, `Move ${p.name} to ${dname(e.target.value || null)}? This changes which pages they can edit.`, e.target)}><option value="">—</option>${data.departments.map(d => html`<option key=${d.id} value=${d.id}>${d.name}</option>`)}</select></td>
       <td><select value=${p.role} disabled=${p.id === me.id} title=${p.id === me.id ? "You can't change your own role" : ''} onChange=${e => set(p, { role: e.target.value }, `Change ${p.name}'s role from ${p.role} to ${e.target.value}?`, e.target)}><option>member</option><option>manager</option><option>admin</option></select></td>
       <td><label class="row" style=${{ gap: 6 }}><input type="checkbox" checked=${p.active} disabled=${p.id === me.id} title=${p.id === me.id ? "You can't deactivate your own account" : ''} onChange=${e => set(p, { active: e.target.checked }, e.target.checked ? `Activate ${p.name}? They will be able to sign in and see all live pages.` : `Deactivate ${p.name}? They will be signed out and can't get back in until an admin re-activates them.`, e.target)}/>${p.id === me.id ? html`<span class="muted" style=${{ fontSize: 12 }}>you</span>` : ''}</label></td></tr>`)}</tbody></table></div></div>
     ${err && html`<div class="card" style=${{ color: '#B42318' }}>${err}</div>`}
-    <p class="muted" style=${{ fontSize: 13 }}>New staff create their own account from the sign-in page, then an admin sets their department and role here and ticks Active. Every change asks you to confirm first. Your own role and Active box are locked so you can't lock yourself out.</p></div>`;
+    <p class="muted" style=${{ fontSize: 13 }}>Invite new staff with the form above. Anyone who signs up on their own from the sign-in page waits here until an admin sets their department and role and ticks Active. Every change asks you to confirm first. Your own role and Active box are locked so you can't lock yourself out.</p></div>`;
 }
 
 // ---------- Change log + kill switch (admin; db/012) ----------
@@ -608,13 +660,14 @@ function ChangeLog({ data, people, me }) {
 }
 
 function App() {
-  const route = useHash(); const [session, setSession] = useState(undefined); const [me, setMe] = useState(null); const [data, setData] = useState(null); const [people, setPeople] = useState([]); const [q, setQ] = useState(''); const [searchOpen, setSearchOpen] = useState(false);
-  useEffect(() => { sb.auth.getSession().then(({ data }) => setSession(data.session)); const { data: sub } = sb.auth.onAuthStateChange((_e, s) => setSession(s)); return () => sub.subscription.unsubscribe(); }, []);
+  const route = useHash(); const [session, setSession] = useState(undefined); const [pwFlow, setPwFlow] = useState(LINK.type); const [me, setMe] = useState(null); const [data, setData] = useState(null); const [people, setPeople] = useState([]); const [q, setQ] = useState(''); const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(() => { sb.auth.getSession().then(({ data }) => setSession(data.session)); const { data: sub } = sb.auth.onAuthStateChange((ev, s) => { if (ev === 'PASSWORD_RECOVERY') setPwFlow('recovery'); setSession(s); }); return () => sub.subscription.unsubscribe(); }, []);
   const reload = async () => { const { data: p } = await sb.from('people').select('*').order('name'); setPeople(p || []); setMe((p || []).find(x => x.id === session.user.id) || { id: session.user.id, name: session.user.email, role: 'member' }); setData(await loadAll()); };
   useEffect(() => { if (session) reload(); }, [session]);
   useEffect(() => { setQ(''); setSearchOpen(false); window.scrollTo(0, 0); }, [route]);
   if (session === undefined) return html`<div class="boot">Loading…</div>`;
-  if (!session) return html`<${Login}/>`;
+  if (!session) return html`<${Login} notice=${LINK.err}/>`;
+  if (pwFlow) return html`<${SetPassword} kind=${pwFlow} user=${session.user} done=${() => { setPwFlow(null); go('/'); }}/>`;
   if (!data || !me) return html`<div class="boot">Loading your hub…</div>`;
   if (me.active === false) return html`<div class="login"><img src="logo.png" alt=""/><h2 style=${{ textAlign: 'center' }}>Almost there</h2><p class="muted">Your account (${me.email}) is created but not activated yet. Calvin activates new accounts and sets your department. Check back shortly.</p><button class="btn ghost" style=${{ width: '100%' }} onClick=${() => sb.auth.signOut()}>Sign out</button></div>`;
   const parts = route.split('?')[0].split('/').filter(Boolean); const lib = ['system', 'policy', 'training'].includes(parts[0]) ? parts[0] : null; const browsing = lib && parts[1] === 'b'; const slug = lib && !browsing ? parts[1] : null; const bpath = browsing ? parts.slice(2).map(decodeURIComponent) : [];
