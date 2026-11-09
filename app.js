@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.12.1 (Sign in link under Create your password - signs the invite session out); v0.12 (invites stay inactive + 'Pending registration' until a password is created (db/013 complete_registration); pending people are always sent to Create your password; Resend invite + Delete on People); v0.11 (Invite team member on People: email invite via Edge Function 'invite' + Create-your-password page for invite and password-reset links; expired-link notice); v0.10.1 (undo label fix; v0.10 Change log page + kill switch, db/012); v0.9.2 (are-you-sure dialogs on People, publish/retire/unpublish, template remove, draft-fix save/discard, agree, mark-as-read; own role + Active locked; Mark reviewed button, prev/next in natural order, gap footer text; natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.13 (email links carry ?th=<token hash>&ty=invite|recovery and are only used when the person taps Continue - Microsoft 365 Safe Links pre-opens links and burned the one-time token, so Jacob's invite said expired; verifyOtp on tap); v0.12.1 (Sign in link under Create your password - signs the invite session out); v0.12 (invites stay inactive + 'Pending registration' until a password is created (db/013 complete_registration); pending people are always sent to Create your password; Resend invite + Delete on People); v0.11 (Invite team member on People: email invite via Edge Function 'invite' + Create-your-password page for invite and password-reset links; expired-link notice); v0.10.1 (undo label fix; v0.10 Change log page + kill switch, db/012); v0.9.2 (are-you-sure dialogs on People, publish/retire/unpublish, template remove, draft-fix save/discard, agree, mark-as-read; own role + Active locked; Mark reviewed button, prev/next in natural order, gap footer text; natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -11,6 +11,7 @@ const SUPABASE_URL = 'https://ovkdrtxgemvnpflebrxh.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92a2RydHhnZW12bnBmbGVicnhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI4ODQwMDEsImV4cCI6MjEwODQ2MDAwMX0.MCy_aqM6O6bUnOcyZ6vbVMrAJE69qZndZ8FBSsMWnf4';
 // invite / password-reset links arrive as #access_token=...&type=invite|recovery (or #error=...): read it before supabase-js consumes the hash
 const LINK = (() => { const h = location.hash || ''; const t = h.match(/[#&]type=(invite|recovery)/); const e = h.match(/[#&]error_description=([^&]+)/); return { type: t ? t[1] : null, err: e ? decodeURIComponent(e[1].replace(/\+/g, ' ')) : null }; })();
+const GATE = (() => { const q = new URLSearchParams(location.search); const th = q.get('th'), ty = q.get('ty'); return th && ['invite', 'recovery'].includes(ty) ? { th, ty } : null; })();
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 const LIBS = { system: 'Systems', policy: 'Policies', training: 'Training' };
 const STATES = { draft: 'Draft', review: 'In review', live: 'Live', retired: 'Retired' };
@@ -70,6 +71,26 @@ function Login({ notice }) {
       <a href="#" onClick=${e => { e.preventDefault(); setMode(mode === 'in' ? 'up' : 'in'); }}>${mode === 'in' ? 'New here? Create account' : 'Have an account? Sign in'}</a>
       ${mode !== 'reset' && html`<a href="#" onClick=${e => { e.preventDefault(); setMode('reset'); }}>Forgot password</a>`}
     </div></form>`;
+}
+// email links open this first; the one-time code is only used when a person taps Continue (link scanners don't tap)
+function LinkGate({ gate, done }) {
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const go2 = async () => {
+    setBusy(true); setErr('');
+    const { error } = await sb.auth.verifyOtp({ token_hash: gate.th, type: gate.ty });
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    history.replaceState(null, '', location.pathname + '#/'); done(gate.ty);
+  };
+  const toSignIn = () => { history.replaceState(null, '', location.pathname + '#/'); location.reload(); };
+  return html`<div class="login">
+    <img src="logo.png" alt="Homestar HVAC Solutions"/>
+    <h2 style=${{ margin: '0 0 6px', textAlign: 'center' }}>${gate.ty === 'invite' ? 'Welcome to the System Hub' : 'Set your password'}</h2>
+    <p class="muted" style=${{ textAlign: 'center', marginTop: 0 }}>${gate.ty === 'invite' ? 'Tap Continue to set up your account.' : 'Tap Continue to choose your password.'}</p>
+    ${err && html`<div class="err">That link didn't work (${err}). It may have expired or already been used. Ask Calvin to re-send your invite, or use Forgot password on the sign-in page.</div>`}
+    <button class="btn" style=${{ width: '100%' }} disabled=${busy} onClick=${go2}>${busy ? 'Checking…' : 'Continue'}</button>
+    <div class="muted" style=${{ marginTop: 14, textAlign: 'center', fontSize: 13 }}>Already have an account? <a href="#" onClick=${e => { e.preventDefault(); toSignIn(); }}>Sign in</a></div>
+  </div>`;
 }
 // shown after an invite link (first password) or a password-reset link; the link already signed them in
 function SetPassword({ kind, user, done }) {
@@ -676,11 +697,12 @@ function ChangeLog({ data, people, me }) {
 }
 
 function App() {
-  const route = useHash(); const [session, setSession] = useState(undefined); const [pwFlow, setPwFlow] = useState(LINK.type); const [me, setMe] = useState(null); const [data, setData] = useState(null); const [people, setPeople] = useState([]); const [q, setQ] = useState(''); const [searchOpen, setSearchOpen] = useState(false);
+  const route = useHash(); const [session, setSession] = useState(undefined); const [pwFlow, setPwFlow] = useState(LINK.type); const [gate, setGate] = useState(GATE); const [me, setMe] = useState(null); const [data, setData] = useState(null); const [people, setPeople] = useState([]); const [q, setQ] = useState(''); const [searchOpen, setSearchOpen] = useState(false);
   useEffect(() => { sb.auth.getSession().then(({ data }) => setSession(data.session)); const { data: sub } = sb.auth.onAuthStateChange((ev, s) => { if (ev === 'PASSWORD_RECOVERY') setPwFlow('recovery'); setSession(s); }); return () => sub.subscription.unsubscribe(); }, []);
   const reload = async () => { const { data: p } = await sb.from('people').select('*').order('name'); setPeople(p || []); setMe((p || []).find(x => x.id === session.user.id) || { id: session.user.id, name: session.user.email, role: 'member' }); setData(await loadAll()); };
   useEffect(() => { if (session) reload(); }, [session]);
   useEffect(() => { setQ(''); setSearchOpen(false); window.scrollTo(0, 0); }, [route]);
+  if (gate) return html`<${LinkGate} gate=${gate} done=${(ty) => { setGate(null); if (ty === 'recovery') setPwFlow('recovery'); }}/>`;
   if (session === undefined) return html`<div class="boot">Loading…</div>`;
   if (!session) return html`<${Login} notice=${LINK.err}/>`;
   if (pwFlow === 'recovery' && !(me && me.invited_at && !me.registered_at)) return html`<${SetPassword} kind="recovery" user=${session.user} done=${() => { setPwFlow(null); go('/'); }}/>`;
