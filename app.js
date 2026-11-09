@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.11 (Invite team member on People: email invite via Edge Function 'invite' + Create-your-password page for invite and password-reset links; expired-link notice); v0.10.1 (undo label fix; v0.10 Change log page + kill switch, db/012); v0.9.2 (are-you-sure dialogs on People, publish/retire/unpublish, template remove, draft-fix save/discard, agree, mark-as-read; own role + Active locked; Mark reviewed button, prev/next in natural order, gap footer text; natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.12 (invites stay inactive + 'Pending registration' until a password is created (db/013 complete_registration); pending people are always sent to Create your password; Resend invite + Delete on People); v0.11 (Invite team member on People: email invite via Edge Function 'invite' + Create-your-password page for invite and password-reset links; expired-link notice); v0.10.1 (undo label fix; v0.10 Change log page + kill switch, db/012); v0.9.2 (are-you-sure dialogs on People, publish/retire/unpublish, template remove, draft-fix save/discard, agree, mark-as-read; own role + Active locked; Mark reviewed button, prev/next in natural order, gap footer text; natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -78,8 +78,10 @@ function SetPassword({ kind, user, done }) {
   const submit = async (e) => {
     e.preventDefault(); setErr('');
     if (pw !== pw2) { setErr("The two passwords don't match."); return; }
-    setBusy(true); const { error } = await sb.auth.updateUser({ password: pw }); setBusy(false);
-    if (error) setErr(error.message); else done();
+    setBusy(true); const { error } = await sb.auth.updateUser({ password: pw });
+    if (error) { setBusy(false); setErr(error.message); return; }
+    if (kind === 'invite') { const { error: e2 } = await sb.rpc('complete_registration'); if (e2) { setBusy(false); setErr(e2.message); return; } }
+    setBusy(false); done();
   };
   return html`<form class="login" onSubmit=${submit}>
     <img src="logo.png" alt="Homestar HVAC Solutions"/>
@@ -539,22 +541,22 @@ function InviteCard({ data, reload }) {
   const dn = (id) => (data.departments.find(d => d.id === id) || {}).name || 'no department';
   const send = async (e) => {
     e.preventDefault(); setErr(''); setMsg('');
-    if (!confirm(`Send an invite to ${f.email}?\n\n${f.name} joins as ${f.role} in ${dn(f.department_id)} and is active as soon as they choose a password.`)) return;
+    if (!confirm(`Send an invite to ${f.email}?\n\n${f.name} joins as ${f.role} in ${dn(f.department_id)}. Their account turns on when they create their password.`)) return;
     setBusy(true);
     const { data: r, error } = await sb.functions.invoke('invite', { body: { ...f, department_id: f.department_id || null, redirect: location.origin + location.pathname } });
     setBusy(false);
     let m = r && r.error; if (error && !m) { try { m = (await error.context.json()).error; } catch (_) { m = error.message; } }
     if (m) { setErr(m); return; }
-    setMsg(`${r.resend ? 'Invite re-sent' : 'Invite sent'} to ${f.email}. The link in the email works for 24 hours.`); setF(blank); reload();
+    setMsg(`${r.resend ? 'Invite re-sent' : 'Invite sent'} to ${f.email}. They show as Pending registration until they create their password; the link works for 24 hours.`); setF(blank); reload();
   };
   return html`<form class="card" onSubmit=${send}>
     <h3 style=${{ margin: '0 0 4px' }}>Invite a team member</h3>
     <p class="muted" style=${{ margin: '0 0 10px', fontSize: 13 }}>They get an email from the hub, tap the link, choose a password and land in the hub with the department and role you pick here.</p>
     <div class="row" style=${{ flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
-      <label style=${{ flex: '1 1 160px' }}>Name<input value=${f.name} onInput=${up('name')} required minLength="2" placeholder="First Last"/></label>
-      <label style=${{ flex: '1 1 220px' }}>Email<input type="email" value=${f.email} onInput=${up('email')} required placeholder="name@homestarhvac.ca"/></label>
-      <label style=${{ flex: '1 1 160px' }}>Department<select value=${f.department_id} onChange=${up('department_id')}><option value="">—</option>${data.departments.map(d => html`<option key=${d.id} value=${d.id}>${d.name}</option>`)}</select></label>
-      <label style=${{ flex: '0 1 130px' }}>Role<select value=${f.role} onChange=${up('role')}><option>member</option><option>manager</option><option>admin</option></select></label>
+      <label style=${{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 600, flex: '1 1 160px' }}>Name<input value=${f.name} onInput=${up('name')} required minLength="2" placeholder="First Last"/></label>
+      <label style=${{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 600, flex: '1 1 220px' }}>Email<input type="email" value=${f.email} onInput=${up('email')} required placeholder="name@homestarhvac.ca"/></label>
+      <label style=${{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 600, flex: '1 1 160px' }}>Department<select value=${f.department_id} onChange=${up('department_id')}><option value="">—</option>${data.departments.map(d => html`<option key=${d.id} value=${d.id}>${d.name}</option>`)}</select></label>
+      <label style=${{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 600, flex: '0 1 130px' }}>Role<select value=${f.role} onChange=${up('role')}><option>member</option><option>manager</option><option>admin</option></select></label>
       <button class="btn" disabled=${busy} style=${{ flex: '0 0 auto' }}>${busy ? 'Sending…' : 'Send invite'}</button>
     </div>
     ${msg && html`<div style=${{ marginTop: 10, color: '#067647' }}>${msg}</div>`}${err && html`<div style=${{ marginTop: 10, color: '#B42318' }}>${err}</div>`}
@@ -569,13 +571,26 @@ function People({ data, people, me, reload }) {
     setErr(''); const { error } = await sb.from('people').update(patch).eq('id', p.id); if (error) setErr(error.message); reload();
   };
   const dname = (id) => (data.departments.find(d => d.id === id) || {}).name || 'no department';
-  return html`<div><h1 class="title">People</h1><${InviteCard} data=${data} reload=${reload}/><div class="card" style=${{ padding: 0, overflow: 'hidden' }}><div class="scrollx" style=${{ border: 0, borderRadius: 0 }}><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Role</th><th>Active</th></tr></thead><tbody>
-    ${people.map(p => html`<tr key=${p.id}><td>${p.name}</td><td>${p.email}</td>
+  const callFn = async (body) => { const { data: r, error } = await sb.functions.invoke('invite', { body }); let m = r && r.error; if (error && !m) { try { m = (await error.context.json()).error; } catch (_) { m = error.message; } } return { r, m }; };
+  const resend = async (p) => {
+    if (!confirm(`Send ${p.name}'s invite again to ${p.email}? The new link works for 24 hours.`)) return;
+    setErr(''); const { m } = await callFn({ name: p.name, email: p.email, role: p.role, department_id: p.department_id || null, redirect: location.origin + location.pathname });
+    if (m) setErr(m); else { alert(`Invite re-sent to ${p.email}.`); reload(); }
+  };
+  const remove = async (p) => {
+    if (!confirm(`Delete ${p.name} (${p.email}) from the hub?\n\nThis removes their account and sign-in for good and can't be undone. Their training sign-offs, progress and quiz results are deleted too. Pages, edits and comments they made stay (without their name).\n\nTo keep their records, untick Active instead.`)) return;
+    setErr(''); const { m } = await callFn({ mode: 'delete', id: p.id });
+    if (m) setErr(m); else reload();
+  };
+  const pending = (p) => p.invited_at && !p.registered_at;
+  return html`<div><h1 class="title">People</h1><${InviteCard} data=${data} reload=${reload}/><div class="card" style=${{ padding: 0, overflow: 'hidden' }}><div class="scrollx" style=${{ border: 0, borderRadius: 0 }}><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Role</th><th>Active</th><th></th></tr></thead><tbody>
+    ${people.map(p => html`<tr key=${p.id}><td>${p.name}${pending(p) && html`<div style=${{ fontSize: 12, color: '#B54708', marginTop: 2 }}>Pending registration · invited ${fmtDate(p.invited_at)} · <a href="#" onClick=${e => { e.preventDefault(); resend(p); }}>Resend invite</a></div>`}</td><td>${p.email}</td>
       <td><select value=${p.department_id || ''} onChange=${e => set(p, { department_id: e.target.value || null }, `Move ${p.name} to ${dname(e.target.value || null)}? This changes which pages they can edit.`, e.target)}><option value="">—</option>${data.departments.map(d => html`<option key=${d.id} value=${d.id}>${d.name}</option>`)}</select></td>
       <td><select value=${p.role} disabled=${p.id === me.id} title=${p.id === me.id ? "You can't change your own role" : ''} onChange=${e => set(p, { role: e.target.value }, `Change ${p.name}'s role from ${p.role} to ${e.target.value}?`, e.target)}><option>member</option><option>manager</option><option>admin</option></select></td>
-      <td><label class="row" style=${{ gap: 6 }}><input type="checkbox" checked=${p.active} disabled=${p.id === me.id} title=${p.id === me.id ? "You can't deactivate your own account" : ''} onChange=${e => set(p, { active: e.target.checked }, e.target.checked ? `Activate ${p.name}? They will be able to sign in and see all live pages.` : `Deactivate ${p.name}? They will be signed out and can't get back in until an admin re-activates them.`, e.target)}/>${p.id === me.id ? html`<span class="muted" style=${{ fontSize: 12 }}>you</span>` : ''}</label></td></tr>`)}</tbody></table></div></div>
+      <td><label class="row" style=${{ gap: 6 }}><input type="checkbox" checked=${p.active} disabled=${p.id === me.id || pending(p)} title=${p.id === me.id ? "You can't deactivate your own account" : pending(p) ? 'Turns on by itself when they create their password' : ''} onChange=${e => set(p, { active: e.target.checked }, e.target.checked ? `Activate ${p.name}? They will be able to sign in and see all live pages.` : `Deactivate ${p.name}? They will be signed out and can't get back in until an admin re-activates them.`, e.target)}/>${p.id === me.id ? html`<span class="muted" style=${{ fontSize: 12 }}>you</span>` : ''}</label></td>
+      <td>${p.id !== me.id && html`<button class="btn ghost sm" style=${{ color: '#B42318' }} title="Delete this person" onClick=${() => remove(p)}>Delete</button>`}</td></tr>`)}</tbody></table></div></div>
     ${err && html`<div class="card" style=${{ color: '#B42318' }}>${err}</div>`}
-    <p class="muted" style=${{ fontSize: 13 }}>Invite new staff with the form above. Anyone who signs up on their own from the sign-in page waits here until an admin sets their department and role and ticks Active. Every change asks you to confirm first. Your own role and Active box are locked so you can't lock yourself out.</p></div>`;
+    <p class="muted" style=${{ fontSize: 13 }}>Invite new staff with the form above; they show as Pending registration until they create their password, then turn Active by themselves. Delete removes someone for good (untick Active to keep their training records). Anyone who signs up on their own from the sign-in page waits here until an admin sets their department and role and ticks Active. Every change asks you to confirm first. Your own role and Active box are locked so you can't lock yourself out.</p></div>`;
 }
 
 // ---------- Change log + kill switch (admin; db/012) ----------
@@ -667,8 +682,10 @@ function App() {
   useEffect(() => { setQ(''); setSearchOpen(false); window.scrollTo(0, 0); }, [route]);
   if (session === undefined) return html`<div class="boot">Loading…</div>`;
   if (!session) return html`<${Login} notice=${LINK.err}/>`;
-  if (pwFlow) return html`<${SetPassword} kind=${pwFlow} user=${session.user} done=${() => { setPwFlow(null); go('/'); }}/>`;
+  if (pwFlow === 'recovery' && !(me && me.invited_at && !me.registered_at)) return html`<${SetPassword} kind="recovery" user=${session.user} done=${() => { setPwFlow(null); go('/'); }}/>`;
   if (!data || !me) return html`<div class="boot">Loading your hub…</div>`;
+  // invited but no password yet: nothing else until they create one (the invite link signs them in, so this also catches a closed tab)
+  if (me.invited_at && !me.registered_at) return html`<${SetPassword} kind="invite" user=${session.user} done=${() => { setPwFlow(null); go('/'); reload(); }}/>`;
   if (me.active === false) return html`<div class="login"><img src="logo.png" alt=""/><h2 style=${{ textAlign: 'center' }}>Almost there</h2><p class="muted">Your account (${me.email}) is created but not activated yet. Calvin activates new accounts and sets your department. Check back shortly.</p><button class="btn ghost" style=${{ width: '100%' }} onClick=${() => sb.auth.signOut()}>Sign out</button></div>`;
   const parts = route.split('?')[0].split('/').filter(Boolean); const lib = ['system', 'policy', 'training'].includes(parts[0]) ? parts[0] : null; const browsing = lib && parts[1] === 'b'; const slug = lib && !browsing ? parts[1] : null; const bpath = browsing ? parts.slice(2).map(decodeURIComponent) : [];
   const results = q.trim() ? (() => { const k = q.trim().toLowerCase(); const r = data.items.filter(i => i.state !== 'retired' && (i.title + ' ' + (i.overview || '')).toLowerCase().includes(k)); return r.sort((a, b) => (b.title.toLowerCase().startsWith(k) - a.title.toLowerCase().startsWith(k)) || a.title.localeCompare(b.title)); })() : null;
