@@ -12,9 +12,11 @@
 <style>
 /* v0.16 one app: same five places as the rest of the Hub; bottom tabs on a phone; Hub strip under the header */
 #hubBar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:500 13px/1.3 var(--body,"Barlow"),system-ui,sans-serif;color:var(--muted,#56637a);max-width:1480px;margin:0 auto 10px}
-#hubBar .chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;border:1px solid var(--line,#c8d1e2);background:var(--surface,#fff);color:var(--ink,#141c2b);text-decoration:none;font-weight:600}
-#hubBar .chip.warn{border-color:var(--brand2,#f88312)}#hubBar .chip.pv{background:var(--sunk,#eaeef6);color:var(--muted,#56637a);font-weight:500}
-#hubBar .chip b{font-family:var(--mono,monospace);font-size:12px}
+#hubBar .hb-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;border:1px solid var(--line,#c8d1e2);background:var(--surface,#fff);color:var(--ink,#141c2b);text-decoration:none;font-weight:600}
+#hubBar .hb-chip.warn{border-color:var(--brand2,#f88312)}#hubBar .hb-chip.pv{background:var(--sunk,#eaeef6);color:var(--muted,#56637a);font-weight:500}
+#hubBar .hb-chip b{font-family:var(--mono,monospace);font-size:12px}
+#hubBar{min-width:0}#hubBar .hb-chip{white-space:normal;max-width:100%;min-width:0}
+header{min-width:0}.hdr-r{min-width:0;max-width:100%}#sync{white-space:normal}
 #hubToast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);max-width:92vw;background:#141c2b;color:#fff;font:500 14px/1.35 "Barlow",system-ui,sans-serif;padding:10px 14px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:9999}
 a.view{text-decoration:none;display:inline-flex;align-items:center}
 .hb-me{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;background:var(--sunk,#eaeef6);border:1px solid var(--line,#c8d1e2);color:var(--ink,#141c2b);font-family:var(--display,sans-serif);font-weight:700;text-decoration:none}
@@ -107,9 +109,9 @@ async function boot() {
   };
   const user = { id: me.id, name: me.name, can: async (what) => !PREVIEW };
 
-  const viewing = owner === me.id ? '' : '<span class="chip warn">Viewing another person\'s board</span>';
+  const viewing = owner === me.id ? '' : '<span class="hb-chip warn">Viewing another person\'s board</span>';
   const esc = (t) => String(t || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  bar(`${PREVIEW ? '<span class="chip pv">Preview · reply and move cards on your current board until the switch-over</span>' : ''}${viewing}<span id="hbHub"></span>`);
+  bar(`${PREVIEW ? '<span class="hb-chip pv">Preview · reply and move cards on your current board until the switch-over</span>' : ''}${viewing}<span id="hbHub"></span>`);
   // training + reviews from the Hub (same rules as the Hub home page)
   (async () => {
     try {
@@ -127,8 +129,8 @@ async function boot() {
       const soon = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
       const due = (items || []).filter((i) => i.state === 'live' && i.next_review && i.next_review <= soon && (me.role === 'admin' || i.owner_id === me.id || (me.role === 'manager' && i.department_id === myDept)));
       let h = '';
-      if (open.length) { const p = open[0]; const nx = Math.max(0, p.st.findIndex((s) => !done(p.t, s))); h += `<a class="chip" href="./#/run/${p.t.id}/${nx}">🎓 ${p.d ? 'Continue' : 'Start'}: ${esc(p.tr.title)} <b>${p.d}/${p.st.length}</b></a>`; if (open.length > 1) h += `<a class="chip" href="./#/training">🎓 ${open.length - 1} more training</a>`; }
-      if (due.length) h += `<a class="chip warn" href="./#/home">▤ Reviews due <b>${due.length}</b></a>`;
+      if (open.length) { const p = open[0]; const nx = Math.max(0, p.st.findIndex((s) => !done(p.t, s))); h += `<a class="hb-chip" href="./#/run/${p.t.id}/${nx}">🎓 ${p.d ? 'Continue' : 'Start'}: ${esc(p.tr.title)} <b>${p.d}/${p.st.length}</b></a>`; if (open.length > 1) h += `<a class="hb-chip" href="./#/training">🎓 ${open.length - 1} more training</a>`; }
+      if (due.length) h += `<a class="hb-chip warn" href="./#/home">▤ Reviews due <b>${due.length}</b></a>`;
       const el = document.getElementById('hbHub'); if (el) el.outerHTML = h;
     } catch (e) { console.warn('hub strip', e); }
   })();
