@@ -907,7 +907,7 @@ function rowHtml(r,dateStr,label){
   return `<button class="row" data-id="${esc(r.id)}" aria-current="${S.sel===r.id}">
     <div class="date">${esc(dateStr)}<small>${esc(label||"")}</small></div>
     <div class="who"><b>${esc(r.name)}</b><span>${esc(r.town||r.address||"No address")}${activeProgs(r).length?" · "+esc(activeProgs(r)[0]):""}</span></div>
-    <div>${statusChip(r)} ${flagChip(r)}</div></button>`;
+    <div class="st">${statusChip(r)}${flagChip(r)}</div></button>`;
 }
 function viewDue(){
   const rows=S.rows.filter(r=>matches(r,S.q));
@@ -1233,7 +1233,7 @@ main{padding-block:16px 40px}
 .date small{display:block;font-weight:400;color:var(--muted);font-size:12px}
 .who{min-width:0}
 .who b{display:block;white-space:normal;overflow-wrap:anywhere}
-.chip2{display:inline-flex!important;flex-direction:column;align-items:center;line-height:1.15;padding:3px 9px!important;border-radius:10px!important;text-align:center}.chip2 b{font-weight:700}.chip2 small{font-size:10.5px;opacity:.9}
+.st{display:flex;flex-direction:column;align-items:flex-end;gap:4px}.chip2{display:inline-flex!important;flex-direction:column;align-items:center;line-height:1.15;padding:3px 9px!important;border-radius:10px!important;text-align:center}.chip2 b{font-weight:700}.chip2 small{font-size:10.5px;opacity:.9}
 .who span{color:var(--muted);font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chip{display:inline-block;font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;white-space:nowrap}
 .c-over{background:var(--over-soft);color:var(--over)} .c-soon{background:var(--soon-soft);color:var(--soon)} .c-ok{background:var(--ok-soft);color:var(--ok)} .c-info{background:var(--info-soft);color:var(--brand)} .c-star{background:var(--star-soft);color:var(--star)} .c-mute{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
