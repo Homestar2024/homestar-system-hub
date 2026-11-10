@@ -898,8 +898,9 @@ function wNext(r){const a=wList(r).filter(x=>days(x.expires)>=0);a.sort((x,y)=>x
 function flagChip(r){const n=openFlags(r).length;return n?`<span class="chip c-star">${n} to raise</span>`:""}
 function matches(r,q){
   if(!q) return true; q=q.toLowerCase(); const digits=q.replace(/\D/g,"");
-  const hay=[r.name,r.company,r.email,r.address,r.town,...(r.equipment||[]).map(e=>[e.serial,e.model,e.make].join(" "))].join(" ").toLowerCase();
+  const hay=[r.name,r.company,r.email,r.address,r.town,...(r.equipment||[]).map(e=>[e.serial,e.model,e.make,e.type,e.desc,e.filter,e.size].join(" ")),...(r.filters||[]),...[].concat(r.visits||[],r.installs||[],r.serviceCalls||[]).map(v=>"#"+v.job+" "+v.job)].join(" ").toLowerCase();
   if(hay.includes(q)) return true;
+  const words=q.split(/[\s&,]+/).filter(Boolean); if(words.length>1&&words.every(w=>hay.includes(w))) return true;
   if(digits.length>=3){const ph=[r.phone,r.phone2].join(" ").replace(/\D/g,"");if(ph.includes(digits))return true}
   return false;
 }
@@ -1128,7 +1129,8 @@ function detailHtml(r){
   <div class="sec s-hist"><h3>Maintenance history</h3>${visits.length?`<ul class="tl">${visits.map(v=>`<li><div><b>${fmtShort(v.date)}</b><br><span class="meta">${yr(v.date)}</span></div><div>${esc((v.items||[]).join(", ")||"Maintenance")}<br>
      <span class="chip ${v.status==="done"?"c-ok":v.status==="stale"||v.status==="cancelled"||v.status==="reminder"?"c-mute":"c-info"}">${{done:"Done",scheduled:"Booked",future:"Booked (future)",open:"Not completed",stale:"Old placeholder",cancelled:"Cancelled in HCP",reminder:"Reminder only, not booked"}[v.status]||esc(v.status)}</span>${v.included?' <span class="chip c-star">Included</span>':""}${v.qboImport?` <span class="chip c-mute" title="${esc(v.dateSrc||"")}">QuickBooks import</span>`:""}
      · <a href="${HCP_JOB+esc(v.uuid)}" target="_blank" rel="noopener">Job #${esc(v.job)}</a>${v.checklist?` · <a href="${esc(safeHref(v.checklist))}" target="_blank" rel="noopener">Checklist</a>`:v.status==="done"?' <span class="meta">· checklist not linked yet</span>':""}</div></li>`).join("")}</ul>`:`<div class="meta">No maintenance jobs in HCP yet.</div>`}
-    ${(r.installs||[]).length?`<h3 style="margin-top:12px">Installs and other HVAC jobs</h3><ul class="tl">${r.installs.map(v=>`<li><div><b>${fmtShort(v.date)}</b><br><span class="meta">${yr(v.date)}</span></div><div>${esc((v.items||[]).slice(0,3).join(", "))} · <a href="${HCP_JOB+esc(v.uuid)}" target="_blank" rel="noopener">Job #${esc(v.job)}</a>${v.done===false?' <span class="chip c-mute">Not completed</span>':""}${v.qboImport?`<br><span class="meta">QuickBooks import: ${esc(v.dateSrc||"")}</span>`:""}</div></li>`).join("")}</ul>`:""}</div>
+    ${(r.installs||[]).length?`<h3 style="margin-top:12px">Installs and other HVAC jobs</h3><ul class="tl">${r.installs.map(v=>`<li><div><b>${fmtShort(v.date)}</b><br><span class="meta">${yr(v.date)}</span></div><div>${esc((v.items||[]).slice(0,3).join(", "))} · <a href="${HCP_JOB+esc(v.uuid)}" target="_blank" rel="noopener">Job #${esc(v.job)}</a>${v.done===false?' <span class="chip c-mute">Not completed</span>':""}${v.qboImport?`<br><span class="meta">QuickBooks import: ${esc(v.dateSrc||"")}</span>`:""}</div></li>`).join("")}</ul>`:""}
+    ${(r.serviceCalls||[]).length?`<h3 style="margin-top:12px">Service calls</h3><ul class="tl">${r.serviceCalls.map(v=>`<li><div><b>${fmtShort(v.date)}</b><br><span class="meta">${yr(v.date)}</span></div><div>${esc((v.items||[]).slice(0,3).join(", "))} · <a href="${HCP_JOB+esc(v.uuid)}" target="_blank" rel="noopener">Job #${esc(v.job)}</a>${v.note?`<br><span class="meta">${esc(v.note)}</span>`:""}</div></li>`).join("")}</ul>`:""}</div>
   <div class="sec s-notes"><h3>Notes</h3>${hcpNotesHtml(r)}
     <textarea id="notes" ${S.canWrite?"":"readonly"} placeholder="Access, pets, disconnect location, customer preferences, anything to remember">${esc(r.notes||"")}</textarea>
     ${S.canWrite?`<div style="margin-top:6px"><button class="btn" id="savenotes">Save notes</button></div>`:""}</div>`;

@@ -161,3 +161,10 @@ input,select,textarea{background:var(--card);color:var(--ink);border-color:var(-
 
 /* v0.16.1 phone: more reading width (Calvin: Ask answers felt squeezed upright) - thinner gutters, full-width answer cards, smaller list indent */
 @media(max-width:900px){.main{padding:10px 8px 24px}.main .card{padding:12px;border-radius:10px}.main .card ol,.main .card ul{padding-left:1.25em}.main .card li{margin-bottom:4px}}
+
+/* v0.16.6 audit: form fields match the board (rounded, padded, readable in dark mode); bigger tap targets for crumbs and prev/next */
+input:not([type=checkbox]):not([type=radio]),select,textarea{border:1px solid var(--line);border-radius:9px;padding:9px 12px;min-height:40px;background:var(--card);color:var(--ink)}
+input::placeholder,textarea::placeholder{color:var(--muted)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--blue);outline-offset:1px}
+.crumb a,.pn a{display:inline-block;padding:6px 0}
+@media(max-width:900px){.crumb a,.pn a{padding:10px 0}}
