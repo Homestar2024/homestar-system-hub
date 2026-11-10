@@ -878,12 +878,12 @@ function bucket(r){
 }
 function statusChip(r){
   const sv=upcomingVisit(r);
-  if(sv) return `<span class="chip c-ok">Booked ${fmtShort(sv.date)}</span>`;
-  if(r.outreach&&r.outreach.status) return `<span class="chip c-info">${esc(r.outreach.status)}</span>`;
+  if(sv) return `<span class="chip c-ok chip2"><b>Booked</b><small>${fmtShort(sv.date)}</small></span>`;
+  if(r.outreach&&r.outreach.status){const st=String(r.outreach.status);if(/draft/i.test(st))return `<span class="chip c-info" title="${esc(st)}">Drafted</span>`;const sh=st.split(/\s[-(·]|\(/)[0].trim();return `<span class="chip c-info" title="${esc(st)}">${esc(sh.length>16?sh.slice(0,15)+"…":sh)}</span>`}
   const d=days(due(r)); if(d==null) return `<span class="chip c-mute">No date</span>`;
-  if(d<0) return `<span class="chip c-over">${-d} days overdue</span>`;
-  if(d<=30) return `<span class="chip c-soon">In ${d} days</span>`;
-  return `<span class="chip c-mute">In ${d} days</span>`;
+  if(d<0) return `<span class="chip c-over chip2"><b>${-d} days</b><small>overdue</small></span>`;
+  if(d<=30) return `<span class="chip c-soon chip2"><b>${d} days</b><small>until due</small></span>`;
+  return `<span class="chip c-mute chip2"><b>${d} days</b><small>until due</small></span>`;
 }
 /* Program rule (Calvin 2026-10-21): a customer is "on a program" only while a program is ACTIVE (programDetail expires today or later). Expired programs still show on the profile, marked expired; programs with no expiry on file show 'expiry not on file' and do not count. */
 function progInfo(r){const pd=r.programDetail||[];return (r.programs||[]).map(n=>{const d=pd.find(p=>p.name===n)||null;const ex=d&&d.expires?d.expires:null;return {name:n,expires:ex,active:!!ex&&days(ex)>=0}}).concat(pd.filter(p=>!(r.programs||[]).includes(p.name)).map(p=>({name:p.name,expires:p.expires||null,active:!!p.expires&&days(p.expires)>=0})))}
@@ -1232,7 +1232,8 @@ main{padding-block:16px 40px}
 .date{font-variant-numeric:tabular-nums;font-weight:600;min-width:84px;font-size:14px}
 .date small{display:block;font-weight:400;color:var(--muted);font-size:12px}
 .who{min-width:0}
-.who b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who b{display:block;white-space:normal;overflow-wrap:anywhere}
+.chip2{display:inline-flex!important;flex-direction:column;align-items:center;line-height:1.15;padding:3px 9px!important;border-radius:10px!important;text-align:center}.chip2 b{font-weight:700}.chip2 small{font-size:10.5px;opacity:.9}
 .who span{color:var(--muted);font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chip{display:inline-block;font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;white-space:nowrap}
 .c-over{background:var(--over-soft);color:var(--over)} .c-soon{background:var(--soon-soft);color:var(--soon)} .c-ok{background:var(--ok-soft);color:var(--ok)} .c-info{background:var(--info-soft);color:var(--brand)} .c-star{background:var(--star-soft);color:var(--star)} .c-mute{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
