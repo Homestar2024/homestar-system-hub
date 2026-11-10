@@ -49,7 +49,7 @@ a.view{text-decoration:none;display:inline-flex;align-items:center}
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.4';
 const SUPABASE_URL = 'https://ovkdrtxgemvnpflebrxh.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92a2RydHhnZW12bnBmbGVicnhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI4ODQwMDEsImV4cCI6MjEwODQ2MDAwMX0.MCy_aqM6O6bUnOcyZ6vbVMrAJE69qZndZ8FBSsMWnf4';
-const PREVIEW = true;   // Phase 1: Claude still works from the old board; writes open at the switch-over (Phase 2)
+const PREVIEW = false;  // Phase 2 switch-over 2026-11-09: the Hub is the master board; the artifact is frozen read-only
 const COMPANY = new Set(['kpi', 'customers', 'meta']);
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 const toast = (t) => { let e = document.getElementById('hubToast'); if (!e) { e = document.createElement('div'); e.id = 'hubToast'; document.body.appendChild(e); } e.textContent = t; e.hidden = false; clearTimeout(e._t); e._t = setTimeout(() => { e.hidden = true; }, 4500); };
@@ -113,6 +113,34 @@ async function boot() {
   const viewing = owner === me.id ? '' : '<span class="hb-chip warn">Viewing another person\'s board</span>';
   const esc = (t) => String(t || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   bar(`${PREVIEW ? '<span class="hb-chip pv">Preview · reply and move cards on your current board until the switch-over</span>' : ''}${viewing}`);
+  // Owner (sees_all_boards) can open anyone's board, and hand a card to a team member
+  if (me.sees_all_boards) {
+    const { data: team } = await sb.from('people').select('id,name,active,registered_at,invited_at').eq('active', true).order('name');
+    const others = (team || []).filter((p) => p.id !== me.id && !(p.invited_at && !p.registered_at));
+    if (others.length) {
+      const opts = [`<option value="">My board</option>`].concat(others.map((p) => `<option value="${p.id}" ${p.id === owner ? 'selected' : ''}>${esc(p.name.split(/\s+/)[0])}'s board</option>`)).join('');
+      const go = () => { const b = document.getElementById('hubBar'); if (!b) return setTimeout(go, 100); const sp = document.createElement('label'); sp.className = 'hb-chip'; sp.innerHTML = `Viewing <select id="hbWho" style="font:inherit;border:0;background:transparent;color:inherit">${opts}</select>`; b.prepend(sp); sp.querySelector('select').addEventListener('change', (e) => { const v = e.target.value; location.href = 'board.html' + (v ? '?as=' + v : '') + '#board'; }); };
+      go();
+      if (owner === me.id) {
+        const target = others[0];   // Office & Admin (Jacob) - first active teammate
+        window.__hubGive = target.name.split(/\s+/)[0];
+        document.addEventListener('click', async (e) => {
+          const b = e.target.closest('[data-give]'); if (!b) return; e.stopPropagation(); e.preventDefault();
+          const id = b.dataset.give;
+          const { data: row } = await sb.from('board_docs').select('data,version').eq('owner_id', me.id).eq('collection', 'cards').eq('doc_id', id).single();
+          if (!row) return toast('Card not found - reload and try again.');
+          const c = row.data; if (!confirm(`Give "${c.title}" to ${window.__hubGive}?\n\nIt lands in ${window.__hubGive}'s To Do lane, and this card moves to your Waiting On lane.`)) return;
+          const at = new Date().toISOString(); const msgs = (c.msgs || []).slice();
+          const copy = { ...c, column: 'todo', source: 'calvin', needsClaude: false, created: at, updated: at, fromOwner: me.name, originCard: id, msgs: msgs.concat([{ from: 'calvin', text: `Handed to ${window.__hubGive} by ${me.name.split(/\s+/)[0]}`, at }]) };
+          delete copy.completedFrom; delete copy.completedAt; delete copy.approvedAt; delete copy.sentAt;
+          const { error: e1 } = await sb.from('board_docs').insert({ owner_id: target.id, collection: 'cards', doc_id: 'from-' + id, data: copy });
+          if (e1) return toast("Couldn't hand it over: " + e1.message);
+          const { error: e2 } = await sb.rpc('board_merge', { p_owner: me.id, p_collection: 'cards', p_doc: id, p_patch: { column: 'waiting', givenTo: window.__hubGive, givenAt: at, updated: at, msgs: msgs.concat([{ from: 'calvin', text: `Given to ${window.__hubGive}`, at }]) } });
+          toast(e2 ? 'Handed over, but this card did not move: ' + e2.message : `Given to ${window.__hubGive}. It's in their To Do.`);
+        }, true);
+      }
+    }
+  }
   // (v0.16.1, Calvin: keep Board/KPIs/Maintenance free of training and review prompts - those live under Systems)
   // same five places as the Hub: Board, KPIs, Maintenance (this page), Systems, Ask (Hub); Me button; phone bottom tabs
   const initials = (me.name || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
@@ -442,6 +470,7 @@ function cardHtml(c){
     ${c.column==="done"?`<div class="row"><button class="btn" data-incomplete="${esc(c.id)}">Mark as incomplete</button>${c.sentAt?`<span class="hint">Found in Sent Items</span>`:""}</div>`:""}
     ${draftUrl(c)&&isOpen(c)&&!isSent(c)?`<div class="row"><a class="btn olk" href="${esc(draftUrl(c))}" target="_blank" rel="noopener" data-opendraft="${esc(c.id)}">Open in Drafts</a><button class="btn done-btn" data-complete="${esc(c.id)}">Mark as complete</button>${c.draftAttachments&&c.draftAttachments.length?`<span class="hint">Attached: ${esc(c.draftAttachments.join(", "))}</span>`:""}</div>`:""}
     ${isOpen(c)&&(!draftUrl(c)||isSent(c))?`<div class="row"><button class="btn done-btn" data-complete="${esc(c.id)}">Mark as complete</button></div>`:""}
+    ${isOpen(c)&&window.__hubGive&&!c.givenTo?`<div class="row"><button class="btn" data-give="${esc(c.id)}">Give to ${esc(window.__hubGive)}</button></div>`:""}${c.givenTo?`<div class="hint">Given to ${esc(c.givenTo)}${c.givenAt?" "+esc(fmtTime(c.givenAt)):""}</div>`:""}${c.fromOwner?`<div class="hint">From ${esc(c.fromOwner)}</div>`:""}
     ${c.approvedAt&&!isSent(c)&&isOpen(c)?`<div class="waiting">Opened ${esc(fmtTime(c.approvedAt))} - moves to Done once it shows in Sent Items</div>`:""}
     ${isSent(c)?`<div class="sent">Sent ${esc(fmtTime(c.sentAt))}</div>`:""}
     ${c.draftPreview&&isOpen(c)&&!isSent(c)?`<details><summary>Read the draft${c.draftSubject?": "+esc(c.draftSubject):""}</summary><div class="draft">${esc(c.draftPreview)}</div></details>`:""}
