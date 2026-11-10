@@ -712,7 +712,7 @@ function ChangeLog({ data, people, me }) {
     </div>
     ${rows == null ? html`<div class="card muted">Loading…</div>` : !shown.length ? html`<div class="card muted">No changes logged${sys || ww || kk ? ' for this filter' : ' yet'}.</div>` : html`<div class="card" style=${{ padding: 0 }}>${shown.map(c => html`<div key=${c.id} style=${{ borderBottom: '1px solid var(--line)', padding: '10px 14px', opacity: c.undone_at ? .55 : 1 }}>
       <div class="row" style=${{ gap: 8, flexWrap: 'wrap', cursor: 'pointer' }} onClick=${() => setOpen(open === c.id ? null : c.id)}>
-        <span class="chip">${SYSTEMS[c.system] || c.system}</span><b style=${{ fontSize: 14 }}>${c.action}</b><span style=${{ flex: 1, minWidth: 0, fontSize: 14, overflowWrap: 'anywhere' }}>${targetName(c)}</span>
+        <span class="chip">${SYSTEMS[c.system] || c.system}</span><b style=${{ fontSize: 14 }}>${c.action}</b><span style=${{ flex: '1 1 160px', minWidth: 0, maxWidth: '100%', fontSize: 14, overflowWrap: 'anywhere' }}>${targetName(c)}</span>
         <span class="muted" style=${{ fontSize: 12 }}>${actorName(c)} · ${new Date(c.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · #${c.id}</span>
       </div>
       ${(c.reason || c.source || c.undone_at || c.undo_of || c.approved_by) && html`<div class="muted" style=${{ fontSize: 12, marginTop: 3 }}>${[c.undo_of && /^undo of #/.test(c.reason || '') ? null : c.reason, c.source && 'source: ' + c.source, c.approved_by && 'OK: ' + c.approved_by, c.undo_of && 'undo of #' + c.undo_of, c.undone_at && 'undone ' + new Date(c.undone_at).toLocaleDateString() + (c.undone_by ? ' by ' + (pname(c.undone_by) || c.undone_by) : '')].filter(Boolean).join(' · ')}</div>`}
