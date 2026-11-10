@@ -46,10 +46,10 @@ const bar = (html) => { const go = () => { let b = document.getElementById('hubB
 async function boot() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { location.replace('./#/'); return null; }
-  const { data: me } = await sb.from('people').select('id,name,role,active,invited_at,registered_at').eq('id', session.user.id).single();
+  const { data: me } = await sb.from('people').select('id,name,role,active,invited_at,registered_at,sees_all_boards').eq('id', session.user.id).single();
   if (!me || !me.active || (me.invited_at && !me.registered_at)) { location.replace('./#/'); return null; }
   const qs = new URLSearchParams(location.search);
-  const owner = (me.role === 'admin' && /^[0-9a-f-]{36}$/.test(qs.get('as') || '')) ? qs.get('as') : me.id;
+  const owner = (me.sees_all_boards && /^[0-9a-f-]{36}$/.test(qs.get('as') || '')) ? qs.get('as') : me.id;
   const own = (c) => COMPANY.has(c) ? null : owner;
   const scope = (q, c) => { const o = own(c); return o ? q.eq('owner_id', o) : q.is('owner_id', null); };
   const split = (p) => { const i = p.lastIndexOf('/'); return [p.slice(0, i), p.slice(i + 1)]; };
@@ -100,7 +100,7 @@ async function boot() {
 
   const viewing = owner === me.id ? '' : ' · viewing another person\'s board';
   bar(`<b>System Hub · ${PREVIEW ? 'Preview' : 'Live'}</b><span>${PREVIEW ? 'Read-only copy of your board. Reply and move cards on your current board until the switch-over.' : ''}${viewing}</span><a href="./#/">Systems &amp; training</a>`);
-  const hideKpi = () => { const k = document.getElementById('view-kpi'); if (k && me.role !== 'admin') k.hidden = true; };
+  const hideKpi = () => { const k = document.getElementById('view-kpi'); if (k && !me.sees_all_boards) k.hidden = true; };
   document.readyState === 'loading' ? addEventListener('DOMContentLoaded', hideKpi) : hideKpi();
   return { db, user, me, sb };
 }
