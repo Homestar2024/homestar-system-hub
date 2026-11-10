@@ -1361,12 +1361,13 @@ nav.tabs button[aria-selected="true"]{background:var(--brand);color:var(--brand-
 
 
 
+<style>#pane-kpi,#kMain,#kCost,#pane-kpi .panel,.kc-body{min-width:0;max-width:100%}.kc-body[hidden]{display:none!important}</style>
 <script>
 (function(){
   function setup(){
     document.querySelectorAll('#pane-kpi section.panel').forEach(function(sec, i){
       if (sec.id === 'kDetail' || sec.dataset.kc) return; var h = sec.querySelector(':scope > h2'); if (!h) return;
-      sec.dataset.kc = '1'; var body = document.createElement('div'); body.className = 'kc-body'; body.id = 'kc-' + i; body.hidden = true;
+      sec.dataset.kc = '1'; var body = document.createElement('div'); body.className = 'kc-body'; body.style.minWidth = '0'; body.style.maxWidth = '100%'; body.style.display = 'grid'; body.style.gap = '8px'; body.id = 'kc-' + i; body.hidden = true;
       while (h.nextSibling) body.appendChild(h.nextSibling); sec.appendChild(body);
       var row = document.createElement('div'); row.className = 'row kc-head'; row.style.cursor = 'pointer'; row.style.userSelect = 'none'; row.style.justifyContent = 'space-between';
       sec.insertBefore(row, h); row.appendChild(h);
