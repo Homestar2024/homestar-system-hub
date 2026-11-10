@@ -100,7 +100,8 @@ async function boot() {
 
   const viewing = owner === me.id ? '' : ' · viewing another person\'s board';
   bar(`<b>System Hub · ${PREVIEW ? 'Preview' : 'Live'}</b><span>${PREVIEW ? 'Read-only copy of your board. Reply and move cards on your current board until the switch-over.' : ''}${viewing}</span><a href="./#/">Systems &amp; training</a>`);
-  const hideKpi = () => { const k = document.getElementById('view-kpi'); if (k && !me.sees_all_boards) k.hidden = true; };
+  const { count: kpiN } = await sb.from('board_docs').select('id', { count: 'exact', head: true }).eq('collection', 'kpi').is('owner_id', null);
+  const hideKpi = () => { const k = document.getElementById('view-kpi'); if (k && !kpiN) k.hidden = true; };   // KPIs: owner + Office & Admin (db/016), read-only
   document.readyState === 'loading' ? addEventListener('DOMContentLoaded', hideKpi) : hideKpi();
   return { db, user, me, sb };
 }
