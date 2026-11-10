@@ -933,7 +933,7 @@ function viewDue(){
   return h;
 }
 function viewPast(){
-  const items=[];S.rows.forEach(r=>(r.visits||[]).forEach(v=>{if(v.status==="done"&&matches(r,S.q))items.push({r,v})}));
+  const items=[];S.rows.forEach(r=>(r.visits||[]).forEach(v=>{if(v.status==="done"&&/mainten|deep clean|complimentary|complementary/i.test((v.items||[]).join(" "))&&matches(r,S.q))items.push({r,v})}));  /* v0.16.3 Calvin: past list shows maintenance visits only */
   items.sort((a,b)=>(b.v.date||"").localeCompare(a.v.date||""));
   if(!items.length) return `<div class="empty">No completed maintenances match.</div>`;
   return `<div class="group"><h2><span>Completed maintenances, newest first</span><span>${items.length}</span></h2><div class="list">${items.map(({r,v})=>`<button class="row" data-id="${esc(r.id)}" aria-current="${S.sel===r.id}"><div class="date">${fmtShort(v.date)}<small>${yr(v.date)}</small></div><div class="who"><b>${esc(r.name)}</b><span>${esc((v.items||[]).slice(0,2).join(", "))}</span></div><div><span class="chip c-mute">#${esc(v.job)}</span></div></button>`).join("")}</div></div>`;
