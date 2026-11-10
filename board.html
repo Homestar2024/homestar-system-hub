@@ -1368,7 +1368,7 @@ nav.tabs button[aria-selected="true"]{background:var(--brand);color:var(--brand-
       if (sec.id === 'kDetail' || sec.dataset.kc) return; var h = sec.querySelector(':scope > h2'); if (!h) return;
       sec.dataset.kc = '1'; var body = document.createElement('div'); body.className = 'kc-body'; body.id = 'kc-' + i; body.hidden = true;
       while (h.nextSibling) body.appendChild(h.nextSibling); sec.appendChild(body);
-      var row = document.createElement('div'); row.className = 'row colh'; row.style.justifyContent = 'space-between';
+      var row = document.createElement('div'); row.className = 'row kc-head'; row.style.cursor = 'pointer'; row.style.userSelect = 'none'; row.style.justifyContent = 'space-between';
       sec.insertBefore(row, h); row.appendChild(h);
       var b = document.createElement('button'); b.className = 'colbtn'; b.type = 'button'; b.setAttribute('aria-expanded', 'false'); b.setAttribute('aria-controls', body.id); b.setAttribute('aria-label', 'Show or hide ' + h.textContent);
       b.innerHTML = '<span class="chev" aria-hidden="true"></span>'; row.appendChild(b); h.style.margin = '0';
