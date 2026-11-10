@@ -168,3 +168,7 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--blue);outline-offset:1px}
 .crumb a,.pn a{display:inline-block;padding:6px 0}
 @media(max-width:900px){.crumb a,.pn a{padding:10px 0}}
+
+/* v0.18 one search */
+.srow{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 4px;border-top:1px solid var(--line);color:var(--ink)}
+.srow:first-of-type{border-top:0}.srow:hover{text-decoration:none;background:var(--sunk)}.srow .badge{flex:0 0 auto}

@@ -1,4 +1,4 @@
-// Homestar System Hub - v0.16.6 (audit fixes: invite text, change log wraps + 100+, one library switcher on phones, bigger crumb/prev-next taps, inputs styled, empty search offers Ask); v0.16.1 (Me button shows icon + first name instead of initials; phone answers wider); v0.16 (one app: board header/colours/fonts/dark mode on every page; Board | KPIs | Maintenance | Systems | Ask everywhere; '/' opens the board, Hub home moved to #/home; Systems sub-nav; Me button); v0.15.1 (People shows the Owner line; KPIs readable by Office & Admin, db/016); v0.15 (Board tab: board.html = the Homestar Board ported into the Hub on board_docs (db/014), preview/read-only until the switch-over); v0.14.1 (after a code/link sign-in, wait for the person's record before choosing the page: a pending invite always gets Create your password + registration, never the plain reset form); v0.14 (8-digit code sign-up: emails carry a code + a link to #/code; Jacob's mail scanner pressed Continue too, so links never carry a token now); v0.13 (email links carry ?th=<token hash>&ty=invite|recovery and are only used when the person taps Continue - Microsoft 365 Safe Links pre-opens links and burned the one-time token, so Jacob's invite said expired; verifyOtp on tap); v0.12.1 (Sign in link under Create your password - signs the invite session out); v0.12 (invites stay inactive + 'Pending registration' until a password is created (db/013 complete_registration); pending people are always sent to Create your password; Resend invite + Delete on People); v0.11 (Invite team member on People: email invite via Edge Function 'invite' + Create-your-password page for invite and password-reset links; expired-link notice); v0.10.1 (undo label fix; v0.10 Change log page + kill switch, db/012); v0.9.2 (are-you-sure dialogs on People, publish/retire/unpublish, template remove, draft-fix save/discard, agree, mark-as-read; own role + Active locked; Mark reviewed button, prev/next in natural order, gap footer text; natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
+// Homestar System Hub - v0.18 (ONE SEARCH: board cards + customers + page titles + text inside pages in one box, #/search page, board search link); v0.16.6 (audit fixes: invite text, change log wraps + 100+, one library switcher on phones, bigger crumb/prev-next taps, inputs styled, empty search offers Ask); v0.16.1 (Me button shows icon + first name instead of initials; phone answers wider); v0.16 (one app: board header/colours/fonts/dark mode on every page; Board | KPIs | Maintenance | Systems | Ask everywhere; '/' opens the board, Hub home moved to #/home; Systems sub-nav; Me button); v0.15.1 (People shows the Owner line; KPIs readable by Office & Admin, db/016); v0.15 (Board tab: board.html = the Homestar Board ported into the Hub on board_docs (db/014), preview/read-only until the switch-over); v0.14.1 (after a code/link sign-in, wait for the person's record before choosing the page: a pending invite always gets Create your password + registration, never the plain reset form); v0.14 (8-digit code sign-up: emails carry a code + a link to #/code; Jacob's mail scanner pressed Continue too, so links never carry a token now); v0.13 (email links carry ?th=<token hash>&ty=invite|recovery and are only used when the person taps Continue - Microsoft 365 Safe Links pre-opens links and burned the one-time token, so Jacob's invite said expired; verifyOtp on tap); v0.12.1 (Sign in link under Create your password - signs the invite session out); v0.12 (invites stay inactive + 'Pending registration' until a password is created (db/013 complete_registration); pending people are always sent to Create your password; Resend invite + Delete on People); v0.11 (Invite team member on People: email invite via Edge Function 'invite' + Create-your-password page for invite and password-reset links; expired-link notice); v0.10.1 (undo label fix; v0.10 Change log page + kill switch, db/012); v0.9.2 (are-you-sure dialogs on People, publish/retire/unpublish, template remove, draft-fix save/discard, agree, mark-as-read; own role + Active locked; Mark reviewed button, prev/next in natural order, gap footer text; natural A-Z sort with folders and pages mixed, sort picker, no Agree on systems; v0.8: QA round: 30 fixes; tab highlight + People card; browse in URL, pinned matrix column; search-pick fix, no broken words; mobile layout: bottom tabs, Browse, sticky actions, typography; Ask v2: conversation memory, feedback + gaps, actions, voice, excerpts, report, draft-a-fix, dashboard stats; 4b: Ask Homestar via Edge Function 'ask' + search_items; 4a: quick-check quizzes in runner + item page, My record, dashboard; 3c: image upload from the editor - paste/drop/picker; 3b: in-app editor, version history + restore, comment resolve, review reminders, My record print; training tracks, runner, my record, dashboard). No build step: ES modules from esm.sh, hash routing.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
@@ -724,12 +724,57 @@ function ChangeLog({ data, people, me }) {
   </div>`;
 }
 
+// v0.18 ONE SEARCH (Calvin 2026-11-09): one box finds board cards, maintenance customers, page titles and text inside pages.
+const SRC = { cards: null, cust: null, at: 0 };
+async function searchSources() {
+  if (SRC.cards && Date.now() - SRC.at < 120000) return SRC;
+  const [{ data: cards }, { data: cust }] = await Promise.all([
+    sb.from('board_docs').select('doc_id,owner_id,data').eq('collection', 'cards'),
+    sb.from('board_docs').select('doc_id,data').eq('collection', 'customers').is('owner_id', null)]);
+  SRC.cards = cards || []; SRC.cust = cust || []; SRC.at = Date.now(); return SRC;
+}
+const LANE_NAMES = { emails: 'Emails', todo: 'To Do', waiting: 'Waiting On', doing: 'Doing', done: 'Done' };
+function GlobalSearch({ q, data, me, people, done }) {
+  const [src, setSrc] = useState(SRC.cards ? SRC : null); const [chunks, setChunks] = useState(null);
+  useEffect(() => { let on = true; searchSources().then(s => on && setSrc({ ...s })).catch(() => on && setSrc({ cards: [], cust: [] })); return () => { on = false; }; }, []);
+  useEffect(() => { let on = true; setChunks(null); const t = setTimeout(async () => { const { data: r } = await sb.rpc('search_chunks', { q: q.trim(), n: 8 }); if (on) setChunks(r || []); }, 350); return () => { on = false; clearTimeout(t); }; }, [q]);
+  const k = q.trim().toLowerCase(); const words = k.split(/[\s,&]+/).filter(Boolean); const digits = k.replace(/\D/g, '');
+  const hit = (hay) => { hay = String(hay || '').toLowerCase(); return hay.includes(k) || (words.length > 1 && words.every(w => hay.includes(w))); };
+  const pages = data.items.filter(i => i.state !== 'retired' && hit(i.title + ' ' + (i.overview || ''))).slice(0, 8);
+  const pageIds = new Set(pages.map(p => p.id));
+  const textHits = (chunks || []).filter(c => !pageIds.has(c.item_id)).filter((c, ix, a) => a.findIndex(x => x.item_id === c.item_id) === ix).slice(0, 6);
+  const name = (id) => (people.find(p => p.id === id) || {}).name || '';
+  const cards = src ? src.cards.filter(c => c.data.column !== 'archive' && hit([c.data.title, c.data.summary, c.data.detail, c.data.job, c.data.nextStep].join(' '))).sort((a, b) => (a.data.column === 'done') - (b.data.column === 'done') || String(b.data.updated || '').localeCompare(String(a.data.updated || ''))).slice(0, 10) : [];
+  const cust = src ? src.cust.filter(c => !c.data.removed).filter(c => { const r = c.data; const eq = (r.equipment || []).map(e => [e.make, e.model, e.serial, e.type, e.desc, e.filter].join(' ')).join(' ');
+      const jobs = [].concat(r.visits || [], r.installs || [], r.serviceCalls || []).map(v => '#' + v.job + ' ' + v.job).join(' ');
+      if (hit([r.name, r.company, r.email, r.address, r.town, eq, (r.filters || []).join(' '), jobs].join(' '))) return true;
+      return digits.length >= 4 && [r.phone, r.phone2].join(' ').replace(/\D/g, '').includes(digits); }).slice(0, 10) : [];
+  const snip = (t) => { const s = String(t || '').replace(/[#*_>`|]+/g, ' ').replace(/\s+/g, ' '); const ix = s.toLowerCase().indexOf(words[0] || k); return (ix > 60 ? '…' + s.slice(ix - 40, ix + 120) : s.slice(0, 160)) + '…'; };
+  const sec = (title, n, body) => html`<div class="card"><h3 style=${{ margin: '0 0 6px' }}>${title} <span class="muted" style=${{ fontWeight: 400 }}>· ${n}</span></h3>${body}</div>`;
+  const row = (href, a, b, chip) => html`<a key=${href} class="srow" href=${href} onClick=${done}><div style=${{ minWidth: 0, flex: 1 }}><b>${a}</b><div class="muted" style=${{ fontSize: 13, overflowWrap: 'anywhere' }}>${b}</div></div>${chip ? html`<span class="badge">${chip}</span>` : ''}</a>`;
+  const loading = !src || chunks === null;
+  const none = !loading && !pages.length && !textHits.length && !cards.length && !cust.length;
+  return html`<div>
+    <h1 class="title">Search: ${q}</h1>
+    ${cards.length > 0 && sec('Board cards', cards.length, cards.map(c => row('board.html' + (c.owner_id !== me.id ? '?as=' + c.owner_id : '') + '#' + encodeURIComponent(c.doc_id), c.data.title || c.doc_id, [c.data.job, c.data.summary || c.data.detail].filter(Boolean).join(' · ').slice(0, 140) + (c.owner_id !== me.id ? ' · ' + name(c.owner_id) + "'s board" : ''), LANE_NAMES[c.data.column] || c.data.column)))}
+    ${cust.length > 0 && sec('Customers', cust.length, cust.map(c => row('board.html#maint&c=' + c.doc_id, c.data.name, [c.data.town || c.data.address, (c.data.equipment || []).map(e => e.make).filter(Boolean).slice(0, 2).join(', ')].filter(Boolean).join(' · '), null)))}
+    ${pages.length > 0 && sec('Pages', pages.length, pages.map(i => row('#/' + i.type + '/' + i.slug, i.title, (i.overview || '').slice(0, 140), LIBS[i.type] || i.type)))}
+    ${textHits.length > 0 && sec('Inside pages', textHits.length, textHits.map(c => row('#/' + c.type + '/' + c.slug, c.title, (c.heading && c.heading !== '(whole page)' ? c.heading + ': ' : '') + snip(c.content), LIBS[c.type] || c.type)))}
+    ${loading && html`<div class="muted" style=${{ padding: 8 }}>Searching cards, customers and pages…</div>`}
+    ${none && html`<div class="card muted">Nothing found for "${q}".</div>`}
+    <div class="card row" style=${{ justifyContent: 'space-between' }}><span class="muted">Want an answer instead of a list?</span><a class="btn sm orange" href=${'#/ask?' + encodeURIComponent(q)} onClick=${done}>Ask Homestar</a></div>
+  </div>`;
+}
+function SearchPage({ q, setQ, data, me, people }) {
+  return html`<div><input autoFocus placeholder="Search cards, customers, pages…" value=${q} onInput=${e => setQ(e.target.value)} style=${{ width: '100%', marginBottom: 12, fontSize: 16 }}/>${q.trim() ? html`<${GlobalSearch} q=${q} data=${data} me=${me} people=${people} done=${() => {}}/>` : html`<div class="muted">Type a customer, phone number, job #, serial, filter size, card or page.</div>`}</div>`;
+}
+
 function App() {
   const route = useHash(); const [session, setSession] = useState(undefined); const [pwFlow, setPwFlow] = useState(LINK.type); const [gate, setGate] = useState(GATE); const [me, setMe] = useState(null); const [data, setData] = useState(null); const [people, setPeople] = useState([]); const [q, setQ] = useState(''); const [searchOpen, setSearchOpen] = useState(false);
   useEffect(() => { sb.auth.getSession().then(({ data }) => setSession(data.session)); const { data: sub } = sb.auth.onAuthStateChange((ev, s) => { if (ev === 'PASSWORD_RECOVERY') setPwFlow('recovery'); setSession(s); }); return () => sub.subscription.unsubscribe(); }, []);
   const reload = async () => { const { data: p } = await sb.from('people').select('*').order('name'); setPeople(p || []); setMe((p || []).find(x => x.id === session.user.id) || { id: session.user.id, name: session.user.email, role: 'member' }); setData(await loadAll()); };
   useEffect(() => { if (session) reload(); }, [session]);
-  useEffect(() => { setQ(''); setSearchOpen(false); window.scrollTo(0, 0); }, [route]);
+  useEffect(() => { if (!route.startsWith('/search')) setQ(''); setSearchOpen(false); window.scrollTo(0, 0); }, [route]);
   if (gate) return html`<${LinkGate} gate=${gate} done=${(ty) => { setGate(null); if (ty === 'recovery') setPwFlow('recovery'); }}/>`;
   if (session === undefined) return html`<div class="boot">Loading…</div>`;
   if (!session) return route.startsWith('/code') ? html`<${CodeEntry}/>` : html`<${Login} notice=${LINK.err}/>`;
@@ -754,8 +799,8 @@ function App() {
   const tabs = html`<nav class="tabs">${PLACES.map(([h, ic, l, o]) => html`<a key=${l} href=${h} onClick=${() => { setQ(''); setSearchOpen(false); }} class=${o ? 'on' : ''}><span class="i">${ic}</span>${l}</a>`)}</nav>`;
   const header = html`<header class="top"><a class="hb-brand" href="board.html#board" title="Board"><img class="word" src="wordmark.png" alt="Homestar"/><img class="word-dark" src="wordmark-dark.png" alt="Homestar"/></a>
       <nav class="hb-views">${PLACES.map(([h, ic, l, o, full]) => html`<a key=${l} href=${h} class=${o ? 'on' : ''}>${full || l}</a>`)}</nav>
-      <span class="grow"></span><input class=${searchOpen ? 'open' : ''} placeholder="Search the hub…" value=${q} onInput=${e => setQ(e.target.value)} onBlur=${() => { if (!q) setSearchOpen(false); }} onKeyDown=${e => { if (e.key === 'Enter' && results && results[0]) { go('/' + results[0].type + '/' + results[0].slug); } if (e.key === 'Escape') { setQ(''); setSearchOpen(false); } }}/>
-      <button class="btn ghost sm search-btn" onClick=${() => { setSearchOpen(!searchOpen); setTimeout(() => document.querySelector('.top input')?.focus(), 50); }}>🔍</button>
+      <span class="grow"></span><input class=${searchOpen ? 'open' : ''} placeholder="Search cards, customers, pages…" value=${q} onInput=${e => setQ(e.target.value)} onBlur=${() => { if (!q) setSearchOpen(false); }} onKeyDown=${e => { if (e.key === 'Enter' && results && results[0]) { go('/' + results[0].type + '/' + results[0].slug); } if (e.key === 'Escape') { setQ(''); setSearchOpen(false); } }}/>
+      <button class="btn ghost sm search-btn" onClick=${() => go('/search')}>🔍</button>
       <a class=${'hb-me' + (meOn ? ' on' : '')} href="#/me" title="My record, people and settings"><span class="i">👤</span>${(me.name || 'Me').split(/\s+/)[0]}</a><div class="hb-stripe"></div></header>`;
   const sub = sysOn ? html`<nav class="hb-sub">${[['/home', 'Overview'], ['/system', 'Systems'], ['/policy', 'Policies'], ['/training', 'Training']].map(([p, l]) => html`<a key=${p} href=${'#' + p} class=${(p === '/home' ? route.startsWith('/home') : route.startsWith(p)) ? 'on' : ''}>${l}</a>`)}</nav>` : null;
   if (parts[0] === 'run') return html`<div>${header}<${Runner} key=${parts[1] + '/' + parts[2]} trackId=${parts[1]} n=${parts[2]} data=${data} me=${me} people=${people} reload=${reload}/>${tabs}</div>`;
@@ -765,10 +810,11 @@ function App() {
     <div class="layout">
       <aside class="side">${lib ? html`<${Tree} lib=${lib} data=${data} current=${slug} onPick=${i => go(`/${i.type}/${i.slug}`)}/>` : html`<div class="muted" style=${{ fontSize: 13 }}>Pick Systems, Policies or Training to browse the tree.</div>`}</aside>
       <main class="main">${sub}
-        ${results ? html`<div><${ItemTable} rows=${results} data=${data} title=${`Search: ${q}`} empty="No page titles match." onPick=${() => { setQ(''); setSearchOpen(false); }}/><div class="card row" style=${{ justifyContent: 'space-between' }}><span class="muted">Search looks at page titles and summaries. Ask Homestar reads inside every page.</span><a class="btn sm orange" href=${'#/ask?' + encodeURIComponent(q)} onClick=${() => { setQ(''); setSearchOpen(false); }}>Ask Homestar: ${q}</a></div></div>`
+        ${results && parts[0] !== 'search' ? html`<${GlobalSearch} q=${q} data=${data} me=${me} people=${people} done=${() => { setQ(''); setSearchOpen(false); }}/>`
         : slug ? html`<${ItemView} key=${slug} slug=${slug} data=${data} me=${me} people=${people} reload=${reload}/>`
         : libHome && isPhone ? html`<div><${Browse} key=${lib} lib=${lib} data=${data} bpath=${bpath}/></div>`
         : libHome ? html`<${ItemTable} rows=${data.items.filter(i => i.type === lib)} data=${data} title=${LIBS[lib]} sortable=${true}/>`
+        : parts[0] === 'search' ? html`<${SearchPage} q=${q} setQ=${setQ} data=${data} me=${me} people=${people}/>`
         : parts[0] === 'ask' ? html`<${Ask} key=${parts[1] || 'ask'} data=${data} me=${me} people=${people} itemSlug=${parts[1] || null} reload=${reload}/>`
         : parts[0] === 'fix' ? html`<${DraftFix} key=${parts[1]} data=${data} me=${me} people=${people} slug=${parts[1]} reload=${reload}/>`
         : parts[0] === 'changes' ? html`<${ChangeLog} data=${data} people=${people} me=${me}/>`
