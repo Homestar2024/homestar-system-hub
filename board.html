@@ -19,7 +19,8 @@
 header{min-width:0}.hdr-r{min-width:0;max-width:100%}#sync{white-space:normal}
 #hubToast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);max-width:92vw;background:#141c2b;color:#fff;font:500 14px/1.35 "Barlow",system-ui,sans-serif;padding:10px 14px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:9999}
 a.view{text-decoration:none;display:inline-flex;align-items:center}
-.hb-me{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;background:var(--sunk,#eaeef6);border:1px solid var(--line,#c8d1e2);color:var(--ink,#141c2b);font-family:var(--display,sans-serif);font-weight:700;text-decoration:none}
+.hb-me{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;border-radius:999px;background:var(--sunk,#eaeef6);border:1px solid var(--line,#c8d1e2);color:var(--ink,#141c2b);font-family:var(--display,sans-serif);font-weight:700;text-decoration:none;white-space:nowrap}
+.hb-me .i{font-size:16px;line-height:1}
 #hbTabs{display:none}
 @media (max-width:900px){
   #hbTabs{display:flex;position:fixed;left:0;right:0;bottom:0;height:calc(60px + env(safe-area-inset-bottom,0px));padding-bottom:env(safe-area-inset-bottom,0px);background:var(--surface,#fff);border-top:1px solid var(--line,#c8d1e2);z-index:50}
@@ -111,36 +112,15 @@ async function boot() {
 
   const viewing = owner === me.id ? '' : '<span class="hb-chip warn">Viewing another person\'s board</span>';
   const esc = (t) => String(t || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  bar(`${PREVIEW ? '<span class="hb-chip pv">Preview · reply and move cards on your current board until the switch-over</span>' : ''}${viewing}<span id="hbHub"></span>`);
-  // training + reviews from the Hub (same rules as the Hub home page)
-  (async () => {
-    try {
-      const [{ data: items }, { data: tracks }, { data: prog }, { data: deps }] = await Promise.all([
-        sb.from('items').select('id,type,title,slug,state,department_id,owner_id,next_review'),
-        sb.from('tracks').select('id,training_id,steps'),
-        sb.from('progress').select('track_id,item_id,status').eq('person_id', me.id),
-        sb.from('departments').select('id,name')]);
-      const { data: meFull } = await sb.from('people').select('department_id').eq('id', me.id).single();
-      const companyId = ((deps || []).find((d) => d.name === 'Company') || {}).id; const myDept = meFull && meFull.department_id;
-      const done = (t, s) => (prog || []).some((p) => p.track_id === t.id && p.item_id === s.item_id && p.status === 'complete');
-      const open = (tracks || []).map((t) => { const st = t.steps || []; const tr = (items || []).find((i) => i.id === t.training_id); return { t, st, d: st.filter((s) => done(t, s)).length, tr }; })
-        .filter((x) => x.tr && x.tr.state === 'live' && x.st.length && x.d < x.st.length && (x.tr.department_id === myDept || !x.tr.department_id || x.tr.department_id === companyId))
-        .sort((a, b) => (b.d > 0) - (a.d > 0) || (b.st.length > 1) - (a.st.length > 1));
-      const soon = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
-      const due = (items || []).filter((i) => i.state === 'live' && i.next_review && i.next_review <= soon && (me.role === 'admin' || i.owner_id === me.id || (me.role === 'manager' && i.department_id === myDept)));
-      let h = '';
-      if (open.length) { const p = open[0]; const nx = Math.max(0, p.st.findIndex((s) => !done(p.t, s))); h += `<a class="hb-chip" href="./#/run/${p.t.id}/${nx}">🎓 ${p.d ? 'Continue' : 'Start'}: ${esc(p.tr.title)} <b>${p.d}/${p.st.length}</b></a>`; if (open.length > 1) h += `<a class="hb-chip" href="./#/training">🎓 ${open.length - 1} more training</a>`; }
-      if (due.length) h += `<a class="hb-chip warn" href="./#/home">▤ Reviews due <b>${due.length}</b></a>`;
-      const el = document.getElementById('hbHub'); if (el) el.outerHTML = h;
-    } catch (e) { console.warn('hub strip', e); }
-  })();
+  bar(`${PREVIEW ? '<span class="hb-chip pv">Preview · reply and move cards on your current board until the switch-over</span>' : ''}${viewing}`);
+  // (v0.16.1, Calvin: keep Board/KPIs/Maintenance free of training and review prompts - those live under Systems)
   // same five places as the Hub: Board, KPIs, Maintenance (this page), Systems, Ask (Hub); Me button; phone bottom tabs
   const initials = (me.name || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
   const navUp = () => {
     const views = document.querySelector('.views'); if (!views || document.getElementById('hbTabs')) return;
     const sys = document.getElementById('view-hub'); if (sys) { sys.href = './#/home'; }
     const ask = document.createElement('a'); ask.className = 'view'; ask.id = 'view-ask'; ask.href = './#/ask'; ask.textContent = 'Ask'; views.appendChild(ask);
-    const meA = document.createElement('a'); meA.className = 'hb-me'; meA.href = './#/me'; meA.title = 'My record, people and settings'; meA.textContent = initials; views.parentNode.insertBefore(meA, views.nextSibling);
+    const meA = document.createElement('a'); meA.className = 'hb-me'; meA.href = './#/me'; meA.title = 'My record, people and settings'; meA.innerHTML = '<span class="i">👤</span>' + esc((me.name || 'Me').split(/\s+/)[0]); views.parentNode.insertBefore(meA, views.nextSibling);
     const T = [['board', '▦', 'Board'], ['kpi', '◔', 'KPIs'], ['maint', '🔧', 'Maint.'], ['./#/home', '▤', 'Systems'], ['./#/ask', '💬', 'Ask']];
     const nav = document.createElement('nav'); nav.id = 'hbTabs';
     nav.innerHTML = T.map(([k, ic, l]) => `<a href="${k.startsWith('./') ? k : '#' + k}" data-tab="${k}"><span class="i">${ic}</span>${l}</a>`).join('');
