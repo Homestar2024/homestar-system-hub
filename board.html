@@ -10,13 +10,22 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="System Hub">
 <style>
-#hubBar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font:500 13px/1.3 "Barlow",system-ui,sans-serif;padding:7px 12px;background:#fff7ec;color:#7a3f00;border-bottom:1px solid #f3c58f}
-#hubBar b{font-weight:700}
-#hubBar a{color:#174fd0;font-weight:600}
-#hubToast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:92vw;background:#141c2b;color:#fff;font:500 14px/1.35 "Barlow",system-ui,sans-serif;padding:10px 14px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:9999}
-@media (prefers-color-scheme: dark){#hubBar{background:#2b1d0c;color:#f7c58c;border-color:#5a3a12}#hubBar a{color:#92abe8}}
+/* v0.16 one app: same five places as the rest of the Hub; bottom tabs on a phone; Hub strip under the header */
+#hubBar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:500 13px/1.3 var(--body,"Barlow"),system-ui,sans-serif;color:var(--muted,#56637a);max-width:1480px;margin:0 auto 10px}
+#hubBar .chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;border:1px solid var(--line,#c8d1e2);background:var(--surface,#fff);color:var(--ink,#141c2b);text-decoration:none;font-weight:600}
+#hubBar .chip.warn{border-color:var(--brand2,#f88312)}#hubBar .chip.pv{background:var(--sunk,#eaeef6);color:var(--muted,#56637a);font-weight:500}
+#hubBar .chip b{font-family:var(--mono,monospace);font-size:12px}
+#hubToast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);max-width:92vw;background:#141c2b;color:#fff;font:500 14px/1.35 "Barlow",system-ui,sans-serif;padding:10px 14px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:9999}
 a.view{text-decoration:none;display:inline-flex;align-items:center}
-@media (max-width:560px){#view-hub{display:none}}
+.hb-me{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;background:var(--sunk,#eaeef6);border:1px solid var(--line,#c8d1e2);color:var(--ink,#141c2b);font-family:var(--display,sans-serif);font-weight:700;text-decoration:none}
+#hbTabs{display:none}
+@media (max-width:900px){
+  #hbTabs{display:flex;position:fixed;left:0;right:0;bottom:0;height:calc(60px + env(safe-area-inset-bottom,0px));padding-bottom:env(safe-area-inset-bottom,0px);background:var(--surface,#fff);border-top:1px solid var(--line,#c8d1e2);z-index:50}
+  #hbTabs a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font:600 11px var(--body,"Barlow"),sans-serif;color:var(--muted,#56637a);text-decoration:none}
+  #hbTabs a .i{font-size:20px;line-height:1}#hbTabs a.on{color:var(--brand,#174fd0)}
+  body{padding-bottom:calc(80px + env(safe-area-inset-bottom,0px))!important}
+  .views{display:none!important}
+}
 </style>
 <script>
 /* Hub bridge (System Hub v0.15, Calvin 2026-11-09): the board page asks window.claude.use('db'|'user'|'mcp'|'sample').
@@ -41,7 +50,7 @@ const PREVIEW = true;   // Phase 1: Claude still works from the old board; write
 const COMPANY = new Set(['kpi', 'customers', 'meta']);
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 const toast = (t) => { let e = document.getElementById('hubToast'); if (!e) { e = document.createElement('div'); e.id = 'hubToast'; document.body.appendChild(e); } e.textContent = t; e.hidden = false; clearTimeout(e._t); e._t = setTimeout(() => { e.hidden = true; }, 4500); };
-const bar = (html) => { const go = () => { let b = document.getElementById('hubBar'); if (!b) { b = document.createElement('div'); b.id = 'hubBar'; document.body.prepend(b); } b.innerHTML = html; }; document.body ? go() : addEventListener('DOMContentLoaded', go); };
+const bar = (html) => { const go = () => { let b = document.getElementById('hubBar'); if (!b) { b = document.createElement('div'); b.id = 'hubBar'; const st = document.querySelector('.wrap > .stripe'); st ? st.after(b) : document.body.prepend(b); } b.innerHTML = html; }; document.body ? go() : addEventListener('DOMContentLoaded', go); };
 
 async function boot() {
   const { data: { session } } = await sb.auth.getSession();
@@ -98,10 +107,49 @@ async function boot() {
   };
   const user = { id: me.id, name: me.name, can: async (what) => !PREVIEW };
 
-  const viewing = owner === me.id ? '' : ' · viewing another person\'s board';
-  bar(`<b>System Hub · ${PREVIEW ? 'Preview' : 'Live'}</b><span>${PREVIEW ? 'Read-only copy of your board. Reply and move cards on your current board until the switch-over.' : ''}${viewing}</span><a href="./#/">Systems &amp; training</a>`);
+  const viewing = owner === me.id ? '' : '<span class="chip warn">Viewing another person\'s board</span>';
+  const esc = (t) => String(t || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  bar(`${PREVIEW ? '<span class="chip pv">Preview · reply and move cards on your current board until the switch-over</span>' : ''}${viewing}<span id="hbHub"></span>`);
+  // training + reviews from the Hub (same rules as the Hub home page)
+  (async () => {
+    try {
+      const [{ data: items }, { data: tracks }, { data: prog }, { data: deps }] = await Promise.all([
+        sb.from('items').select('id,type,title,slug,state,department_id,owner_id,next_review'),
+        sb.from('tracks').select('id,training_id,steps'),
+        sb.from('progress').select('track_id,item_id,status').eq('person_id', me.id),
+        sb.from('departments').select('id,name')]);
+      const { data: meFull } = await sb.from('people').select('department_id').eq('id', me.id).single();
+      const companyId = ((deps || []).find((d) => d.name === 'Company') || {}).id; const myDept = meFull && meFull.department_id;
+      const done = (t, s) => (prog || []).some((p) => p.track_id === t.id && p.item_id === s.item_id && p.status === 'complete');
+      const open = (tracks || []).map((t) => { const st = t.steps || []; const tr = (items || []).find((i) => i.id === t.training_id); return { t, st, d: st.filter((s) => done(t, s)).length, tr }; })
+        .filter((x) => x.tr && x.tr.state === 'live' && x.st.length && x.d < x.st.length && (x.tr.department_id === myDept || !x.tr.department_id || x.tr.department_id === companyId))
+        .sort((a, b) => (b.d > 0) - (a.d > 0) || (b.st.length > 1) - (a.st.length > 1));
+      const soon = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+      const due = (items || []).filter((i) => i.state === 'live' && i.next_review && i.next_review <= soon && (me.role === 'admin' || i.owner_id === me.id || (me.role === 'manager' && i.department_id === myDept)));
+      let h = '';
+      if (open.length) { const p = open[0]; const nx = Math.max(0, p.st.findIndex((s) => !done(p.t, s))); h += `<a class="chip" href="./#/run/${p.t.id}/${nx}">🎓 ${p.d ? 'Continue' : 'Start'}: ${esc(p.tr.title)} <b>${p.d}/${p.st.length}</b></a>`; if (open.length > 1) h += `<a class="chip" href="./#/training">🎓 ${open.length - 1} more training</a>`; }
+      if (due.length) h += `<a class="chip warn" href="./#/home">▤ Reviews due <b>${due.length}</b></a>`;
+      const el = document.getElementById('hbHub'); if (el) el.outerHTML = h;
+    } catch (e) { console.warn('hub strip', e); }
+  })();
+  // same five places as the Hub: Board, KPIs, Maintenance (this page), Systems, Ask (Hub); Me button; phone bottom tabs
+  const initials = (me.name || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+  const navUp = () => {
+    const views = document.querySelector('.views'); if (!views || document.getElementById('hbTabs')) return;
+    const sys = document.getElementById('view-hub'); if (sys) { sys.href = './#/home'; }
+    const ask = document.createElement('a'); ask.className = 'view'; ask.id = 'view-ask'; ask.href = './#/ask'; ask.textContent = 'Ask'; views.appendChild(ask);
+    const meA = document.createElement('a'); meA.className = 'hb-me'; meA.href = './#/me'; meA.title = 'My record, people and settings'; meA.textContent = initials; views.parentNode.insertBefore(meA, views.nextSibling);
+    const T = [['board', '▦', 'Board'], ['kpi', '◔', 'KPIs'], ['maint', '🔧', 'Maint.'], ['./#/home', '▤', 'Systems'], ['./#/ask', '💬', 'Ask']];
+    const nav = document.createElement('nav'); nav.id = 'hbTabs';
+    nav.innerHTML = T.map(([k, ic, l]) => `<a href="${k.startsWith('./') ? k : '#' + k}" data-tab="${k}"><span class="i">${ic}</span>${l}</a>`).join('');
+    document.body.appendChild(nav);
+    const sync = () => { const cur = (document.querySelector('.view[aria-selected="true"]') || {}).dataset; nav.querySelectorAll('a').forEach((a) => a.classList.toggle('on', !!cur && a.dataset.tab === cur.view)); };
+    nav.addEventListener('click', (e) => { const a = e.target.closest('a'); if (!a || a.dataset.tab.startsWith('./')) return; e.preventDefault(); const b = document.getElementById('view-' + a.dataset.tab); if (b) b.click(); setTimeout(sync, 0); window.scrollTo(0, 0); });
+    views.addEventListener('click', () => setTimeout(sync, 0)); sync();
+    if (!kpiN) nav.querySelector('[data-tab="kpi"]').hidden = true;
+  };
   const { count: kpiN } = await sb.from('board_docs').select('id', { count: 'exact', head: true }).eq('collection', 'kpi').is('owner_id', null);
-  const hideKpi = () => { const k = document.getElementById('view-kpi'); if (k && !kpiN) k.hidden = true; };   // KPIs: owner + Office & Admin (db/016), read-only
+  const hideKpi = () => { const k = document.getElementById('view-kpi'); if (k && !kpiN) k.hidden = true; navUp(); };   // KPIs: owner + Office & Admin (db/016), read-only
   document.readyState === 'loading' ? addEventListener('DOMContentLoaded', hideKpi) : hideKpi();
   return { db, user, me, sb };
 }
@@ -278,7 +326,7 @@ select{background:var(--sunk);border:1px solid var(--line);border-radius:8px;pad
         <button class="view" role="tab" id="view-board" data-view="board" aria-selected="true">Board<span class="n" id="boardN"></span></button>
         <button class="view" role="tab" id="view-kpi" data-view="kpi" aria-selected="false">KPIs</button>
         <button class="view" role="tab" id="view-maint" data-view="maint" aria-selected="false">Maintenance</button>
-        <a class="view" id="view-hub" href="./#/" aria-selected="false">Systems</a>
+        <a class="view" id="view-hub" href="./#/home" aria-selected="false">Systems</a>
       </div>
       <a class="btn" id="oaLink" href="#" target="_blank" rel="noopener" hidden>Open Office &amp; Admin</a><div class="sync" id="sync">Connecting…</div>
     </div>
@@ -481,6 +529,7 @@ function render(){renderTabs();renderLanes();const n=cards.filter(c=>["todo","em
 let view="board", maintPending=false;
 try{const v=localStorage.getItem("hb-view");view=(v==="kpi"||v==="maint")?v:"board"}catch(e){}
 if(location.hash==="#kpi")view="kpi";
+if(location.hash==="#board")view="board";
 if(/^#maint|[#&?]c(ust)?=cus_/.test(location.hash||""))view="maint";
 function applyView(){
   $("#pane-board").hidden=view!=="board"; $("#pane-kpi").hidden=view!=="kpi"; $("#pane-maint").hidden=view!=="maint";
