@@ -29,6 +29,20 @@ a.view{text-decoration:none;display:inline-flex;align-items:center}
   body{padding-bottom:calc(80px + env(safe-area-inset-bottom,0px))!important}
   .views{display:none!important}
 }
+/* v0.18.3 (Calvin 2026-11-10): board header = Systems header - full width, logo 44 px (34 on a phone), tabs right after the logo on the left, search box + name pill on the right; Office & Admin link and Live status moved to the Viewing row */
+.wrap{max-width:none!important}#hubBar{max-width:none}
+body{margin:0!important;padding-top:10px!important}
+@media (min-width:1300px){body{padding-left:max(16px,env(safe-area-inset-left,0px))!important;padding-right:max(16px,env(safe-area-inset-right,0px))!important}}
+.wrap > header{align-items:center!important;justify-content:flex-start!important;gap:12px!important;flex-wrap:nowrap}
+.wrap > header .brand img{height:44px!important}
+.wrap > header .hdr-r{flex:1;justify-content:flex-start!important;flex-wrap:nowrap;gap:8px!important}
+.wrap > header .views{margin-left:14px}
+.hb-grow{flex:1}
+.hb-q{width:240px;max-width:26vw;padding:9px 14px;border:1px solid var(--line,#c8d1e2);border-radius:999px;background:var(--bg,#fff);color:var(--ink,#141c2b);font:inherit;font-size:15px}
+.hb-sbtn{display:none!important}
+@media (min-width:901px) and (max-width:1320px){.wrap > header .views .view{padding:7px 11px}.hb-q{width:170px}}
+#hubBar #oaLink{padding:5px 11px;font-size:13px}#hubBar #sync{margin-left:auto}
+@media (max-width:900px){.wrap > header .brand img{height:34px!important}.hb-q{display:none}.hb-sbtn{display:inline-flex!important}.wrap > header .hdr-r{justify-content:flex-end!important}}
 </style>
 <script>
 /* Hub bridge (System Hub v0.15, Calvin 2026-11-09): the board page asks window.claude.use('db'|'user'|'mcp'|'sample').
@@ -151,7 +165,8 @@ async function boot() {
     const views = document.querySelector('.views'); if (!views || document.getElementById('hbTabs')) return;
     const sys = document.getElementById('view-hub'); if (sys) { sys.href = './#/home'; }
     const ask = document.createElement('a'); ask.className = 'view'; ask.id = 'view-ask'; ask.href = './#/ask'; ask.textContent = 'Ask'; views.appendChild(ask);
-    const meA = document.createElement('a'); meA.className = 'hb-me'; meA.href = './#/me'; meA.title = 'My record, people and settings'; meA.innerHTML = '<span class="i">👤</span>' + esc((me.name || 'Me').split(/\s+/)[0]); views.parentNode.insertBefore(meA, views.nextSibling); const sA = document.createElement('a'); sA.className = 'hb-me'; sA.href = './#/search'; sA.title = 'Search cards, customers and pages'; sA.innerHTML = '<span class="i">🔍</span>'; views.parentNode.insertBefore(sA, meA);
+    const meA = document.createElement('a'); meA.className = 'hb-me'; meA.href = './#/me'; meA.title = 'My record, people and settings'; meA.innerHTML = '<span class="i">👤</span>' + esc((me.name || 'Me').split(/\s+/)[0]); views.parentNode.insertBefore(meA, views.nextSibling); const sA = document.createElement('a'); sA.className = 'hb-me hb-sbtn'; sA.href = './#/search'; sA.title = 'Search cards, customers and pages'; sA.innerHTML = '<span class="i">🔍</span>'; views.parentNode.insertBefore(sA, meA); const gr = document.createElement('span'); gr.className = 'hb-grow'; views.parentNode.insertBefore(gr, sA); const qi = document.createElement('input'); qi.className = 'hb-q'; qi.type = 'search'; qi.placeholder = 'Search cards, customers, pages…'; qi.setAttribute('aria-label', 'Search cards, customers and pages'); qi.addEventListener('keydown', (e) => { if (e.key === 'Enter' && qi.value.trim()) location.href = './#/search?q=' + encodeURIComponent(qi.value.trim()); }); views.parentNode.insertBefore(qi, sA);
+    const moveR = (n) => { const b = document.getElementById('hubBar'), oa = document.getElementById('oaLink'), sy = document.getElementById('sync'); if (!b) { if (n < 50) setTimeout(() => moveR(n + 1), 100); return; } if (sy) b.appendChild(sy); if (oa) b.appendChild(oa); }; moveR(0);
     const T = [['board', '▦', 'Board'], ['kpi', '◔', 'KPIs'], ['maint', '🔧', 'Maint.'], ['./#/home', '▤', 'Systems'], ['./#/ask', '💬', 'Ask']];
     const nav = document.createElement('nav'); nav.id = 'hbTabs';
     nav.innerHTML = T.map(([k, ic, l]) => `<a href="${k.startsWith('./') ? k : '#' + k}" data-tab="${k}"><span class="i">${ic}</span>${l}</a>`).join('');
