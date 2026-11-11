@@ -167,14 +167,14 @@ async function boot() {
     const ask = document.createElement('a'); ask.className = 'view'; ask.id = 'view-ask'; ask.href = './#/ask'; ask.textContent = 'Ask'; views.appendChild(ask);
     const meA = document.createElement('a'); meA.className = 'hb-me'; meA.href = './#/me'; meA.title = 'My record, people and settings'; meA.innerHTML = '<span class="i">👤</span>' + esc((me.name || 'Me').split(/\s+/)[0]); views.parentNode.insertBefore(meA, views.nextSibling); const sA = document.createElement('a'); sA.className = 'hb-me hb-sbtn'; sA.href = './#/search'; sA.title = 'Search cards, customers and pages'; sA.innerHTML = '<span class="i">🔍</span>'; views.parentNode.insertBefore(sA, meA); const gr = document.createElement('span'); gr.className = 'hb-grow'; views.parentNode.insertBefore(gr, sA); const qi = document.createElement('input'); qi.className = 'hb-q'; qi.type = 'search'; qi.placeholder = 'Search cards, customers, pages…'; qi.setAttribute('aria-label', 'Search cards, customers and pages'); qi.addEventListener('keydown', (e) => { if (e.key === 'Enter' && qi.value.trim()) location.href = './#/search?q=' + encodeURIComponent(qi.value.trim()); }); views.parentNode.insertBefore(qi, sA);
     const moveR = (n) => { const b = document.getElementById('hubBar'), oa = document.getElementById('oaLink'), sy = document.getElementById('sync'); if (!b) { if (n < 50) setTimeout(() => moveR(n + 1), 100); return; } if (sy) b.appendChild(sy); if (oa) b.appendChild(oa); }; moveR(0);
-    const T = [['board', '▦', 'Board'], ['kpi', '◔', 'KPIs'], ['./#/maint', '🔧', 'Maint.'], ['./#/home', '▤', 'Systems'], ['./#/ask', '💬', 'Ask']];
+    const T = [['board', '▦', 'Board'], ['./#/kpi', '◔', 'KPIs'], ['./#/maint', '🔧', 'Maint.'], ['./#/home', '▤', 'Systems'], ['./#/ask', '💬', 'Ask']];
     const nav = document.createElement('nav'); nav.id = 'hbTabs';
     nav.innerHTML = T.map(([k, ic, l]) => `<a href="${k.startsWith('./') ? k : '#' + k}" data-tab="${k}"><span class="i">${ic}</span>${l}</a>`).join('');
     document.body.appendChild(nav);
     const sync = () => { const cur = (document.querySelector('.view[aria-selected="true"]') || {}).dataset; nav.querySelectorAll('a').forEach((a) => a.classList.toggle('on', !!cur && a.dataset.tab === cur.view)); };
     nav.addEventListener('click', (e) => { const a = e.target.closest('a'); if (!a || a.dataset.tab.startsWith('./')) return; e.preventDefault(); const b = document.getElementById('view-' + a.dataset.tab); if (b) b.click(); setTimeout(sync, 0); window.scrollTo(0, 0); });
     views.addEventListener('click', () => setTimeout(sync, 0)); sync();
-    if (!kpiN) nav.querySelector('[data-tab="kpi"]').hidden = true;
+    if (!kpiN) { const kt = nav.querySelector('[data-tab="./#/kpi"]'); if (kt) kt.hidden = true; }
   };
   const { count: kpiN } = await sb.from('board_docs').select('id', { count: 'exact', head: true }).eq('collection', 'kpi').is('owner_id', null);
   const hideKpi = () => { const k = document.getElementById('view-kpi'); if (k && !kpiN) k.hidden = true; navUp(); };   // KPIs: owner + Office & Admin (db/016), read-only
@@ -352,7 +352,7 @@ select{background:var(--sunk);border:1px solid var(--line);border-radius:8px;pad
     <div class="hdr-r">
       <div class="views" role="tablist" aria-label="View">
         <button class="view" role="tab" id="view-board" data-view="board" aria-selected="true">Board<span class="n" id="boardN"></span></button>
-        <button class="view" role="tab" id="view-kpi" data-view="kpi" aria-selected="false">KPIs</button>
+        <a class="view" id="view-kpi" href="./#/kpi" aria-selected="false">KPIs</a>
         <a class="view" id="view-maint" href="./#/maint" aria-selected="false">Maintenance</a>
         <a class="view" id="view-hub" href="./#/home" aria-selected="false">Systems</a>
       </div>
@@ -560,7 +560,8 @@ try{const v=localStorage.getItem("hb-view");view=(v==="kpi"||v==="maint")?v:"boa
 if(location.hash==="#kpi")view="kpi";
 if(location.hash==="#board")view="board";
 else if(location.hash.length>1&&!/^#(kpi|maint)/.test(location.hash)&&!/c(ust)?=cus_/.test(location.hash))view="board";
-if(view==="maint")view="board";
+if(view==="maint"||view==="kpi")view="board";
+if(location.hash==="#kpi")location.replace("./#/kpi");
 if(/^#maint|[#&?]c(ust)?=cus_/.test(location.hash||"")){const mc=((location.hash||"")+"&"+(location.search||"")).match(/c(?:ust)?=(cus_[0-9a-f]+)/);location.replace("./#/maint"+(mc?"?c="+mc[1]:""));}
 function applyView(){
   $("#pane-board").hidden=view!=="board"; $("#pane-kpi").hidden=view!=="kpi"; $("#pane-maint").hidden=view!=="maint";
