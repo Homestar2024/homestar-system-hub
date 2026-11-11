@@ -172,3 +172,18 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--blue);outline-of
 /* v0.18 one search */
 .srow{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 4px;border-top:1px solid var(--line);color:var(--ink)}
 .srow:first-of-type{border-top:0}.srow:hover{text-decoration:none;background:var(--sunk)}.srow .badge{flex:0 0 auto}
+
+/* v0.19 Maintenance in the Hub (#/maint): the board's colour tokens on the host, so the moved page looks exactly like the board's tab */
+.maint-page{padding:14px 16px 40px;font-family:var(--body);font-size:15px;line-height:1.45;min-width:0}
+@media(min-width:980px){.maint-page{font-size:16px}}
+@media(max-width:900px){.maint-page{padding:10px 12px calc(90px + env(safe-area-inset-bottom,0px))}}
+#maintHost{display:block;min-width:0;max-width:100%;
+  --bg:#f4f6fa;--surface:#ffffff;--sunk:#eaeef6;--ink:#141c2b;--muted:#56637a;--line:#c8d1e2;--l-todo:#174fd0;--l-emails:#0f766e;--l-waiting:#c2680c;--l-doing:#6b4fc4;--l-done:#2b7a52;
+  --accent:#174fd0;--accent-ink:#ffffff;--brand:#174fd0;--brand2:#f88312;--hot:#bf3b28;--warn:#b5660a;--ok:#2b7a52;
+  --display:"Barlow Semi Condensed","Arial Narrow",Arial,sans-serif;--body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;--r:10px;color:var(--ink)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) #maintHost{
+  --bg:#0b1020;--surface:#161e33;--sunk:#1f2941;--ink:#e9eef8;--muted:#a3aec6;--line:#394666;--l-todo:#92abe8;--l-emails:#5eead4;--l-waiting:#fbbf85;--l-doing:#a68cff;--l-done:#63c493;
+  --accent:#92abe8;--accent-ink:#0b1020;--brand:#92abe8;--brand2:#fbbf85;--hot:#f07360;--warn:#fbbf85;--ok:#63c493;color-scheme:dark}}
+:root[data-theme="dark"] #maintHost{
+  --bg:#0b1020;--surface:#161e33;--sunk:#1f2941;--ink:#e9eef8;--muted:#a3aec6;--line:#394666;--l-todo:#92abe8;--l-emails:#5eead4;--l-waiting:#fbbf85;--l-doing:#a68cff;--l-done:#63c493;
+  --accent:#92abe8;--accent-ink:#0b1020;--brand:#92abe8;--brand2:#fbbf85;--hot:#f07360;--warn:#fbbf85;--ok:#63c493;color-scheme:dark}
