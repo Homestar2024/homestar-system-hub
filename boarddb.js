@@ -1,15 +1,15 @@
 // Homestar System Hub - board_docs adapter (v0.19, 2026-11-10). Same interface the board page used (window.claude db), on the Hub's own Supabase client.
 // Company collections (customers, kpi, meta) have owner_id null; everything else belongs to the signed-in person (or ?as= for the owner later).
 const COMPANY = new Set(['kpi', 'customers', 'meta']);
-let cached = null;
+const cache = new Map();   // one adapter (and one realtime channel) per board owner
 export function boardDb(sb, ownerId) {
-  if (cached && cached.ownerId === ownerId) return cached.db;
+  if (cache.has(ownerId)) return cache.get(ownerId);
   const own = (c) => (COMPANY.has(c) ? null : ownerId);
   const scope = (q, c) => { const o = own(c); return o ? q.eq('owner_id', o) : q.is('owner_id', null); };
   const split = (p) => { const i = p.lastIndexOf('/'); return [p.slice(0, i), p.slice(i + 1)]; };
   const snapDoc = (id, row) => ({ id, exists: !!row, data: () => (row ? JSON.parse(JSON.stringify(row.data)) : undefined) });
   const listeners = new Map();
-  sb.channel('hub_board_docs').on('postgres_changes', { event: '*', schema: 'public', table: 'board_docs' }, (p) => {
+  sb.channel('hub_board_docs_' + (ownerId || 'co')).on('postgres_changes', { event: '*', schema: 'public', table: 'board_docs' }, (p) => {
     const row = p.new && p.new.collection ? p.new : p.old; if (!row || !row.collection) return;
     const o = own(row.collection); if ((row.owner_id || null) !== (o || null) && p.eventType !== 'DELETE') return;
     (listeners.get(row.collection) || new Set()).forEach((fn) => fn(p.eventType === 'DELETE' ? null : p.new, row, p.eventType));
@@ -45,6 +45,6 @@ export function boardDb(sb, ownerId) {
       };
     },
   };
-  cached = { ownerId, db };
+  cache.set(ownerId, db);
   return db;
 }
