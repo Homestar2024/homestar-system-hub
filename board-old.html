@@ -698,7 +698,7 @@ document.addEventListener("click",async e=>{
   }
   const cp=e.target.closest("[data-complete]"); if(cp){
     const id=cp.dataset.complete; const c=cards.find(x=>x.id===id); if(!db||!c)return; cp.disabled=true; const at=nowIso();
-    try{const ms=await freshMsgs(id,c);await db.doc("cards/"+id).update({column:"done",completedFrom:c.column||"todo",completedAt:at,needsClaude:false,msgs:[...ms,{from:"calvin",text:"Marked complete",at}],updated:at});}catch(err){cp.disabled=false;}
+    try{const ms=await freshMsgs(id,c);await db.doc("cards/"+id).update({column:"done",completedFrom:c.column||"todo",completedAt:at,needsClaude:(c.needsClaude===true||(function(a){let lc=-1,lk=-1;(a||[]).forEach(function(m,i){if(!m)return;if(m.from==="claude")lk=i;else if(m.from==="calvin"&&!/^Marked (in)?complete/i.test(String(m.text||"")))lc=i;});return lc>lk;})(ms)),msgs:[...ms,{from:"calvin",text:"Marked complete",at}],updated:at});}catch(err){cp.disabled=false;}
     return;
   }
   const od=e.target.closest("[data-opendraft]"); if(od){
