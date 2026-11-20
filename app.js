@@ -1,3 +1,4 @@
+// v0.29 2026-11-20: renamed Homestar HQ; Tools tab (#/tools, tools.js) with the Pricing tool; transparent H icon
 // v0.28 2026-11-20: 'Jacob changes' lane on Calvin's own board (column 'changes')
 // v0.27 2026-11-20: Give a card WITH a note, both ways (Calvin -> Jacob and Jacob -> Calvin; db/020 board_give)
 // v0.26 2026-11-14: KPIs gross margin on MBP JCC basis (kpi.js?v=2)
@@ -79,7 +80,7 @@ function Login({ notice }) {
   };
   return html`<form class="login" onSubmit=${submit}>
     <img src="logo.png" alt="Homestar HVAC Solutions"/>
-    <h2 style=${{ margin: '0 0 14px', textAlign: 'center' }}>Homestar System Hub</h2>
+    <h2 style=${{ margin: '0 0 14px', textAlign: 'center' }}>Homestar HQ</h2>
     ${notice && !msg && html`<div class="err">That link has expired or was already used (${notice}). Enter your email below to get a new one, or ask Calvin to re-send your invite.</div>`}
     ${err && html`<div class="err">${err}</div>`}${msg && html`<div class="muted" style=${{ marginBottom: 8 }}>${msg}</div>`}
     ${mode === 'up' && html`<label>Name<input value=${name} onInput=${e => setName(e.target.value)} required/></label>`}
@@ -111,7 +112,7 @@ function CodeEntry() {
   return html`<form class="login" onSubmit=${submit}>
     <img src="logo.png" alt="Homestar HVAC Solutions"/>
     <h2 style=${{ margin: '0 0 6px', textAlign: 'center' }}>Enter your code</h2>
-    <p class="muted" style=${{ textAlign: 'center', marginTop: 0 }}>Type your email and the 8-digit code from your System Hub email. Then you'll create your password.</p>
+    <p class="muted" style=${{ textAlign: 'center', marginTop: 0 }}>Type your email and the 8-digit code from your Homestar HQ email. Then you'll create your password.</p>
     ${err && html`<div class="err">${err}</div>`}
     <label>Email<input type="email" value=${email} onInput=${e => setEmail(e.target.value)} required autocomplete="username" placeholder="you@homestarhvac.ca"/></label>
     <label>Code<input inputMode="numeric" autocomplete="one-time-code" value=${code} onInput=${e => setCode(e.target.value)} required placeholder="12345678" style=${{ letterSpacing: 4, fontSize: 20 }}/></label>
@@ -132,7 +133,7 @@ function LinkGate({ gate, done }) {
   const toSignIn = () => { history.replaceState(null, '', location.pathname + '#/'); location.reload(); };
   return html`<div class="login">
     <img src="logo.png" alt="Homestar HVAC Solutions"/>
-    <h2 style=${{ margin: '0 0 6px', textAlign: 'center' }}>${gate.ty === 'invite' ? 'Welcome to the System Hub' : 'Set your password'}</h2>
+    <h2 style=${{ margin: '0 0 6px', textAlign: 'center' }}>${gate.ty === 'invite' ? 'Welcome to Homestar HQ' : 'Set your password'}</h2>
     <p class="muted" style=${{ textAlign: 'center', marginTop: 0 }}>${gate.ty === 'invite' ? 'Tap Continue to set up your account.' : 'Tap Continue to choose your password.'}</p>
     ${err && html`<div class="err">That link didn't work (${err}). It may have expired or already been used. Ask Calvin to re-send your invite, or use Forgot password on the sign-in page.</div>`}
     <button class="btn" style=${{ width: '100%' }} disabled=${busy} onClick=${go2}>${busy ? 'Checking…' : 'Continue'}</button>
@@ -154,7 +155,7 @@ function SetPassword({ kind, user, done }) {
   };
   return html`<form class="login" onSubmit=${submit}>
     <img src="logo.png" alt="Homestar HVAC Solutions"/>
-    <h2 style=${{ margin: '0 0 6px', textAlign: 'center' }}>${kind === 'invite' ? 'Welcome to the System Hub' : 'Choose a new password'}</h2>
+    <h2 style=${{ margin: '0 0 6px', textAlign: 'center' }}>${kind === 'invite' ? 'Welcome to Homestar HQ' : 'Choose a new password'}</h2>
     <p class="muted" style=${{ textAlign: 'center', marginTop: 0 }}>${kind === 'invite' ? `${first ? 'Hi ' + first + ', c' : 'C'}reate a password to finish setting up your account.` : 'Enter a new password for your account.'}</p>
     ${err && html`<div class="err">${err}</div>`}
     <label>Email<input name="email" value=${user.email || ''} readOnly autocomplete="username"/></label>
@@ -824,7 +825,7 @@ function SearchPage({ q, setQ, data, me, people }) {
 // v0.22: personal theme + accent (saved per person in board/view by the board's Customize panel; cached for a fast first paint)
 const applyLook = (v) => { const r = document.documentElement; v = v || {}; if (v.theme === 'light' || v.theme === 'dark') r.dataset.theme = v.theme; else delete r.dataset.theme; if (v.accent && v.accent !== 'blue') r.dataset.accent = v.accent; else delete r.dataset.accent; try { localStorage.setItem('hb-look', JSON.stringify({ theme: v.theme || 'auto', accent: v.accent || 'blue' })); } catch (e) {} };
 try { applyLook(JSON.parse(localStorage.getItem('hb-look') || 'null')); } catch (e) {}
-const MODS = { maint: ['./maint.js?v=1', 'mountMaint', 'Maintenance'], kpi: ['./kpi.js?v=2', 'mountKpi', 'KPIs'], board: ['./board.js?v=7', 'mountBoard', 'the Board'] };   // v0.21: Board too (board.js, build_boardmod.py)
+const MODS = { tools: ['./tools.js?v=1', 'mountTools', 'Tools'], maint: ['./maint.js?v=1', 'mountMaint', 'Maintenance'], kpi: ['./kpi.js?v=2', 'mountKpi', 'KPIs'], board: ['./board.js?v=7', 'mountBoard', 'the Board'] };   // v0.21: Board too (board.js, build_boardmod.py)
 function ModPage({ me, mod, owner, extra }) {
   const ref = useRef(null);
   useEffect(() => { const [src, fn, label] = MODS[mod]; let off = null, dead = false; import(src).then(m => { if (!dead && ref.current) off = m[fn](ref.current, boardDb(sb, owner || me.id), extra); }).catch(e => { if (ref.current) ref.current.textContent = "Couldn't load " + label + ' (' + e.message + '). Reload the page.'; }); return () => { dead = true; if (off) off(); }; }, []);
@@ -860,7 +861,7 @@ function App() {
   const kpiOK = !!me.sees_all_boards || deptsOf(me).some(id => (data.departments.find(d => d.id === id) || {}).name === 'Office & Admin');   // same rule as db/016 + db/019
   const sysOn = !q.trim() && (route.startsWith('/home') || !!lib || ['run', 'fix'].includes(parts[0]));
   const meOn = ['me', 'people', 'dashboard', 'changes'].includes(parts[0]);
-  const PLACES = [['#/board', '▦', 'Board', !q.trim() && parts[0] === 'board', boardN ? html`Board<span class="n">${boardN}</span>` : 'Board'], ...(kpiOK ? [['#/kpi', '◔', 'KPIs', !q.trim() && parts[0] === 'kpi']] : []), ['#/maint', '🔧', 'Maint.', !q.trim() && parts[0] === 'maint', 'Maintenance'], ['#/home', '▤', 'Systems', sysOn], ['#/ask', '💬', 'Ask', !q.trim() && parts[0] === 'ask']];
+  const PLACES = [['#/board', '▦', 'Board', !q.trim() && parts[0] === 'board', boardN ? html`Board<span class="n">${boardN}</span>` : 'Board'], ...(kpiOK ? [['#/kpi', '◔', 'KPIs', !q.trim() && parts[0] === 'kpi']] : []), ['#/maint', '🔧', 'Maint.', !q.trim() && parts[0] === 'maint', 'Maintenance'], ['#/home', '▤', 'Systems', sysOn], ['#/tools', '🧰', 'Tools', !q.trim() && parts[0] === 'tools'], ['#/ask', '💬', 'Ask', !q.trim() && parts[0] === 'ask']];
   const initials = (me.name || '?').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const tabs = html`<nav class="tabs">${PLACES.map(([h, ic, l, o]) => html`<a key=${l} href=${h} onClick=${() => { setQ(''); setSearchOpen(false); }} class=${o ? 'on' : ''}><span class="i">${ic}</span>${l}</a>`)}</nav>`;
   const header = html`<header class="top"><a class="hb-brand" href="#/board" title="Board"><img class="word" src="wordmark.png" alt="Homestar"/><img class="word-dark" src="wordmark-dark.png" alt="Homestar"/></a>
@@ -875,6 +876,7 @@ function App() {
     const giveTo = as === me.id ? people.filter(p => p.id !== me.id && p.active !== false && !(p.invited_at && !p.registered_at)) : [];   // v0.27: anyone can give a card (with a note) to any active teammate - Calvin <-> Jacob
     return html`<div>${header}<div class="maint-page"><${ModPage} key=${route} me=${me} mod="board" owner=${as} extra=${{ sb, me, owner: as, team, giveTo, focus: qp.get('card') || '', changesLane: !!(me.sees_all_boards && as === me.id), onCount: setBoardN, onTheme: applyLook }}/></div>${tabs}</div>`;
   }
+  if (parts[0] === 'tools') return html`<div>${header}<div class="maint-page"><${ModPage} key=${route} me=${me} mod="tools" extra=${{ tool: parts[1] || '' }}/></div>${tabs}</div>`;
   if (parts[0] === 'maint') return html`<div>${header}<div class="maint-page"><${ModPage} key=${route} me=${me} mod="maint"/></div>${tabs}</div>`;
   if (parts[0] === 'kpi') return html`<div>${header}<div class="maint-page">${kpiOK ? html`<${ModPage} key=${route} me=${me} mod="kpi"/>` : html`<div class="card"><h3>KPIs</h3><p class="muted">KPIs are open to the owner and Office &amp; Admin.</p></div>`}</div>${tabs}</div>`;
   if (parts[0] === 'run') return html`<div>${header}<${Runner} key=${parts[1] + '/' + parts[2]} trackId=${parts[1]} n=${parts[2]} data=${data} me=${me} people=${people} reload=${reload}/>${tabs}</div>`;
