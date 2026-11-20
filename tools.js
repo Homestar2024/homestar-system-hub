@@ -1,19 +1,22 @@
-// Homestar HQ - Tools (v0.29.3 overhead charged per person-hour - Calvin 2026-11-20: HCP hours are per person, so 2 people = 2 field hours; v0.29.2 cost labels say incl. PST - PST is a real cost, GST is not; v0.29.1 gross-floor note; v0.29, Calvin 2026-11-20): a list of company tools; first tool = Pricing.
+// Homestar HQ - Tools (v0.29.5 PST 7% added to materials/parts by default with an untick box, not subs; v0.29.4 follows the LOCKED crew rates: Jacob apprentice $65/h billed, $29.87 cost, no overhead; travel $139.38 / $169.25; v0.29.3 overhead charged per person-hour - Calvin 2026-11-20: HCP hours are per person, so 2 people = 2 field hours; v0.29.2 cost labels say incl. PST - PST is a real cost, GST is not; v0.29.1 gross-floor note; v0.29, Calvin 2026-11-20): a list of company tools; first tool = Pricing.
 // mountTools(host, db, extra) renders into a shadow root on host and returns a cleanup function. extra.tool = '' (list) or 'pricing'.
 // RATES = the company rate model (START HERE s8 + Finance & KPIs README, FYTD Jun-Oct 2026). Change them here AND in those two files the same day.
 export const RATES = {
   asOf: '2026-11-20',
-  overheadPerFieldHour: 94.91,                 // overhead per field hour incl. WIP + travel hours
-  crew: [{ id: 'calvin', name: 'Calvin', rate: 44.47, on: true }, { id: 'jacob', name: 'Jacob', rate: 29.87, on: false }],   // burdened labour $/h
+  overheadPerFieldHour: 94.91,                 // overhead per field hour - carried by Calvin's hours (LOCKED crew rates, START HERE s8 2026-11-20)
+  calvin: 44.47,                                // Calvin burdened $/h
+  jacobCost: 29.87, jacobBill: 65,              // Jacob = apprentice: cost $29.87/h, no overhead; billed $65/h after margin, no markup
+  crew: [{ id: 'calvin', name: 'Calvin' }, { id: 'jacob', name: 'Jacob (apprentice)' }],
   dept: {
     install: { label: 'Installation', net: 12, gross: 40 },
     service: { label: 'Service', net: 18, gross: 55 },
     maint: { label: 'Maintenance', net: 25, gross: 65 }
   },
-  diagPerHour: 159,                             // diagnostic, Calvin alone; every hour incl. travel
+  diagPerHour: 159,                             // diagnostic, Calvin; every hour incl. travel
   partsMarkupSmall: 1.5, partsMarkupLarge: 1.3, partsMarkupBreak: 1000,
   cardFeeInstall: 0.03,                         // always added on installs (Calvin 2026-11-20)
-  gst: 0.05
+  gst: 0.05,
+  pst: 0.07                                     // added to materials/parts by default (box can be unticked), never to subs (Calvin 2026-11-20)
 };
 
 const $ = (n) => Math.round(n * 100) / 100;
@@ -21,44 +24,42 @@ const money = (n) => (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-CA', 
 const pct = (n) => (isFinite(n) ? (n * 100).toFixed(1) : '0.0') + '%';
 const num = (v) => { const x = parseFloat(String(v).replace(/[$,\s]/g, '')); return isFinite(x) && x > 0 ? x : 0; };
 
-// Pure pricing maths (also used by the self-check). s = { dept, kind, crew:[ids], hours, travel, materials, subs, parts:[cost], warranty, net }
+// Pure pricing maths. s = { dept, kind, crew:[ids], hours, travel, materials, subs, parts:[cost], warranty, net }  (hours = clock hours)
+// LOCKED crew rates (Calvin 2026-11-20): Calvin carries labour + overhead; Jacob (apprentice) costs $29.87/h and is billed $65/h, no markup.
 export function price(s, R = RATES) {
-  const crew = R.crew.filter(c => s.crew.includes(c.id));
-  const lab = crew.reduce((a, c) => a + c.rate, 0);
-  const oh = R.overheadPerFieldHour;
-  const crewHour = lab + oh * crew.length;                         // break-even per crew hour: overhead is per PERSON-hour ($94.91 = overhead / all field hours, Calvin + Jacob)
-  const travelPrice = s.travel * crewHour;                         // travel billed at break-even, no markup
+  const cal = s.crew.includes('calvin'), jac = s.crew.includes('jacob');
+  const oh = R.overheadPerFieldHour, calHour = R.calvin + oh;          // Calvin break-even $139.38/h
+  const crewHour = calHour + (jac ? R.jacobCost : 0);                   // travel break-even: $139.38 alone, $169.25 with Jacob
+  const travelPrice = s.travel * crewHour;
   const d = R.dept[s.dept]; const minNet = d.net; const net = Math.max(minNet, s.net || minNet) / 100;
-  const out = { lines: [], crewHour, lab, net, minNet };
-  if (!crew.length) return { ...out, error: 'Pick who is going.' };
+  const out = { lines: [], crewHour, net, minNet };
+  if (!cal) return { ...out, error: jac ? 'Jacob is an apprentice and can\'t run a job alone. Add Calvin.' : 'Pick who is going.' };
+  const jacH = jac ? s.hours : 0, jacBill = jacH * R.jacobBill, jacCost = jacH * R.jacobCost;
   if (s.dept === 'install') {
-    const labour = s.hours * lab, direct = s.materials + s.subs + labour, ohCost = s.hours * oh * crew.length;
+    const labour = s.hours * R.calvin, direct = s.materials + s.subs + labour, ohCost = s.hours * oh;
     const byNet = (direct + ohCost) / (1 - net), byGross = direct / (1 - d.gross / 100);
     const job = Math.max(byNet, byGross);
-    const sub = job + travelPrice; const card = sub * R.cardFeeInstall / (1 - R.cardFeeInstall);
-    const pre = sub + card;
-    out.lines = [['Job (materials, subs, labour, overhead, margin)', job], ['Travel at break-even', travelPrice], ['Card fee 3%', card]];
-    Object.assign(out, { pre, fee: card, direct: direct + s.travel * lab, cost: direct + ohCost + travelPrice, floor: byGross > byNet ? 'gross' : 'net' });   // card fee is passed through: margins are measured without it (same as the estimating sheet)
+    const sub = job + jacBill + travelPrice; const card = sub * R.cardFeeInstall / (1 - R.cardFeeInstall);
+    out.lines = [['Job (materials, subs, Calvin labour, overhead, margin)', job], ...(jac ? [[`Apprentice (Jacob) ${s.hours} h × $${R.jacobBill}/h`, jacBill]] : []), ['Travel at break-even', travelPrice], ['Card fee 3%', card]];
+    Object.assign(out, { pre: sub + card, fee: card, direct: direct + jacCost + s.travel * (R.calvin + (jac ? R.jacobCost : 0)), cost: direct + ohCost + jacCost + travelPrice, floor: byGross > byNet ? 'gross' : 'net' });
   } else if (s.dept === 'service' && s.kind === 'diag') {
-    const solo = crew.length === 1 && crew[0].id === 'calvin';
-    const hr = solo ? R.diagPerHour : Math.ceil(crewHour * R.diagPerHour / (R.crew[0].rate + oh));
-    const all = s.hours + s.travel; const labourPrice = all * hr;
+    const all = s.hours + s.travel; const labourPrice = all * R.diagPerHour + (jac ? all * R.jacobBill : 0);
     const parts = s.warranty ? 0 : s.parts.reduce((a, c) => a + c * (c > R.partsMarkupBreak ? R.partsMarkupLarge : R.partsMarkupSmall), 0);
     const partsCost = s.warranty ? 0 : s.parts.reduce((a, c) => a + c, 0);
-    out.lines = [[`Diagnostic ${all} h × ${money(hr)}/h (incl. travel)`, labourPrice], ...(partsCost ? [['Parts (marked up)', parts]] : [])];
-    Object.assign(out, { pre: labourPrice + parts, direct: all * lab + partsCost, cost: all * crewHour + partsCost, hourly: hr });
+    out.lines = [[`Diagnostic ${all} h × ${money(R.diagPerHour)}/h (incl. travel)`, all * R.diagPerHour], ...(jac ? [[`Apprentice (Jacob) ${all} h × $${R.jacobBill}/h`, all * R.jacobBill]] : []), ...(partsCost ? [['Parts (marked up)', parts]] : [])];
+    Object.assign(out, { pre: labourPrice + parts, direct: all * R.calvin + (jac ? all * R.jacobCost : 0) + partsCost, cost: all * crewHour + partsCost, hourly: R.diagPerHour });
   } else if (s.dept === 'service') {
-    const hr = Math.ceil(crewHour / (1 - net));
-    const labourPrice = s.hours * hr;
+    const hr = Math.ceil(calHour / (1 - net));
+    const labourPrice = s.hours * hr + jacBill;
     const partsCost = s.parts.reduce((a, c) => a + c, 0);
     const parts = s.warranty ? 0 : s.parts.reduce((a, c) => a + c * (c > R.partsMarkupBreak ? R.partsMarkupLarge : R.partsMarkupSmall), 0);
-    out.lines = [[`Labour ${s.hours} h × ${money(hr)}/h`, labourPrice], [s.warranty ? 'Parts (warranty, no charge)' : 'Parts (marked up)', parts], ['Travel at break-even', travelPrice]];
-    const ownParts = s.warranty ? 0 : partsCost;   // warranty parts come from the manufacturer
-    Object.assign(out, { pre: labourPrice + parts + travelPrice, direct: (s.hours + s.travel) * lab + ownParts, cost: s.hours * crewHour + ownParts + travelPrice, hourly: hr });
-  } else {   // maintenance: deliberate loss leader - show the cost and the price-book reminder
+    out.lines = [[`Labour ${s.hours} h × ${money(hr)}/h`, s.hours * hr], ...(jac ? [[`Apprentice (Jacob) ${s.hours} h × $${R.jacobBill}/h`, jacBill]] : []), [s.warranty ? 'Parts (warranty, no charge)' : 'Parts (marked up)', parts], ['Travel at break-even', travelPrice]];
+    const ownParts = s.warranty ? 0 : partsCost;
+    Object.assign(out, { pre: labourPrice + parts + travelPrice, direct: s.hours * R.calvin + jacCost + s.travel * (R.calvin + (jac ? R.jacobCost : 0)) + ownParts, cost: s.hours * calHour + jacCost + ownParts + travelPrice, hourly: hr });
+  } else {
     const cost = (s.hours + s.travel) * crewHour + s.materials;
     out.lines = [['Cost to do this visit (break-even)', cost]];
-    Object.assign(out, { pre: null, direct: (s.hours + s.travel) * lab + s.materials, cost, loss: true });
+    Object.assign(out, { pre: null, direct: (s.hours + s.travel) * (R.calvin + (jac ? R.jacobCost : 0)) + s.materials, cost, loss: true });
   }
   if (out.pre != null) {
     out.pre = $(out.pre); out.gst = $(out.pre * R.gst); out.total = $(out.pre + out.gst);
@@ -128,7 +129,7 @@ export function mountTools(host, db, extra) {
     return () => { root.innerHTML = ''; };
   }
   const R = RATES;
-  const S = { dept: 'install', kind: 'repair', crew: ['calvin'], hours: '', travel: '', materials: '', subs: '', parts: [''], warranty: false, net: R.dept.install.net };
+  const S = { pst: true, dept: 'install', kind: 'repair', crew: ['calvin'], hours: '', travel: '', materials: '', subs: '', parts: [''], warranty: false, net: R.dept.install.net };
   root.innerHTML = `<style>${CSS}</style><a class="back" href="#/tools">← Tools</a><h2>Pricing</h2>
     <div class="muted">Starts at the company minimum. You can raise the margin, never lower it. Rates as of ${R.asOf}.</div>
     <div class="wrap"><div class="card" id="in"></div><div class="card res" id="out"></div></div>`;
@@ -138,18 +139,19 @@ export function mountTools(host, db, extra) {
   function drawIn() {
     const d = S.dept, svc = d === 'service', diag = svc && S.kind === 'diag';
     let n = 1;
+    const pstBox = `<label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px"><input type="checkbox" data-pst style="width:auto" ${S.pst ? 'checked' : ''}> Add 7% PST to ${svc ? 'parts' : 'materials'} (not subs)</label>`;
     inEl.innerHTML = `
       <div class="step"><div class="lbl"><span class="n">${n++}</span>Department</div><div class="seg" data-g="dept">${Object.entries(R.dept).map(([k, v]) => `<button aria-pressed="${d === k}" data-v="${k}">${v.label}</button>`).join('')}</div>
         ${svc ? `<div class="seg" data-g="kind" style="margin-top:8px"><button aria-pressed="${S.kind === 'repair'}" data-v="repair">Repair</button><button aria-pressed="${diag}" data-v="diag">Diagnostic</button></div>` : ''}</div>
       <div class="step"><div class="lbl"><span class="n">${n++}</span>Who's going</div><div class="seg">${R.crew.map(c => `<button class="chk ${S.crew.includes(c.id) ? 'on' : ''}" data-crew="${c.id}">${S.crew.includes(c.id) ? '✓ ' : ''}${c.name}</button>`).join('')}</div></div>
       <div class="step"><div class="lbl"><span class="n">${n++}</span>Time</div><div class="fields">${field('hours', (d === 'install' ? 'Job hours on site' : diag ? 'Hours on site' : 'Repair hours on site') + ' (clock time)', 'e.g. 8')}${field('travel', 'Travel hours, round trip (clock time)', 'e.g. 1')}</div></div>
-      ${svc ? `<div class="step"><div class="lbl"><span class="n">${n++}</span>Parts (your cost incl. PST, before GST)</div><div class="parts">${S.parts.map((p, i) => `<div class="prow"><input inputmode="decimal" data-part="${i}" value="${esc(p)}" placeholder="Part ${i + 1} cost">${S.parts.length > 1 ? `<button class="x" data-del="${i}" aria-label="Remove part">✕</button>` : ''}</div>`).join('')}<button class="add" data-addpart>+ Add another part</button></div>
-          <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px"><input type="checkbox" data-warranty style="width:auto" ${S.warranty ? 'checked' : ''}> Warranty parts (no charge to the customer)</label></div>`
-        : `<div class="step"><div class="lbl"><span class="n">${n++}</span>Costs (your cost incl. PST, before GST)</div><div class="fields">${field('materials', 'Materials', 'e.g. 6500')}${d === 'install' ? field('subs', 'Subcontractors (real quotes)', 'e.g. 1200') : ''}</div></div>`}
+      ${svc ? `<div class="step"><div class="lbl"><span class="n">${n++}</span>Parts (your cost before tax)</div><div class="parts">${S.parts.map((p, i) => `<div class="prow"><input inputmode="decimal" data-part="${i}" value="${esc(p)}" placeholder="Part ${i + 1} cost">${S.parts.length > 1 ? `<button class="x" data-del="${i}" aria-label="Remove part">✕</button>` : ''}</div>`).join('')}<button class="add" data-addpart>+ Add another part</button></div>
+          <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px"><input type="checkbox" data-warranty style="width:auto" ${S.warranty ? 'checked' : ''}> Warranty parts (no charge to the customer)</label>${pstBox}</div>`
+        : `<div class="step"><div class="lbl"><span class="n">${n++}</span>Costs (your cost before tax)</div><div class="fields">${field('materials', 'Materials', 'e.g. 6500')}${d === 'install' ? field('subs', 'Subcontractors (real quotes)', 'e.g. 1200') : ''}</div>${pstBox}</div>`}
       ${d !== 'maint' && !diag ? `<div class="step"><div class="lbl"><span class="n">${n++}</span>Net margin</div><div class="mrow"><button class="step-btn" data-net="-1" aria-label="Lower margin">−</button><input type="range" min="${R.dept[d].net}" max="50" step="1" value="${S.net}" data-netr><button class="step-btn" data-net="1" aria-label="Raise margin">+</button><span class="mv" id="mv">${S.net}%</span></div><div class="muted" style="font-size:13px;margin-top:4px">Minimum ${R.dept[d].net}% net${d === 'install' ? ` and ${R.dept[d].gross}% gross` : ''}.</div></div>` : ''}`;
   }
   function drawOut() {
-    const s = { dept: S.dept, kind: S.kind, crew: S.crew, hours: num(S.hours), travel: num(S.travel), materials: num(S.materials), subs: num(S.subs), parts: S.parts.map(num).filter(Boolean), warranty: S.warranty, net: S.net };
+    const k = S.pst ? 1 + R.pst : 1; const s = { dept: S.dept, kind: S.kind, crew: S.crew, hours: num(S.hours), travel: num(S.travel), materials: num(S.materials) * k, subs: num(S.subs), parts: S.parts.map(num).filter(Boolean).map(x => x * k), warranty: S.warranty, net: S.net };
     const r = price(s);
     if (r.error) { outEl.innerHTML = `<h3>Price</h3><div class="muted">${r.error}</div>`; return; }
     if (!s.hours && !s.travel) { outEl.innerHTML = `<h3>Price</h3><div class="muted">Enter the hours to see the price.</div>`; return; }
@@ -188,7 +190,7 @@ export function mountTools(host, db, extra) {
     if (t.dataset.addpart !== undefined) { S.parts.push(''); draw(); const ins = root.querySelectorAll('[data-part]'); ins[ins.length - 1].focus(); return; }
     if (t.dataset.del) { S.parts.splice(+t.dataset.del, 1); return draw(); }
     if (t.dataset.net) { S.net = Math.min(50, Math.max(R.dept[S.dept].net, S.net + +t.dataset.net)); const r = root.querySelector('[data-netr]'); if (r) r.value = S.net; const mv = root.getElementById('mv'); if (mv) mv.textContent = S.net + '%'; return drawOut(); }
-    if (t.dataset.reset !== undefined) { Object.assign(S, { hours: '', travel: '', materials: '', subs: '', parts: [''], warranty: false, net: R.dept[S.dept].net }); return draw(); }
+    if (t.dataset.reset !== undefined) { Object.assign(S, { pst: true, hours: '', travel: '', materials: '', subs: '', parts: [''], warranty: false, net: R.dept[S.dept].net }); return draw(); }
     if (t.dataset.copy !== undefined) {
       const lines = [...outEl.querySelectorAll('.sub.c')].filter(x => !/\$0\.00$/.test(x.innerText.trim())).map(x => x.innerText.replace(/\s*\n\s*/, ': '));
       const pre = root.getElementById('pre').textContent; const txt = `Homestar price (${R.dept[S.dept].label}${S.dept === 'service' ? ' - ' + (S.kind === 'diag' ? 'diagnostic' : 'repair') : ''})\n` + 'Price before GST: ' + pre + '\n' + lines.join('\n');
@@ -200,6 +202,7 @@ export function mountTools(host, db, extra) {
     if (t.dataset.k) S[t.dataset.k] = t.value;
     else if (t.dataset.part !== undefined) S.parts[+t.dataset.part] = t.value;
     else if (t.dataset.warranty !== undefined) S.warranty = t.checked;
+    else if (t.dataset.pst !== undefined) S.pst = t.checked;
     else if (t.dataset.netr !== undefined) { S.net = Math.max(R.dept[S.dept].net, +t.value); const mv = root.getElementById('mv'); if (mv) mv.textContent = S.net + '%'; }
     else return;
     drawOut();
