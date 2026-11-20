@@ -1,18 +1,16 @@
-// Homestar HQ - Tools (v0.29.5 PST 7% added to materials/parts by default with an untick box, not subs; v0.29.4 follows the LOCKED crew rates: Jacob apprentice $65/h billed, $29.87 cost, no overhead; travel $139.38 / $169.25; v0.29.3 overhead charged per person-hour - Calvin 2026-11-20: HCP hours are per person, so 2 people = 2 field hours; v0.29.2 cost labels say incl. PST - PST is a real cost, GST is not; v0.29.1 gross-floor note; v0.29, Calvin 2026-11-20): a list of company tools; first tool = Pricing.
+// Homestar HQ - Tools (v0.30 RATE RESET 2026-11-20 (Calvin confirmed): overhead $96.24 per PERSON-hour on the job (QBO Jun-Oct overhead $78,415 / HCP job hours Calvin 585 + Jacob 230); Calvin $44.47, Jacob $29.87 burdened; install 12% net -> Calvin $159.90 / Jacob $143.30; service 18% -> $172 / $154; travel at break-even $140.71 / $126.11. Earlier v0.29.x crew models are retired.)
 // mountTools(host, db, extra) renders into a shadow root on host and returns a cleanup function. extra.tool = '' (list) or 'pricing'.
-// RATES = the company rate model (START HERE s8 + Finance & KPIs README, FYTD Jun-Oct 2026). Change them here AND in those two files the same day.
+// RATES = the company rate model - the RATE RESET line in START HERE s8 is the source. Change them here AND there the same day; recompute at each month-end close.
 export const RATES = {
-  asOf: '2026-11-20',
-  overheadPerFieldHour: 94.91,                 // overhead per field hour - carried by Calvin's hours (LOCKED crew rates, START HERE s8 2026-11-20)
-  calvin: 44.47,                                // Calvin burdened $/h
-  jacobCost: 29.87, jacobBill: 65,              // Jacob = apprentice: cost $29.87/h, no overhead; billed $65/h after margin, no markup
-  crew: [{ id: 'calvin', name: 'Calvin' }, { id: 'jacob', name: 'Jacob (apprentice)' }],
+  asOf: '2026-11-20 (Jun-Oct data)',
+  overheadPerPersonHour: 96.24,
+  crew: [{ id: 'calvin', name: 'Calvin', rate: 44.47 }, { id: 'jacob', name: 'Jacob', rate: 29.87 }],
   dept: {
     install: { label: 'Installation', net: 12, gross: 40 },
     service: { label: 'Service', net: 18, gross: 55 },
     maint: { label: 'Maintenance', net: 25, gross: 65 }
   },
-  diagPerHour: 159,                             // diagnostic, Calvin; every hour incl. travel
+  diag: { calvin: 159, jacob: 143 },            // diagnostic $/h incl. travel (near break-even by design); Jacob at the same margin as Calvin's $159
   partsMarkupSmall: 1.5, partsMarkupLarge: 1.3, partsMarkupBreak: 1000,
   cardFeeInstall: 0.03,                         // always added on installs (Calvin 2026-11-20)
   gst: 0.05,
@@ -23,43 +21,46 @@ const $ = (n) => Math.round(n * 100) / 100;
 const money = (n) => (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pct = (n) => (isFinite(n) ? (n * 100).toFixed(1) : '0.0') + '%';
 const num = (v) => { const x = parseFloat(String(v).replace(/[$,\s]/g, '')); return isFinite(x) && x > 0 ? x : 0; };
+const parts$ = (R, list) => list.reduce((a, c) => a + c * (c > R.partsMarkupBreak ? R.partsMarkupLarge : R.partsMarkupSmall), 0);
 
-// Pure pricing maths. s = { dept, kind, crew:[ids], hours, travel, materials, subs, parts:[cost], warranty, net }  (hours = clock hours)
-// LOCKED crew rates (Calvin 2026-11-20): Calvin carries labour + overhead; Jacob (apprentice) costs $29.87/h and is billed $65/h, no markup.
+// Pure pricing maths. s = { dept, kind, crew:[ids], hours, travel, materials, subs, parts:[cost], warranty, net }  (hours = clock hours on site; each person on the crew works them)
+// Every person-hour carries its own burdened wage + $96.24 overhead. Break-even: Calvin $140.71/h, Jacob $126.11/h.
 export function price(s, R = RATES) {
-  const cal = s.crew.includes('calvin'), jac = s.crew.includes('jacob');
-  const oh = R.overheadPerFieldHour, calHour = R.calvin + oh;          // Calvin break-even $139.38/h
-  const crewHour = calHour + (jac ? R.jacobCost : 0);                   // travel break-even: $139.38 alone, $169.25 with Jacob
-  const travelPrice = s.travel * crewHour;
+  const crew = R.crew.filter(c => s.crew.includes(c.id));
+  const oh = R.overheadPerPersonHour;
+  const be = (c) => c.rate + oh;
+  const crewBE = crew.reduce((a, c) => a + be(c), 0);                  // travel break-even per clock hour: 140.71 / 126.11 / 266.82
+  const crewLab = crew.reduce((a, c) => a + c.rate, 0);
   const d = R.dept[s.dept]; const minNet = d.net; const net = Math.max(minNet, s.net || minNet) / 100;
-  const out = { lines: [], crewHour, net, minNet };
-  if (!cal) return { ...out, error: jac ? 'Jacob is an apprentice and can\'t run a job alone. Add Calvin.' : 'Pick who is going.' };
-  const jacH = jac ? s.hours : 0, jacBill = jacH * R.jacobBill, jacCost = jacH * R.jacobCost;
+  const out = { lines: [], crewHour: crewBE, net, minNet };
+  if (!crew.length) return { ...out, error: 'Pick who is going.' };
+  if (!s.crew.includes('calvin')) return { ...out, error: "Jacob is an apprentice and can't run a job alone. Add Calvin." };
+  const travelPrice = s.travel * crewBE;
+  const names = crew.map(c => c.name).join(' + ');
   if (s.dept === 'install') {
-    const labour = s.hours * R.calvin, direct = s.materials + s.subs + labour, ohCost = s.hours * oh;
+    const labour = s.hours * crewLab, direct = s.materials + s.subs + labour, ohCost = s.hours * oh * crew.length;
     const byNet = (direct + ohCost) / (1 - net), byGross = direct / (1 - d.gross / 100);
     const job = Math.max(byNet, byGross);
-    const sub = job + jacBill + travelPrice; const card = sub * R.cardFeeInstall / (1 - R.cardFeeInstall);
-    out.lines = [['Job (materials, subs, Calvin labour, overhead, margin)', job], ...(jac ? [[`Apprentice (Jacob) ${s.hours} h × $${R.jacobBill}/h`, jacBill]] : []), ['Travel at break-even', travelPrice], ['Card fee 3%', card]];
-    Object.assign(out, { pre: sub + card, fee: card, direct: direct + jacCost + s.travel * (R.calvin + (jac ? R.jacobCost : 0)), cost: direct + ohCost + jacCost + travelPrice, floor: byGross > byNet ? 'gross' : 'net' });
+    const sub = job + travelPrice; const card = sub * R.cardFeeInstall / (1 - R.cardFeeInstall);
+    out.lines = [[`Job (materials, subs, ${names} labour + overhead, margin)`, job], ['Travel at break-even', travelPrice], ['Card fee 3%', card]];
+    Object.assign(out, { pre: sub + card, fee: card, direct: direct + s.travel * crewLab, cost: direct + ohCost + travelPrice, floor: byGross > byNet ? 'gross' : 'net' });
   } else if (s.dept === 'service' && s.kind === 'diag') {
-    const all = s.hours + s.travel; const labourPrice = all * R.diagPerHour + (jac ? all * R.jacobBill : 0);
-    const parts = s.warranty ? 0 : s.parts.reduce((a, c) => a + c * (c > R.partsMarkupBreak ? R.partsMarkupLarge : R.partsMarkupSmall), 0);
-    const partsCost = s.warranty ? 0 : s.parts.reduce((a, c) => a + c, 0);
-    out.lines = [[`Diagnostic ${all} h × ${money(R.diagPerHour)}/h (incl. travel)`, all * R.diagPerHour], ...(jac ? [[`Apprentice (Jacob) ${all} h × $${R.jacobBill}/h`, all * R.jacobBill]] : []), ...(partsCost ? [['Parts (marked up)', parts]] : [])];
-    Object.assign(out, { pre: labourPrice + parts, direct: all * R.calvin + (jac ? all * R.jacobCost : 0) + partsCost, cost: all * crewHour + partsCost, hourly: R.diagPerHour });
+    const all = s.hours + s.travel;
+    const rows = crew.map(c => [`Diagnostic ${c.name} ${all} h × ${money(R.diag[c.id])}/h (incl. travel)`, all * R.diag[c.id]]);
+    const partsCost = s.warranty ? 0 : s.parts.reduce((a, c) => a + c, 0), parts = s.warranty ? 0 : parts$(R, s.parts);
+    out.lines = [...rows, ...(partsCost ? [['Parts (marked up)', parts]] : [])];
+    Object.assign(out, { pre: rows.reduce((a, r) => a + r[1], 0) + parts, direct: all * crewLab + partsCost, cost: all * crewBE + partsCost, hourly: crew.reduce((a, c) => a + R.diag[c.id], 0) });
   } else if (s.dept === 'service') {
-    const hr = Math.ceil(calHour / (1 - net));
-    const labourPrice = s.hours * hr + jacBill;
-    const partsCost = s.parts.reduce((a, c) => a + c, 0);
-    const parts = s.warranty ? 0 : s.parts.reduce((a, c) => a + c * (c > R.partsMarkupBreak ? R.partsMarkupLarge : R.partsMarkupSmall), 0);
-    out.lines = [[`Labour ${s.hours} h × ${money(hr)}/h`, s.hours * hr], ...(jac ? [[`Apprentice (Jacob) ${s.hours} h × $${R.jacobBill}/h`, jacBill]] : []), [s.warranty ? 'Parts (warranty, no charge)' : 'Parts (marked up)', parts], ['Travel at break-even', travelPrice]];
+    const rates = crew.map(c => ({ c, hr: Math.round(be(c) / (1 - net)) }));      // 18% -> Calvin $172, Jacob $154
+    const rows = rates.map(({ c, hr }) => [`Labour ${c.name} ${s.hours} h × ${money(hr)}/h`, s.hours * hr]);
+    const partsCost = s.parts.reduce((a, c) => a + c, 0), parts = s.warranty ? 0 : parts$(R, s.parts);
     const ownParts = s.warranty ? 0 : partsCost;
-    Object.assign(out, { pre: labourPrice + parts + travelPrice, direct: s.hours * R.calvin + jacCost + s.travel * (R.calvin + (jac ? R.jacobCost : 0)) + ownParts, cost: s.hours * calHour + jacCost + ownParts + travelPrice, hourly: hr });
-  } else {
-    const cost = (s.hours + s.travel) * crewHour + s.materials;
+    out.lines = [...rows, [s.warranty ? 'Parts (warranty, no charge)' : 'Parts (marked up)', parts], ['Travel at break-even', travelPrice]];
+    Object.assign(out, { pre: rows.reduce((a, r) => a + r[1], 0) + parts + travelPrice, direct: (s.hours + s.travel) * crewLab + ownParts, cost: s.hours * crewBE + ownParts + travelPrice, hourly: rates.reduce((a, r) => a + r.hr, 0) });
+  } else {   // maintenance: deliberate loss leader - show the cost and the price-book reminder
+    const cost = (s.hours + s.travel) * crewBE + s.materials;
     out.lines = [['Cost to do this visit (break-even)', cost]];
-    Object.assign(out, { pre: null, direct: (s.hours + s.travel) * (R.calvin + (jac ? R.jacobCost : 0)) + s.materials, cost, loss: true });
+    Object.assign(out, { pre: null, direct: (s.hours + s.travel) * crewLab + s.materials, cost, loss: true });
   }
   if (out.pre != null) {
     out.pre = $(out.pre); out.gst = $(out.pre * R.gst); out.total = $(out.pre + out.gst);
@@ -172,7 +173,7 @@ export function mountTools(host, db, extra) {
         <div class="sub"><span>Profit</span><span>${money(r.profit)}</span></div>
         <div class="sub"><span>Net margin</span><span>${pct(r.netPct)}</span></div>
         <div class="sub"><span>Gross margin</span><span>${pct(r.grossPct)}</span></div>
-        ${r.hourly ? `<div class="sub"><span>Hourly rate used</span><span>${money(r.hourly)}/h</span></div>` : ''}
+        ${r.hourly ? `<div class="sub"><span>Crew rate per hour on site</span><span>${money(r.hourly)}/h</span></div>` : ''}
         <div class="sub"><span>Break-even per crew hour</span><span>${money(r.crewHour)}/h</span></div></div>
       ${S.dept === 'service' && S.kind === 'diag' ? `<div class="warn">Diagnostic is billed by the hour incl. travel, near break-even on purpose. Tell the customer before passing the first hour.</div>` : ''}
       ${big ? `<div class="warn">A part over $1,000 is marked up 30% instead of 50%. Check this price with Calvin.</div>` : ''}

@@ -1,3 +1,4 @@
+// v0.30 2026-11-20: Pricing tool on the RATE RESET (per-person overhead $96.24; Calvin 159.90/172, Jacob 143.30/154, travel 140.71/126.11)
 // v0.29.1 2026-11-20: Pricing shows when the 40% gross floor sets an install price
 // v0.29 2026-11-20: renamed Homestar HQ; Tools tab (#/tools, tools.js) with the Pricing tool; transparent H icon
 // v0.28 2026-11-20: 'Jacob changes' lane on Calvin's own board (column 'changes')
@@ -826,7 +827,7 @@ function SearchPage({ q, setQ, data, me, people }) {
 // v0.22: personal theme + accent (saved per person in board/view by the board's Customize panel; cached for a fast first paint)
 const applyLook = (v) => { const r = document.documentElement; v = v || {}; if (v.theme === 'light' || v.theme === 'dark') r.dataset.theme = v.theme; else delete r.dataset.theme; if (v.accent && v.accent !== 'blue') r.dataset.accent = v.accent; else delete r.dataset.accent; try { localStorage.setItem('hb-look', JSON.stringify({ theme: v.theme || 'auto', accent: v.accent || 'blue' })); } catch (e) {} };
 try { applyLook(JSON.parse(localStorage.getItem('hb-look') || 'null')); } catch (e) {}
-const MODS = { tools: ['./tools.js?v=6', 'mountTools', 'Tools'], maint: ['./maint.js?v=1', 'mountMaint', 'Maintenance'], kpi: ['./kpi.js?v=2', 'mountKpi', 'KPIs'], board: ['./board.js?v=7', 'mountBoard', 'the Board'] };   // v0.21: Board too (board.js, build_boardmod.py)
+const MODS = { tools: ['./tools.js?v=7', 'mountTools', 'Tools'], maint: ['./maint.js?v=1', 'mountMaint', 'Maintenance'], kpi: ['./kpi.js?v=2', 'mountKpi', 'KPIs'], board: ['./board.js?v=7', 'mountBoard', 'the Board'] };   // v0.21: Board too (board.js, build_boardmod.py)
 function ModPage({ me, mod, owner, extra }) {
   const ref = useRef(null);
   useEffect(() => { const [src, fn, label] = MODS[mod]; let off = null, dead = false; import(src).then(m => { if (!dead && ref.current) off = m[fn](ref.current, boardDb(sb, owner || me.id), extra); }).catch(e => { if (ref.current) ref.current.textContent = "Couldn't load " + label + ' (' + e.message + '). Reload the page.'; }); return () => { dead = true; if (off) off(); }; }, []);
