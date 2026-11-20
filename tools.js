@@ -1,4 +1,4 @@
-// Homestar HQ - Tools (v0.29.2 cost labels say incl. PST - PST is a real cost, GST is not; v0.29.1 gross-floor note; v0.29, Calvin 2026-11-20): a list of company tools; first tool = Pricing.
+// Homestar HQ - Tools (v0.29.3 overhead charged per person-hour - Calvin 2026-11-20: HCP hours are per person, so 2 people = 2 field hours; v0.29.2 cost labels say incl. PST - PST is a real cost, GST is not; v0.29.1 gross-floor note; v0.29, Calvin 2026-11-20): a list of company tools; first tool = Pricing.
 // mountTools(host, db, extra) renders into a shadow root on host and returns a cleanup function. extra.tool = '' (list) or 'pricing'.
 // RATES = the company rate model (START HERE s8 + Finance & KPIs README, FYTD Jun-Oct 2026). Change them here AND in those two files the same day.
 export const RATES = {
@@ -26,13 +26,13 @@ export function price(s, R = RATES) {
   const crew = R.crew.filter(c => s.crew.includes(c.id));
   const lab = crew.reduce((a, c) => a + c.rate, 0);
   const oh = R.overheadPerFieldHour;
-  const crewHour = lab + oh;                                       // break-even per crew hour (overhead counted once)
+  const crewHour = lab + oh * crew.length;                         // break-even per crew hour: overhead is per PERSON-hour ($94.91 = overhead / all field hours, Calvin + Jacob)
   const travelPrice = s.travel * crewHour;                         // travel billed at break-even, no markup
   const d = R.dept[s.dept]; const minNet = d.net; const net = Math.max(minNet, s.net || minNet) / 100;
   const out = { lines: [], crewHour, lab, net, minNet };
   if (!crew.length) return { ...out, error: 'Pick who is going.' };
   if (s.dept === 'install') {
-    const labour = s.hours * lab, direct = s.materials + s.subs + labour, ohCost = s.hours * oh;
+    const labour = s.hours * lab, direct = s.materials + s.subs + labour, ohCost = s.hours * oh * crew.length;
     const byNet = (direct + ohCost) / (1 - net), byGross = direct / (1 - d.gross / 100);
     const job = Math.max(byNet, byGross);
     const sub = job + travelPrice; const card = sub * R.cardFeeInstall / (1 - R.cardFeeInstall);
@@ -142,7 +142,7 @@ export function mountTools(host, db, extra) {
       <div class="step"><div class="lbl"><span class="n">${n++}</span>Department</div><div class="seg" data-g="dept">${Object.entries(R.dept).map(([k, v]) => `<button aria-pressed="${d === k}" data-v="${k}">${v.label}</button>`).join('')}</div>
         ${svc ? `<div class="seg" data-g="kind" style="margin-top:8px"><button aria-pressed="${S.kind === 'repair'}" data-v="repair">Repair</button><button aria-pressed="${diag}" data-v="diag">Diagnostic</button></div>` : ''}</div>
       <div class="step"><div class="lbl"><span class="n">${n++}</span>Who's going</div><div class="seg">${R.crew.map(c => `<button class="chk ${S.crew.includes(c.id) ? 'on' : ''}" data-crew="${c.id}">${S.crew.includes(c.id) ? '✓ ' : ''}${c.name}</button>`).join('')}</div></div>
-      <div class="step"><div class="lbl"><span class="n">${n++}</span>Time</div><div class="fields">${field('hours', d === 'install' ? 'Job hours on site' : diag ? 'Hours on site' : 'Repair hours on site', 'e.g. 8')}${field('travel', 'Travel hours (round trip)', 'e.g. 1')}</div></div>
+      <div class="step"><div class="lbl"><span class="n">${n++}</span>Time</div><div class="fields">${field('hours', (d === 'install' ? 'Job hours on site' : diag ? 'Hours on site' : 'Repair hours on site') + ' (clock time)', 'e.g. 8')}${field('travel', 'Travel hours, round trip (clock time)', 'e.g. 1')}</div></div>
       ${svc ? `<div class="step"><div class="lbl"><span class="n">${n++}</span>Parts (your cost incl. PST, before GST)</div><div class="parts">${S.parts.map((p, i) => `<div class="prow"><input inputmode="decimal" data-part="${i}" value="${esc(p)}" placeholder="Part ${i + 1} cost">${S.parts.length > 1 ? `<button class="x" data-del="${i}" aria-label="Remove part">✕</button>` : ''}</div>`).join('')}<button class="add" data-addpart>+ Add another part</button></div>
           <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px"><input type="checkbox" data-warranty style="width:auto" ${S.warranty ? 'checked' : ''}> Warranty parts (no charge to the customer)</label></div>`
         : `<div class="step"><div class="lbl"><span class="n">${n++}</span>Costs (your cost incl. PST, before GST)</div><div class="fields">${field('materials', 'Materials', 'e.g. 6500')}${d === 'install' ? field('subs', 'Subcontractors (real quotes)', 'e.g. 1200') : ''}</div></div>`}
