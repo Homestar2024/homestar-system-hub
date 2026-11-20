@@ -1,4 +1,4 @@
-// Homestar HQ - Tools (v0.30 RATE RESET 2026-11-20 (Calvin confirmed): overhead $96.24 per PERSON-hour on the job (QBO Jun-Oct overhead $78,415 / HCP job hours Calvin 585 + Jacob 230); Calvin $44.47, Jacob $29.87 burdened; install 12% net -> Calvin $159.90 / Jacob $143.30; service 18% -> $172 / $154; travel at break-even $140.71 / $126.11. Earlier v0.29.x crew models are retired.)
+// Homestar HQ - Tools (v0.30.1 installs priced on 12% net only, 40% gross = target shown as a note (Calvin 2026-11-20); v0.30 RATE RESET 2026-11-20 (Calvin confirmed): overhead $96.24 per PERSON-hour on the job (QBO Jun-Oct overhead $78,415 / HCP job hours Calvin 585 + Jacob 230); Calvin $44.47, Jacob $29.87 burdened; install 12% net -> Calvin $159.90 / Jacob $143.30; service 18% -> $172 / $154; travel at break-even $140.71 / $126.11. Earlier v0.29.x crew models are retired.)
 // mountTools(host, db, extra) renders into a shadow root on host and returns a cleanup function. extra.tool = '' (list) or 'pricing'.
 // RATES = the company rate model - the RATE RESET line in START HERE s8 is the source. Change them here AND there the same day; recompute at each month-end close.
 export const RATES = {
@@ -40,7 +40,7 @@ export function price(s, R = RATES) {
   if (s.dept === 'install') {
     const labour = s.hours * crewLab, direct = s.materials + s.subs + labour, ohCost = s.hours * oh * crew.length;
     const byNet = (direct + ohCost) / (1 - net), byGross = direct / (1 - d.gross / 100);
-    const job = Math.max(byNet, byGross);
+    const job = byNet;                                                   // priced on 12% net (Calvin 2026-11-20); 40% gross is a target, shown below
     const sub = job + travelPrice; const card = sub * R.cardFeeInstall / (1 - R.cardFeeInstall);
     out.lines = [[`Job (materials, subs, ${names} labour + overhead, margin)`, job], ['Travel at break-even', travelPrice], ['Card fee 3%', card]];
     Object.assign(out, { pre: sub + card, fee: card, direct: direct + s.travel * crewLab, cost: direct + ohCost + travelPrice, floor: byGross > byNet ? 'gross' : 'net' });
@@ -149,7 +149,7 @@ export function mountTools(host, db, extra) {
       ${svc ? `<div class="step"><div class="lbl"><span class="n">${n++}</span>Parts (your cost before tax)</div><div class="parts">${S.parts.map((p, i) => `<div class="prow"><input inputmode="decimal" data-part="${i}" value="${esc(p)}" placeholder="Part ${i + 1} cost">${S.parts.length > 1 ? `<button class="x" data-del="${i}" aria-label="Remove part">✕</button>` : ''}</div>`).join('')}<button class="add" data-addpart>+ Add another part</button></div>
           <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px"><input type="checkbox" data-warranty style="width:auto" ${S.warranty ? 'checked' : ''}> Warranty parts (no charge to the customer)</label>${pstBox}</div>`
         : `<div class="step"><div class="lbl"><span class="n">${n++}</span>Costs (your cost before tax)</div><div class="fields">${field('materials', 'Materials', 'e.g. 6500')}${d === 'install' ? field('subs', 'Subcontractors (real quotes)', 'e.g. 1200') : ''}</div>${pstBox}</div>`}
-      ${d !== 'maint' && !diag ? `<div class="step"><div class="lbl"><span class="n">${n++}</span>Net margin</div><div class="mrow"><button class="step-btn" data-net="-1" aria-label="Lower margin">−</button><input type="range" min="${R.dept[d].net}" max="50" step="1" value="${S.net}" data-netr><button class="step-btn" data-net="1" aria-label="Raise margin">+</button><span class="mv" id="mv">${S.net}%</span></div><div class="muted" style="font-size:13px;margin-top:4px">Minimum ${R.dept[d].net}% net${d === 'install' ? ` and ${R.dept[d].gross}% gross` : ''}.</div></div>` : ''}`;
+      ${d !== 'maint' && !diag ? `<div class="step"><div class="lbl"><span class="n">${n++}</span>Net margin</div><div class="mrow"><button class="step-btn" data-net="-1" aria-label="Lower margin">−</button><input type="range" min="${R.dept[d].net}" max="50" step="1" value="${S.net}" data-netr><button class="step-btn" data-net="1" aria-label="Raise margin">+</button><span class="mv" id="mv">${S.net}%</span></div><div class="muted" style="font-size:13px;margin-top:4px">Minimum ${R.dept[d].net}% net${d === 'install' ? ` (aim for ${R.dept[d].gross}% gross)` : ''}.</div></div>` : ''}`;
   }
   function drawOut() {
     const k = S.pst ? 1 + R.pst : 1; const s = { dept: S.dept, kind: S.kind, crew: S.crew, hours: num(S.hours), travel: num(S.travel), materials: num(S.materials) * k, subs: num(S.subs), parts: S.parts.map(num).filter(Boolean).map(x => x * k), warranty: S.warranty, net: S.net };
@@ -177,7 +177,7 @@ export function mountTools(host, db, extra) {
         <div class="sub"><span>Break-even per crew hour</span><span>${money(r.crewHour)}/h</span></div></div>
       ${S.dept === 'service' && S.kind === 'diag' ? `<div class="warn">Diagnostic is billed by the hour incl. travel, near break-even on purpose. Tell the customer before passing the first hour.</div>` : ''}
       ${big ? `<div class="warn">A part over $1,000 is marked up 30% instead of 50%. Check this price with Calvin.</div>` : ''}
-      ${S.dept === 'install' && r.floor === 'gross' ? `<div class="warn">The 40% gross minimum sets this price (net is already ${pct(r.netPct)}). Raising the net margin only changes the price once it passes that.</div>` : ''}
+      ${S.dept === 'install' && r.grossPct < 0.4 ? `<div class="warn">Gross margin is ${pct(r.grossPct)}, under the 40% target. Installs are priced on 12% net; raise the margin if the job allows.</div>` : ''}
       ${S.dept === 'install' ? `<div class="warn" style="background:var(--sunk);border-color:var(--line)">Custom or multi-system installs: also run the Project Estimating Sheet. Subcontractor costs must be real quotes, never guesses.</div>` : ''}
       <div class="acts"><button class="btn pri" data-copy>Copy summary</button><button class="btn" data-reset>Start over</button></div><div class="muted" id="copied" style="font-size:13px;margin-top:6px"></div>`;
   }
