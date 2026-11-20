@@ -1,4 +1,4 @@
-// Homestar HQ - Tools (v0.29, Calvin 2026-11-20): a list of company tools; first tool = Pricing.
+// Homestar HQ - Tools (v0.29.1 gross-floor note; v0.29, Calvin 2026-11-20): a list of company tools; first tool = Pricing.
 // mountTools(host, db, extra) renders into a shadow root on host and returns a cleanup function. extra.tool = '' (list) or 'pricing'.
 // RATES = the company rate model (START HERE s8 + Finance & KPIs README, FYTD Jun-Oct 2026). Change them here AND in those two files the same day.
 export const RATES = {
@@ -174,6 +174,7 @@ export function mountTools(host, db, extra) {
         <div class="sub"><span>Break-even per crew hour</span><span>${money(r.crewHour)}/h</span></div></div>
       ${S.dept === 'service' && S.kind === 'diag' ? `<div class="warn">Diagnostic is billed by the hour incl. travel, near break-even on purpose. Tell the customer before passing the first hour.</div>` : ''}
       ${big ? `<div class="warn">A part over $1,000 is marked up 30% instead of 50%. Check this price with Calvin.</div>` : ''}
+      ${S.dept === 'install' && r.floor === 'gross' ? `<div class="warn">The 40% gross minimum sets this price (net is already ${pct(r.netPct)}). Raising the net margin only changes the price once it passes that.</div>` : ''}
       ${S.dept === 'install' ? `<div class="warn" style="background:var(--sunk);border-color:var(--line)">Custom or multi-system installs: also run the Project Estimating Sheet. Subcontractor costs must be real quotes, never guesses.</div>` : ''}
       <div class="acts"><button class="btn pri" data-copy>Copy summary</button><button class="btn" data-reset>Start over</button></div><div class="muted" id="copied" style="font-size:13px;margin-top:6px"></div>`;
   }
