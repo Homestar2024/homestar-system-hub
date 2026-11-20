@@ -1,3 +1,4 @@
+// v0.31 2026-11-20: Timesheets tool (#/tools/timesheets, timesheets.js; db/021 time_entries, pay_periods, timesheets, bank_ledger, ts_send)
 // v0.30 2026-11-20: Pricing tool on the RATE RESET (per-person overhead $96.24; Calvin 159.90/172, Jacob 143.30/154, travel 140.71/126.11)
 // v0.29.1 2026-11-20: Pricing shows when the 40% gross floor sets an install price
 // v0.29 2026-11-20: renamed Homestar HQ; Tools tab (#/tools, tools.js) with the Pricing tool; transparent H icon
@@ -878,7 +879,7 @@ function App() {
     const giveTo = as === me.id ? people.filter(p => p.id !== me.id && p.active !== false && !(p.invited_at && !p.registered_at)) : [];   // v0.27: anyone can give a card (with a note) to any active teammate - Calvin <-> Jacob
     return html`<div>${header}<div class="maint-page"><${ModPage} key=${route} me=${me} mod="board" owner=${as} extra=${{ sb, me, owner: as, team, giveTo, focus: qp.get('card') || '', changesLane: !!(me.sees_all_boards && as === me.id), onCount: setBoardN, onTheme: applyLook }}/></div>${tabs}</div>`;
   }
-  if (parts[0] === 'tools') return html`<div>${header}<div class="maint-page"><${ModPage} key=${route} me=${me} mod="tools" extra=${{ tool: parts[1] || '' }}/></div>${tabs}</div>`;
+  if (parts[0] === 'tools') return html`<div>${header}<div class="maint-page"><${ModPage} key=${route} me=${me} mod="tools" extra=${{ tool: parts[1] || '', sb, me, people }}/></div>${tabs}</div>`;
   if (parts[0] === 'maint') return html`<div>${header}<div class="maint-page"><${ModPage} key=${route} me=${me} mod="maint"/></div>${tabs}</div>`;
   if (parts[0] === 'kpi') return html`<div>${header}<div class="maint-page">${kpiOK ? html`<${ModPage} key=${route} me=${me} mod="kpi"/>` : html`<div class="card"><h3>KPIs</h3><p class="muted">KPIs are open to the owner and Office &amp; Admin.</p></div>`}</div>${tabs}</div>`;
   if (parts[0] === 'run') return html`<div>${header}<${Runner} key=${parts[1] + '/' + parts[2]} trackId=${parts[1]} n=${parts[2]} data=${data} me=${me} people=${people} reload=${reload}/>${tabs}</div>`;
