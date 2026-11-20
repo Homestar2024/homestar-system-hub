@@ -1,4 +1,4 @@
-// Homestar HQ - Tools (v0.30.1 installs priced on 12% net only, 40% gross = target shown as a note (Calvin 2026-11-20); v0.30 RATE RESET 2026-11-20 (Calvin confirmed): overhead $96.24 per PERSON-hour on the job (QBO Jun-Oct overhead $78,415 / HCP job hours Calvin 585 + Jacob 230); Calvin $44.47, Jacob $29.87 burdened; install 12% net -> Calvin $159.90 / Jacob $143.30; service 18% -> $172 / $154; travel at break-even $140.71 / $126.11. Earlier v0.29.x crew models are retired.)
+// Homestar HQ - Tools (v0.30.2 departments = Installation + Service only; diagnostic bills one person, no parts/PST (Calvin 2026-11-20); v0.30.1 installs priced on 12% net only, 40% gross = target shown as a note (Calvin 2026-11-20); v0.30 RATE RESET 2026-11-20 (Calvin confirmed): overhead $96.24 per PERSON-hour on the job (QBO Jun-Oct overhead $78,415 / HCP job hours Calvin 585 + Jacob 230); Calvin $44.47, Jacob $29.87 burdened; install 12% net -> Calvin $159.90 / Jacob $143.30; service 18% -> $172 / $154; travel at break-even $140.71 / $126.11. Earlier v0.29.x crew models are retired.)
 // mountTools(host, db, extra) renders into a shadow root on host and returns a cleanup function. extra.tool = '' (list) or 'pricing'.
 // RATES = the company rate model - the RATE RESET line in START HERE s8 is the source. Change them here AND there the same day; recompute at each month-end close.
 export const RATES = {
@@ -44,12 +44,10 @@ export function price(s, R = RATES) {
     const sub = job + travelPrice; const card = sub * R.cardFeeInstall / (1 - R.cardFeeInstall);
     out.lines = [[`Job (materials, subs, ${names} labour + overhead, margin)`, job], ['Travel at break-even', travelPrice], ['Card fee 3%', card]];
     Object.assign(out, { pre: sub + card, fee: card, direct: direct + s.travel * crewLab, cost: direct + ohCost + travelPrice, floor: byGross > byNet ? 'gross' : 'net' });
-  } else if (s.dept === 'service' && s.kind === 'diag') {
-    const all = s.hours + s.travel;
-    const rows = crew.map(c => [`Diagnostic ${c.name} ${all} h × ${money(R.diag[c.id])}/h (incl. travel)`, all * R.diag[c.id]]);
-    const partsCost = s.warranty ? 0 : s.parts.reduce((a, c) => a + c, 0), parts = s.warranty ? 0 : parts$(R, s.parts);
-    out.lines = [...rows, ...(partsCost ? [['Parts (marked up)', parts]] : [])];
-    Object.assign(out, { pre: rows.reduce((a, r) => a + r[1], 0) + parts, direct: all * crewLab + partsCost, cost: all * crewBE + partsCost, hourly: crew.reduce((a, c) => a + R.diag[c.id], 0) });
+  } else if (s.dept === 'service' && s.kind === 'diag') {   // diagnostic bills ONE person, no parts (Calvin 2026-11-20)
+    const all = s.hours + s.travel, hr = R.diag.calvin;
+    out.lines = [[`Diagnostic ${all} h × ${money(hr)}/h (one person, incl. travel)`, all * hr]];
+    Object.assign(out, { pre: all * hr, direct: all * crewLab, cost: all * crewBE, hourly: hr });
   } else if (s.dept === 'service') {
     const rates = crew.map(c => ({ c, hr: Math.round(be(c) / (1 - net)) }));      // 18% -> Calvin $172, Jacob $154
     const rows = rates.map(({ c, hr }) => [`Labour ${c.name} ${s.hours} h × ${money(hr)}/h`, s.hours * hr]);
@@ -142,11 +140,11 @@ export function mountTools(host, db, extra) {
     let n = 1;
     const pstBox = `<label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px"><input type="checkbox" data-pst style="width:auto" ${S.pst ? 'checked' : ''}> Add 7% PST to ${svc ? 'parts' : 'materials'} (not subs)</label>`;
     inEl.innerHTML = `
-      <div class="step"><div class="lbl"><span class="n">${n++}</span>Department</div><div class="seg" data-g="dept">${Object.entries(R.dept).map(([k, v]) => `<button aria-pressed="${d === k}" data-v="${k}">${v.label}</button>`).join('')}</div>
+      <div class="step"><div class="lbl"><span class="n">${n++}</span>Department</div><div class="seg" data-g="dept">${Object.entries(R.dept).filter(([k]) => k !== 'maint').map(([k, v]) => `<button aria-pressed="${d === k}" data-v="${k}">${v.label}</button>`).join('')}</div>
         ${svc ? `<div class="seg" data-g="kind" style="margin-top:8px"><button aria-pressed="${S.kind === 'repair'}" data-v="repair">Repair</button><button aria-pressed="${diag}" data-v="diag">Diagnostic</button></div>` : ''}</div>
-      <div class="step"><div class="lbl"><span class="n">${n++}</span>Who's going</div><div class="seg">${R.crew.map(c => `<button class="chk ${S.crew.includes(c.id) ? 'on' : ''}" data-crew="${c.id}">${S.crew.includes(c.id) ? '✓ ' : ''}${c.name}</button>`).join('')}</div></div>
+      <div class="step"><div class="lbl"><span class="n">${n++}</span>Who's going</div><div class="seg">${R.crew.map(c => `<button class="chk ${S.crew.includes(c.id) ? 'on' : ''}" data-crew="${c.id}">${S.crew.includes(c.id) ? '✓ ' : ''}${c.name}</button>`).join('')}</div>${diag ? `<div class="muted" style="font-size:13px;margin-top:6px">Diagnostics bill one person at $${R.diag.calvin}/h, no matter who goes.</div>` : ''}</div>
       <div class="step"><div class="lbl"><span class="n">${n++}</span>Time</div><div class="fields">${field('hours', (d === 'install' ? 'Job hours on site' : diag ? 'Hours on site' : 'Repair hours on site') + ' (clock time)', 'e.g. 8')}${field('travel', 'Travel hours, round trip (clock time)', 'e.g. 1')}</div></div>
-      ${svc ? `<div class="step"><div class="lbl"><span class="n">${n++}</span>Parts (your cost before tax)</div><div class="parts">${S.parts.map((p, i) => `<div class="prow"><input inputmode="decimal" data-part="${i}" value="${esc(p)}" placeholder="Part ${i + 1} cost">${S.parts.length > 1 ? `<button class="x" data-del="${i}" aria-label="Remove part">✕</button>` : ''}</div>`).join('')}<button class="add" data-addpart>+ Add another part</button></div>
+      ${diag ? '' : svc ? `<div class="step"><div class="lbl"><span class="n">${n++}</span>Parts (your cost before tax)</div><div class="parts">${S.parts.map((p, i) => `<div class="prow"><input inputmode="decimal" data-part="${i}" value="${esc(p)}" placeholder="Part ${i + 1} cost">${S.parts.length > 1 ? `<button class="x" data-del="${i}" aria-label="Remove part">✕</button>` : ''}</div>`).join('')}<button class="add" data-addpart>+ Add another part</button></div>
           <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px"><input type="checkbox" data-warranty style="width:auto" ${S.warranty ? 'checked' : ''}> Warranty parts (no charge to the customer)</label>${pstBox}</div>`
         : `<div class="step"><div class="lbl"><span class="n">${n++}</span>Costs (your cost before tax)</div><div class="fields">${field('materials', 'Materials', 'e.g. 6500')}${d === 'install' ? field('subs', 'Subcontractors (real quotes)', 'e.g. 1200') : ''}</div>${pstBox}</div>`}
       ${d !== 'maint' && !diag ? `<div class="step"><div class="lbl"><span class="n">${n++}</span>Net margin</div><div class="mrow"><button class="step-btn" data-net="-1" aria-label="Lower margin">−</button><input type="range" min="${R.dept[d].net}" max="50" step="1" value="${S.net}" data-netr><button class="step-btn" data-net="1" aria-label="Raise margin">+</button><span class="mv" id="mv">${S.net}%</span></div><div class="muted" style="font-size:13px;margin-top:4px">Minimum ${R.dept[d].net}% net${d === 'install' ? ` (aim for ${R.dept[d].gross}% gross)` : ''}.</div></div>` : ''}`;
