@@ -1,4 +1,4 @@
-// Homestar HQ - Tools (v0.30.4 diagnostic = FLAT $159 for the first hour on site, travel included, extra hours $159/h only with the customer's OK (Calvin 2026-11-21; replaces v0.30.3 travel-at-break-even, which a later deploy had overwritten); v0.30.2 departments = Installation + Service only; diagnostic bills one person, no parts/PST (Calvin 2026-11-20); v0.30.1 installs priced on 12% net only, 40% gross = target shown as a note (Calvin 2026-11-20); v0.30 RATE RESET 2026-11-20 (Calvin confirmed): overhead $96.24 per PERSON-hour on the job (QBO Jun-Oct overhead $78,415 / HCP job hours Calvin 585 + Jacob 230); Calvin $44.47, Jacob $29.87 burdened; install 12% net -> Calvin $159.90 / Jacob $143.30; service 18% -> $172 / $154; travel at break-even $140.71 / $126.11. Earlier v0.29.x crew models are retired.)
+// Homestar HQ - Tools (v0.30.5 diagnostic = FLAT $159, period: no hours, no travel, no extra time (Calvin 2026-11-21, matches HCP 'Diagnostic Visit - Flat Rate'); v0.30.4 diagnostic = FLAT $159 for the first hour on site, travel included, extra hours $159/h only with the customer's OK (Calvin 2026-11-21; replaces v0.30.3 travel-at-break-even, which a later deploy had overwritten); v0.30.2 departments = Installation + Service only; diagnostic bills one person, no parts/PST (Calvin 2026-11-20); v0.30.1 installs priced on 12% net only, 40% gross = target shown as a note (Calvin 2026-11-20); v0.30 RATE RESET 2026-11-20 (Calvin confirmed): overhead $96.24 per PERSON-hour on the job (QBO Jun-Oct overhead $78,415 / HCP job hours Calvin 585 + Jacob 230); Calvin $44.47, Jacob $29.87 burdened; install 12% net -> Calvin $159.90 / Jacob $143.30; service 18% -> $172 / $154; travel at break-even $140.71 / $126.11. Earlier v0.29.x crew models are retired.)
 // mountTools(host, db, extra) renders into a shadow root on host and returns a cleanup function. extra.tool = '' (list) or 'pricing'.
 // RATES = the company rate model - the RATE RESET line in START HERE s8 is the source. Change them here AND there the same day; recompute at each month-end close.
 export const RATES = {
@@ -10,7 +10,7 @@ export const RATES = {
     service: { label: 'Service', net: 18, gross: 55 },
     maint: { label: 'Maintenance', net: 25, gross: 65 }
   },
-  diag: { calvin: 159, jacob: 143 },            // diagnostic FLAT fee for the first hour on site, travel included (Calvin 2026-11-21); extra hours at this $/h
+  diag: { calvin: 159, jacob: 143 },            // diagnostic FLAT fee, travel included, no added hours (Calvin 2026-11-21)
   partsMarkupSmall: 1.5, partsMarkupLarge: 1.3, partsMarkupBreak: 1000,
   cardFeeInstall: 0.03,                         // always added on installs (Calvin 2026-11-20)
   gst: 0.05,
@@ -44,11 +44,10 @@ export function price(s, R = RATES) {
     const sub = job + travelPrice; const card = sub * R.cardFeeInstall / (1 - R.cardFeeInstall);
     out.lines = [[`Job (materials, subs, ${names} labour + overhead, margin)`, job], ['Travel at break-even', travelPrice], ['Card fee 3%', card]];
     Object.assign(out, { pre: sub + card, fee: card, direct: direct + s.travel * crewLab, cost: direct + ohCost + travelPrice, floor: byGross > byNet ? 'gross' : 'net' });
-  } else if (s.dept === 'service' && s.kind === 'diag') {   // FLAT diagnostic (Calvin 2026-11-21): $159 covers the first hour on site, travel included, one person, no parts; extra hours $159/h only after the customer OKs it
-    const hr = R.diag.calvin, onsite = s.hours || 1, extra = Math.max(0, onsite - 1), be1 = R.crew[0].rate + oh;   // our cost at Calvin's break-even $140.71/h
-    out.lines = [['Diagnostic flat fee (first hour on site, travel included)', hr]];
-    if (extra > 0) out.lines.push([`Extra diagnostic time ${extra} h × ${money(hr)}/h (customer OK'd)`, extra * hr]);
-    Object.assign(out, { pre: hr + extra * hr, direct: (onsite + s.travel) * R.crew[0].rate, cost: (onsite + s.travel) * be1, hourly: hr });
+  } else if (s.dept === 'service' && s.kind === 'diag') {   // FLAT diagnostic (Calvin 2026-11-21): $159 flat, travel included, no added hours, one person, no parts
+    const hr = R.diag.calvin;
+    out.lines = [['Diagnostic - flat rate (travel included)', hr]];
+    Object.assign(out, { pre: hr, flat: true });
   } else if (s.dept === 'service') {
     const rates = crew.map(c => ({ c, hr: Math.round(be(c) / (1 - net)) }));      // 18% -> Calvin $172, Jacob $154
     const rows = rates.map(({ c, hr }) => [`Labour ${c.name} ${s.hours} h × ${money(hr)}/h`, s.hours * hr]);
@@ -150,8 +149,8 @@ export function mountTools(host, db, extra) {
     inEl.innerHTML = `
       <div class="step"><div class="lbl"><span class="n">${n++}</span>Department</div><div class="seg" data-g="dept">${Object.entries(R.dept).filter(([k]) => k !== 'maint').map(([k, v]) => `<button aria-pressed="${d === k}" data-v="${k}">${v.label}</button>`).join('')}</div>
         ${svc ? `<div class="seg" data-g="kind" style="margin-top:8px"><button aria-pressed="${S.kind === 'repair'}" data-v="repair">Repair</button><button aria-pressed="${diag}" data-v="diag">Diagnostic</button></div>` : ''}</div>
-      <div class="step"><div class="lbl"><span class="n">${n++}</span>Who's going</div><div class="seg">${R.crew.map(c => `<button class="chk ${S.crew.includes(c.id) ? 'on' : ''}" data-crew="${c.id}">${S.crew.includes(c.id) ? '✓ ' : ''}${c.name}</button>`).join('')}</div>${diag ? `<div class="muted" style="font-size:13px;margin-top:6px">Diagnostic is a flat $${R.diag.calvin}: first hour on site, travel included, one person, no matter who goes.</div>` : ''}</div>
-      <div class="step"><div class="lbl"><span class="n">${n++}</span>Time</div><div class="fields">${field('hours', (d === 'install' ? 'Job hours on site' : diag ? 'Hours on site (flat fee covers the first hour)' : 'Repair hours on site') + ' (clock time)', diag ? '1' : 'e.g. 8')}${field('travel', 'Travel hours, round trip (clock time)', 'e.g. 1')}</div></div>
+      <div class="step"><div class="lbl"><span class="n">${n++}</span>Who's going</div><div class="seg">${R.crew.map(c => `<button class="chk ${S.crew.includes(c.id) ? 'on' : ''}" data-crew="${c.id}">${S.crew.includes(c.id) ? '✓ ' : ''}${c.name}</button>`).join('')}</div>${diag ? `<div class="muted" style="font-size:13px;margin-top:6px">Diagnostic is a flat $${R.diag.calvin}, travel included, no matter who goes.</div>` : ''}</div>
+      ${diag ? '' : `<div class="step"><div class="lbl"><span class="n">${n++}</span>Time</div><div class="fields">${field('hours', (d === 'install' ? 'Job hours on site' : 'Repair hours on site') + ' (clock time)', 'e.g. 8')}${field('travel', 'Travel hours, round trip (clock time)', 'e.g. 1')}</div></div>`}
       ${diag ? '' : svc ? `<div class="step"><div class="lbl"><span class="n">${n++}</span>Parts (your cost before tax)</div><div class="parts">${S.parts.map((p, i) => `<div class="prow"><input inputmode="decimal" data-part="${i}" value="${esc(p)}" placeholder="Part ${i + 1} cost">${S.parts.length > 1 ? `<button class="x" data-del="${i}" aria-label="Remove part">✕</button>` : ''}</div>`).join('')}<button class="add" data-addpart>+ Add another part</button></div>
           <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px"><input type="checkbox" data-warranty style="width:auto" ${S.warranty ? 'checked' : ''}> Warranty parts (no charge to the customer)</label>${pstBox}</div>`
         : `<div class="step"><div class="lbl"><span class="n">${n++}</span>Costs (your cost before tax)</div><div class="fields">${field('materials', 'Materials', 'e.g. 6500')}${d === 'install' ? field('subs', 'Subcontractors (real quotes)', 'e.g. 1200') : ''}</div>${pstBox}</div>`}
@@ -163,6 +162,13 @@ export function mountTools(host, db, extra) {
     if (r.error) { outEl.innerHTML = `<h3>Price</h3><div class="muted">${r.error}</div>`; return; }
     if (!s.hours && !s.travel && !(S.dept === 'service' && S.kind === 'diag')) { outEl.innerHTML = `<h3>Price</h3><div class="muted">Enter the hours to see the price.</div>`; return; }
     const rows = r.lines.map(([l, v]) => `<div class="sub c"><span>${esc(l)}</span><span>${money(v)}</span></div>`).join('');
+    if (r.flat) {
+      outEl.innerHTML = `<h3>Price before GST <span class="tag">flat rate</span></h3><div class="big" id="pre">${money(r.pre)}</div>${rows}
+      <div class="sub c"><span>GST 5%</span><span>${money(r.gst)}</span></div><div class="sub c tot"><span>Total with GST</span><span>${money(r.total)}</span></div>
+      <div class="warn">Diagnostic is a flat $${R.diag.calvin}: travel included, no added hours. Repairs are quoted separately.</div>
+      <div class="acts"><button class="btn pri" data-copy>Copy summary</button><button class="btn" data-reset>Start over</button></div><div class="muted" id="copied" style="font-size:13px;margin-top:6px"></div>`;
+      return;
+    }
     if (r.loss) {
       outEl.innerHTML = `<h3>Maintenance</h3><div class="muted">Maintenance is our loss leader: charge the price book price.</div><div class="big">${money(r.cost)}</div><div class="muted">is what this visit costs us (labour + overhead + materials).</div><div style="margin-top:10px">${rows}</div>`;
       return;
@@ -181,7 +187,6 @@ export function mountTools(host, db, extra) {
         <div class="sub"><span>Gross margin</span><span>${pct(r.grossPct)}</span></div>
         ${r.hourly ? `<div class="sub"><span>Crew rate per hour on site</span><span>${money(r.hourly)}/h</span></div>` : ''}
         <div class="sub"><span>Break-even per crew hour</span><span>${money(r.crewHour)}/h</span></div></div>
-      ${S.dept === 'service' && S.kind === 'diag' ? `<div class="warn">Diagnostic: flat $159 for the first hour, travel included. Past an hour, get the customer's OK first, then $159/h. Repairs are quoted separately.</div>` : ''}
       ${big ? `<div class="warn">A part over $1,000 is marked up 30% instead of 50%. Check this price with Calvin.</div>` : ''}
       ${S.dept === 'install' && r.grossPct < 0.4 ? `<div class="warn">Gross margin is ${pct(r.grossPct)}, under the 40% target. Installs are priced on 12% net; raise the margin if the job allows.</div>` : ''}
       ${S.dept === 'install' ? `<div class="warn" style="background:var(--sunk);border-color:var(--line)">Custom or multi-system installs: also run the Project Estimating Sheet. Subcontractor costs must be real quotes, never guesses.</div>` : ''}
