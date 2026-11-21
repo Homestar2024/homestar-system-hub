@@ -1,4 +1,4 @@
-// Homestar HQ - HVAC Monitoring (v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
+// Homestar HQ - HVAC Monitoring (v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
 // graph of every sensor over time (temps on the left axis, watts on the right), 24 h / 7 d / 30 d / 1 y, legend with colour,
 // show/hide checkbox and editable names. Data: monitor_sites / monitor_sensors / monitor_series() (db/025). Until a house has
 // readings the dashboard shows clearly-labelled SAMPLE data so the layout can be judged.
@@ -32,7 +32,10 @@ svg{display:block;width:100%;height:auto;user-select:none}
 .tip{position:absolute;top:6px;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12.5px;box-shadow:0 6px 20px rgba(0,0,0,.18);min-width:150px;max-width:230px}
 .tip .r{display:flex;justify-content:space-between;gap:10px}.tip i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
 .legend{display:flex;flex-direction:column;gap:6px;margin-top:12px}
-.lg{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.lg{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;transition:box-shadow .15s,transform .15s}
+.lg .hd{color:var(--muted);font-size:18px;cursor:grab;flex:none;line-height:1}
+.lg.drag{position:relative;z-index:5;transform:scale(1.02);box-shadow:0 10px 28px rgba(0,0,0,.28);border-color:var(--brand);cursor:grabbing}
+.hint{font-size:12.5px;color:var(--muted);margin-top:8px}
 .lg input[type=checkbox]{width:22px;height:22px;flex:none;accent-color:var(--brand)}
 .sw{width:22px;height:6px;border-radius:3px;flex:none}
 .lg .nm{flex:1;min-width:0}.lg .nm b{display:block;font-weight:600;overflow-wrap:anywhere}.lg .nm span{font-size:12px;color:var(--muted)}
@@ -150,8 +153,42 @@ export function mountHvacMon(root, { sb }) {
   }
   function drawLegend() {
     const el = root.getElementById('lg');
-    el.innerHTML = S.sensors.map(s => `<div class="lg"><input type="checkbox" data-show="${s.id}" ${S.hidden.has(s.id) ? '' : 'checked'} aria-label="Show ${esc(s.label)}"><span class="sw" style="background:${esc(s.color)}"></span><span class="nm"><b>${esc(s.label)}</b><span>${esc(KIND[s.kind] || s.kind)}${s.model ? ' · ' + esc(s.model) : ''}</span></span><button class="ed" data-editsensor="${s.id}">✎ Edit</button></div>`).join('');
+    el.innerHTML = S.sensors.map(s => `<div class="lg" data-row="${s.id}"><span class="hd" aria-hidden="true">⠿</span><input type="checkbox" data-show="${s.id}" ${S.hidden.has(s.id) ? '' : 'checked'} aria-label="Show ${esc(s.label)}"><span class="sw" style="background:${esc(s.color)}"></span><span class="nm"><b>${esc(s.label)}</b><span>${esc(KIND[s.kind] || s.kind)}${s.model ? ' · ' + esc(s.model) : ''}</span></span><button class="ed" data-editsensor="${s.id}">✎ Edit</button></div>`).join('') + '<div class="hint">Press and hold a sensor, then drag to change the order.</div>';
+    bindDrag(el);
   }
+  // press-and-hold to reorder (touch + mouse); order saved to monitor_sensors.sort for everyone
+  function bindDrag(el) {
+    if (el._dragBound) return; el._dragBound = true;
+    let timer = null, drag = null, sx = 0, sy = 0;
+    const cancelHold = () => { clearTimeout(timer); timer = null; };
+    el.addEventListener('pointerdown', (e) => {
+      const row = e.target.closest('.lg'); if (!row || e.target.closest('input,button')) return;
+      sx = e.clientX; sy = e.clientY; cancelHold();
+      timer = setTimeout(() => { timer = null; drag = row; row.classList.add('drag'); try { row.setPointerCapture(e.pointerId); } catch (x) {} if (navigator.vibrate) navigator.vibrate(15); }, e.pointerType === 'mouse' ? 180 : 400);
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!drag) { if (timer && (Math.abs(e.clientX - sx) > 8 || Math.abs(e.clientY - sy) > 8)) cancelHold(); return; }
+      e.preventDefault();
+      const rows = [...el.querySelectorAll('.lg')].filter(r => r !== drag); let before = null;
+      for (const r of rows) { const b = r.getBoundingClientRect(); if (e.clientY < b.top + b.height / 2) { before = r; break; } }
+      if (before) { if (drag.nextSibling !== before) el.insertBefore(drag, before); } else { const lastRow = rows[rows.length - 1]; if (lastRow && lastRow.nextSibling !== drag) lastRow.after(drag); }
+    });
+    const end = () => { cancelHold(); if (drag) finish(); };
+    el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+    el.addEventListener('touchmove', (e) => { if (drag) e.preventDefault(); }, { passive: false });
+    el.addEventListener('contextmenu', (e) => { if (drag || timer) e.preventDefault(); });
+    async function finish() {
+      drag.classList.remove('drag'); drag = null;
+      const ids = [...el.querySelectorAll('.lg')].map(r => r.dataset.row);
+      if (!ids.some((id, i) => (S.sensors[i] || {}).id !== id)) return;
+      S.sensors.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id)); S.sensors.forEach((s, i) => { s.sort = i + 1; });
+      drawTiles(); drawChart();
+      const res = await Promise.all(S.sensors.map(s => sb.from('monitor_sensors').update({ sort: s.sort }).eq('id', s.id)));
+      const bad = res.find(r => r.error); if (bad) alertMsg("Couldn't save the new order: " + bad.error.message);
+    }
+  }
+  function alertMsg(t) { const h = el2('hint'); if (h) h.textContent = t; }
+  const el2 = (c) => root.querySelector('#lg .' + c);
   function niceStep(span, n) { const raw = span / n; const p = Math.pow(10, Math.floor(Math.log10(raw))); const f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
   function drawChart() {
     const box = root.getElementById('cb'); if (!box) return;
