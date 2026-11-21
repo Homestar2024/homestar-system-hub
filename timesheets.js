@@ -98,6 +98,12 @@ tr.day td .dh{float:right}
 .stepper button{width:48px;height:48px;font-size:22px;flex:none}
 .err{color:var(--hot);font-weight:600;margin-top:6px}
 br.mob,span.mob{display:none}
+.hl{display:flex;flex-direction:column;gap:8px}
+.hrow{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg);display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.ht{display:flex;flex-direction:column;min-width:0}.ht b{font-family:var(--display);font-size:17px}
+.ha{display:flex;flex-wrap:wrap;gap:6px}
+.chipb{font:inherit;font-size:13px;font-weight:700;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:5px 11px;white-space:nowrap;cursor:pointer}
+.chipb.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}.chipb.bad{color:var(--hot);border-color:color-mix(in srgb,var(--hot) 45%,var(--line))}
 .ed{font:inherit;border:1px solid var(--line);background:var(--bg);color:var(--brand);border-radius:8px;padding:2px 8px;margin-top:4px;cursor:pointer}
 .pill.ed-p{background:#fff1c2;color:#7a5200}
 button.tile{font:inherit;color:inherit;border:0;text-align:left;cursor:pointer}
@@ -393,10 +399,13 @@ export function mountTimesheets(root, { sb, me, people }) {
     const { data, error } = await q; if (dead) return;
     if (error) { body.innerHTML = `<div class="card err">${esc(error.message)}</div>`; return; }
     const list = data || []; S.histList = list;
-    body.innerHTML = `<div class="card"><h3>Past timesheets</h3>${list.length ? `<div class="scroll"><table><thead><tr>${all ? '<th>Who</th>' : ''}<th>Pay period</th><th class="n">Hours</th><th class="n">Banked</th><th class="n">Used</th><th>Status</th><th>Check</th><th></th></tr></thead><tbody>${list.map(t => {
+    const chip = (t) => t.verify_status === 'ok' ? `<button class="chipb ok" data-vn="${t.id}">✔ Verified</button>` : t.verify_status === 'issues' ? `<button class="chipb bad" data-vn="${t.id}">⚠ ${(t.verify_notes || []).filter(n => n.level === 'issue').length} to look at</button>` : t.status === 'filed' ? '<span class="chipb">Checking…</span>' : '';
+    body.innerHTML = `<div class="card"><h3>Past timesheets</h3>${list.length ? `<div class="hl">${list.map(t => {
       const p = S.periods.find(x => x.start_date === t.period_start) || { start_date: t.period_start, end_date: addDays(t.period_start, 13) };
-      return `<tr>${all ? `<td>${esc(personName(t.person_id))}</td>` : ''}<td>${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</td><td class="n">${f1((t.totals || {}).total || 0)}</td><td class="n">${Number(t.banked) ? f1(t.banked) : '—'}</td><td class="n">${Number(t.drawn) ? f1(t.drawn) : '—'}</td><td>${t.status === 'filed' ? '✅ Filed' : t.status === 'queued' ? '⏳ Filing' : '⚠ ' + esc(t.status)}${t.revision ? `<div class="note">revision ${t.revision}</div>` : ''}</td><td>${t.verify_status === 'ok' ? `<button class="ed" data-vn="${t.id}">✔ Verified</button>` : t.verify_status === 'issues' ? `<button class="ed" data-vn="${t.id}" style="color:var(--hot)">⚠ ${(t.verify_notes || []).filter(n => n.level === 'issue').length} to look at</button>` : t.status === 'filed' ? '<span class="muted small">checking…</span>' : ''}</td><td>${t.storage_path ? `<button class="btn" data-dlp="${esc(t.storage_path)}" style="min-height:34px;padding:6px 12px">Excel</button>` : ''}</td></tr>`;
-    }).join('')}</tbody></table></div>` : '<div class="muted">Nothing sent yet. Timesheets you send to Harlow show up here.</div>'}</div>`;
+      const meta = [all ? esc(first(people.find(x => x.id === t.person_id))) : '', `${f1((t.totals || {}).total || 0)} h`, Number(t.banked) ? `${f1(t.banked)} h banked` : '', Number(t.drawn) ? `${f1(t.drawn)} h used from bank` : '', t.revision ? `revision ${t.revision}` : ''].filter(Boolean).join(' · ');
+      return `<div class="hrow"><div class="ht"><b>${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</b><span class="muted small">${meta}</span></div>
+        <div class="ha"><span class="chipb ${t.status === 'filed' ? 'ok' : t.status === 'queued' ? '' : 'bad'}">${t.status === 'filed' ? '✅ Filed' : t.status === 'queued' ? '⏳ Filing' : '⚠ ' + esc(t.status)}</span>${chip(t)}${t.storage_path ? `<button class="chipb" data-dlp="${esc(t.storage_path)}">⬇ Excel</button>` : ''}</div></div>`;
+    }).join('')}</div>` : '<div class="muted">Nothing sent yet. Timesheets you send to Harlow show up here.</div>'}</div>`;
   }
 
   function verifyNotes(id) {

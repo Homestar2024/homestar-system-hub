@@ -1,3 +1,4 @@
+// v0.34.1 2026-11-20: Timesheets History as phone-friendly cards
 // v0.34 2026-11-20: Timesheets edit & re-file (REVISED file, original kept), verification results in History (db/024)
 // v0.33 2026-11-20: Timesheets - edit rows by hand (reason required, marked edited), banked-hours drill-down, owner bank adjust (db/023)
 // v0.32 2026-11-20: Timesheets instant filing (Excel built in the browser, saved to Harlow via Microsoft Graph; msal.html, ts_ms.js, ts_excel.js; db/022)
@@ -831,7 +832,7 @@ function SearchPage({ q, setQ, data, me, people }) {
 // v0.22: personal theme + accent (saved per person in board/view by the board's Customize panel; cached for a fast first paint)
 const applyLook = (v) => { const r = document.documentElement; v = v || {}; if (v.theme === 'light' || v.theme === 'dark') r.dataset.theme = v.theme; else delete r.dataset.theme; if (v.accent && v.accent !== 'blue') r.dataset.accent = v.accent; else delete r.dataset.accent; try { localStorage.setItem('hb-look', JSON.stringify({ theme: v.theme || 'auto', accent: v.accent || 'blue' })); } catch (e) {} };
 try { applyLook(JSON.parse(localStorage.getItem('hb-look') || 'null')); } catch (e) {}
-const MODS = { tools: ['./tools.js?v=15', 'mountTools', 'Tools'], maint: ['./maint.js?v=1', 'mountMaint', 'Maintenance'], kpi: ['./kpi.js?v=2', 'mountKpi', 'KPIs'], board: ['./board.js?v=7', 'mountBoard', 'the Board'] };   // v0.21: Board too (board.js, build_boardmod.py)
+const MODS = { tools: ['./tools.js?v=16', 'mountTools', 'Tools'], maint: ['./maint.js?v=1', 'mountMaint', 'Maintenance'], kpi: ['./kpi.js?v=2', 'mountKpi', 'KPIs'], board: ['./board.js?v=7', 'mountBoard', 'the Board'] };   // v0.21: Board too (board.js, build_boardmod.py)
 function ModPage({ me, mod, owner, extra }) {
   const ref = useRef(null);
   useEffect(() => { const [src, fn, label] = MODS[mod]; let off = null, dead = false; import(src).then(m => { if (!dead && ref.current) off = m[fn](ref.current, boardDb(sb, owner || me.id), extra); }).catch(e => { if (ref.current) ref.current.textContent = "Couldn't load " + label + ' (' + e.message + '). Reload the page.'; }); return () => { dead = true; if (off) off(); }; }, []);
