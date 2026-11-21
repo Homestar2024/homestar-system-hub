@@ -1,4 +1,4 @@
-// Homestar HQ - Timesheets (v7 2026-11-21: freshness check before Generate; v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
+// Homestar HQ - Timesheets (v8 2026-11-21: History = clickable list (pay period, Filed tag, warnings/flags); tap opens a preview of every row and hours, with Edit & re-file, Excel and Delete inside (Calvin); v7 2026-11-21: freshness check before Generate; v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
 // Data: time_entries (HCP time, synced by Claude), pay_periods, timesheets (sent/filed), bank_ledger (banked hours vault).
 // Rules (Timesheets\00 TIMESHEETS README.md): start = first of On my way / Time started; each row rounds to 0.1 h (Excel ROUND half up);
 // never over 80 h: the excess is trimmed off rows on the longest days and BANKED at 1.5x; under 80 h with a bank balance -> offer to draw.
@@ -106,6 +106,8 @@ tr.day td .dh{float:right}
 .err{color:var(--hot);font-weight:600;margin-top:6px}
 br.mob,span.mob{display:none}
 .hl{display:flex;flex-direction:column;gap:8px}
+.hopen{font:inherit;color:inherit;text-align:left;width:100%;cursor:pointer}.hopen:hover{border-color:var(--brand)}.chev{font-size:22px;line-height:1;color:var(--muted);align-self:center}
+.linkb{font:inherit;background:none;border:0;color:var(--brand);padding:0;cursor:pointer;font-weight:700}
 .hrow{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg);display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
 .ht{display:flex;flex-direction:column;min-width:0}.ht b{font-family:var(--display);font-size:17px}
 .ha{display:flex;flex-wrap:wrap;gap:6px}
@@ -439,7 +441,7 @@ export function mountTimesheets(root, { sb, me, people }) {
   // ---------- History ----------
   async function drawHist() {
     body.innerHTML = '<div class="card muted">Loading…</div>';
-    let q = sb.from('timesheets').select('id,person_id,period_start,status,totals,banked,drawn,file_name,storage_path,sent_at,filed_at,revision,verify_status,verify_notes,verified_at').order('period_start', { ascending: false }).limit(60);
+    let q = sb.from('timesheets').select('id,person_id,period_start,status,totals,rows,banked,drawn,file_name,storage_path,sent_at,filed_at,revision,verify_status,verify_notes,verified_at').order('period_start', { ascending: false }).limit(60);
     if (!all) q = q.eq('person_id', me.id);
     const { data, error } = await q; if (dead) return;
     if (error) { body.innerHTML = `<div class="card err">${esc(error.message)}</div>`; return; }
@@ -448,11 +450,41 @@ export function mountTimesheets(root, { sb, me, people }) {
     body.innerHTML = `<div class="card"><h3>Past timesheets</h3>${list.length ? `<div class="hl">${list.map(t => {
       const p = S.periods.find(x => x.start_date === t.period_start) || { start_date: t.period_start, end_date: addDays(t.period_start, 13) };
       const meta = [all ? esc(first(people.find(x => x.id === t.person_id))) : '', `${f1((t.totals || {}).total || 0)} h`, Number(t.banked) ? `${f1(t.banked)} h banked` : '', Number(t.drawn) ? `${f1(t.drawn)} h used from bank` : '', t.revision ? `revision ${t.revision}` : ''].filter(Boolean).join(' · ');
-      return `<div class="hrow"><div class="ht"><b>${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</b><span class="muted small">${meta}</span></div>
-        <div class="ha"><span class="chipb ${t.status === 'filed' ? 'ok' : t.status === 'queued' ? '' : 'bad'}">${t.status === 'filed' ? '✅ Filed' : t.status === 'queued' ? '⏳ Filing' : '⚠ ' + esc(t.status)}</span>${chip(t)}${t.storage_path ? `<button class="chipb" data-dlp="${esc(t.storage_path)}">⬇ Excel</button>` : ''}${all ? `<button class="chipb bad" data-del="${t.id}" aria-label="Delete timesheet">🗑 Delete</button>` : ''}</div></div>`;
+      const issues = t.verify_status === 'issues' ? (t.verify_notes || []).filter(n => n.level === 'issue').length : 0, flags = (t.rows || []).filter(r => r.flag && !r.edited).length;
+      return `<button class="hrow hopen" data-hopen="${t.id}"><div class="ht"><b>${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</b><span class="muted small">${meta}</span></div>
+        <div class="ha"><span class="chipb ${t.status === 'filed' ? 'ok' : t.status === 'queued' ? '' : 'bad'}">${t.status === 'filed' ? '✅ Filed' : t.status === 'queued' ? '⏳ Filing' : '⚠ ' + esc(t.status)}</span>${issues ? `<span class="chipb bad">⚠ ${issues} to look at</span>` : t.verify_status === 'ok' ? '<span class="chipb ok">✔ Verified</span>' : t.status === 'filed' ? '<span class="chipb">Checking…</span>' : ''}${flags ? `<span class="chipb bad">⚑ ${flags} flagged</span>` : ''}<span class="chev" aria-hidden="true">›</span></div></button>`;
     }).join('')}</div>` : '<div class="muted">Nothing sent yet. Timesheets you send to Harlow show up here.</div>'}</div>`;
   }
 
+  async function openSheet(id) {
+    body.innerHTML = '<div class="card muted">Loading…</div>';
+    const { data: t, error } = await sb.from('timesheets').select('*').eq('id', id).maybeSingle(); if (dead) return;
+    if (error || !t) { body.innerHTML = `<div class="card err">${esc(error ? error.message : 'Not found')}</div>`; return; }
+    S.histSheet = t; const p = S.periods.find(x => x.start_date === t.period_start) || { start_date: t.period_start, end_date: addDays(t.period_start, 13) };
+    const tot = t.totals || {}, rows = (t.rows || []).slice().sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
+    const dk = (d) => String(d || 'S')[0], days = [...new Set(rows.map(r => r.date))];
+    const issues = (t.verify_notes || []).filter(n => n.level === 'issue'), flagged = rows.filter(r => r.flag && !r.edited);
+    const byDept = tot.byDept || {}; const canEdit = all || t.person_id === me.id;
+    body.innerHTML = `<div class="card"><button class="linkb" data-hback>← History</button>
+      <h3 style="margin-top:6px">${esc(first(people.find(x => x.id === t.person_id) || me))} · ${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</h3>
+      <div class="ha" style="margin-bottom:6px"><span class="chipb ${t.status === 'filed' ? 'ok' : t.status === 'queued' ? '' : 'bad'}">${t.status === 'filed' ? '✅ Filed' : t.status === 'queued' ? '⏳ Filing' : '⚠ ' + esc(t.status)}</span>${t.verify_status === 'ok' ? '<span class="chipb ok">✔ Verified</span>' : ''}${issues.length ? `<span class="chipb bad">⚠ ${issues.length} to look at</span>` : ''}${t.revision ? `<span class="chipb">Revision ${t.revision}</span>` : ''}</div>
+      <div class="tiles"><div class="tile big"><b>${f1(tot.total || 0)}</b><span>hours on the sheet</span></div>${Object.entries(byDept).filter(([, v]) => v).map(([k, v]) => `<div class="tile"><b>${f1(v)}</b><span>${DEPT[k] || k}</span></div>`).join('')}${Number(t.banked) ? `<div class="tile"><b>${f1(t.banked)}</b><span>hours banked</span></div>` : ''}${Number(t.drawn) ? `<div class="tile"><b>${f1(t.drawn)}</b><span>used from bank</span></div>` : ''}</div>
+      ${issues.length ? `<div class="warn"><b>To look at:</b>${issues.map(n => `<div>⚠ ${esc(n.text)}</div>`).join('')}</div>` : ''}
+      ${flagged.length ? `<div class="warn">⚑ ${flagged.length} row${flagged.length > 1 ? 's' : ''} flagged (see below).</div>` : ''}
+      ${(t.verify_notes || []).filter(n => n.level !== 'issue').length ? `<details class="small" style="margin:6px 0"><summary>Verification details${t.verified_at ? ' · ' + new Date(t.verified_at).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' }) : ''}</summary>${(t.verify_notes || []).filter(n => n.level !== 'issue').map(n => `<div class="muted">${n.level === 'ok' ? '✔' : 'ℹ'} ${esc(n.text)}</div>`).join('')}</details>` : ''}
+      ${rows.length ? `<div class="tl">${days.map(d => { const rs = rows.filter(r => r.date === d); const dh = rs.reduce((a, r) => a + Number(r.hours || 0), 0);
+        return `<div class="tday"><span>${fmtD(d, { weekday: 'long', month: 'short', day: 'numeric' })}</span><span>${f1(dh)} h${dh > 10.0001 ? ' ⚠ over 10' : ''}</span></div>` + rs.map(r => { const notes = `${r.reason ? `<div class="note">✎ ${esc(r.reason)}</div>` : ''}${r.flag && !r.edited ? `<div class="flag">⚑ ${esc(r.flag)}</div>` : ''}${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}`;
+          return `<div class="te"><div class="tm"><div class="tj"><b>${esc(r.job)}</b> · ${esc(r.customer)}</div><div class="tt">${t12(r.start)} – ${t12(r.end)} <span class="pill ${dk(r.dept)}">${DEPT[dk(r.dept)] || ''}</span>${r.drawn ? ' <span class="pill">banked</span>' : ''}${r.edited ? ' <span class="pill ed-p">edited</span>' : ''}</div></div><div class="th"><b>${f1(r.hours || 0)}</b></div>${notes ? `<div class="tn">${notes}</div>` : ''}</div>`; }).join(''); }).join('')}</div>` : '<div class="muted">No rows saved for this sheet.</div>'}
+      ${t.file_name ? `<div class="small muted" style="margin-top:8px">File: <b>${esc(t.file_name)}</b>${t.filed_at ? ' · filed ' + new Date(t.filed_at).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' }) : ''}</div>` : ''}
+      <div class="acts">${canEdit ? '<button class="btn" data-hedit>✎ Edit &amp; re-file</button>' : ''}${t.storage_path ? `<button class="btn" data-dlp="${esc(t.storage_path)}">⬇ Excel</button>` : ''}${all ? `<button class="btn" data-del="${t.id}" style="color:var(--hot);border-color:color-mix(in srgb,var(--hot) 45%,var(--line))">🗑 Delete</button>` : ''}</div>
+      ${S.err ? `<div class="err">${esc(S.err)}</div>` : ''}</div>`;
+  }
+  async function editFromHist() {
+    const t = S.histSheet; if (!t) return;
+    S.tab = 'gen'; S.person = t.person_id; S.period = t.period_start; drawTabs();
+    await loadSheet(S.person, S.period); if (!S.sheet) return draw();
+    return startRevise();
+  }
   function verifyNotes(id) {
     const t = (S.histList || []).find(x => x.id === id); if (!t) return;
     const ns = t.verify_notes || [];
@@ -574,6 +606,9 @@ export function mountTimesheets(root, { sb, me, people }) {
     if (e.target.closest('[data-addrow]')) return editRow(null);
     if (e.target.closest('[data-revise]')) return startRevise();
     const vn = e.target.closest('[data-vn]'); if (vn) return verifyNotes(vn.dataset.vn);
+    const ho = e.target.closest('[data-hopen]'); if (ho) return openSheet(ho.dataset.hopen);
+    if (e.target.closest('[data-hback]')) return drawHist();
+    if (e.target.closest('[data-hedit]')) return editFromHist();
     const dg = e.target.closest('[data-del]'); if (dg) return deleteSheet(dg.dataset.del);
     const bp = e.target.closest('[data-bperson]'); if (bp) { S.bankPerson = bp.dataset.bperson; return drawBank(); }
     const bl = e.target.closest('[data-bl]'); if (bl) return bankDetail(bl.dataset.bl);
