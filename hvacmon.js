@@ -1,4 +1,4 @@
-// Homestar HQ - HVAC Monitoring (v1 2026-11-21, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
+// Homestar HQ - HVAC Monitoring (v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
 // graph of every sensor over time (temps on the left axis, watts on the right), 24 h / 7 d / 30 d / 1 y, legend with colour,
 // show/hide checkbox and editable names. Data: monitor_sites / monitor_sensors / monitor_series() (db/025). Until a house has
 // readings the dashboard shows clearly-labelled SAMPLE data so the layout can be judged.
@@ -104,7 +104,7 @@ export function mountHvacMon(root, { sb }) {
         if (s.kind === 'room') return 21 + (k % 2 ? -0.6 : 0.3) + Math.sin(i / 9) * 0.3 + (seed(i + k) - 0.5) * 0.3;
         if (s.kind === 'return') return 21.4 + (seed(i + 7) - 0.5) * 0.4;
         if (s.kind === 'supply') return defrost ? 24 : 21.4 + 12 + load * 14 + (seed(i + 3) - 0.5);
-        if (s.kind === 'power') return defrost ? 180 : 250 + load * 1500 + (seed(i + 5) - 0.5) * 120;
+        if (s.kind === 'power') return defrost ? 180 : 250 + load * 1500 + (seed(i + 5) - 0.5) * 40;
         if (s.kind === 'fan_power') return 18 + load * 22;
         return 0;
       }).map((v, i) => [pts[i], v]);
@@ -155,7 +155,7 @@ export function mountHvacMon(root, { sb }) {
   function niceStep(span, n) { const raw = span / n; const p = Math.pow(10, Math.floor(Math.log10(raw))); const f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
   function drawChart() {
     const box = root.getElementById('cb'); if (!box) return;
-    const W = Math.max(320, box.clientWidth || 600), H = W < 500 ? 300 : 380, L = 44, Rr = 50, T = 12, B = 30;
+    const W = Math.max(320, box.clientWidth || 600), H = W < 500 ? 310 : 390, L = 44, Rr = 50, T = 26, B = 30;
     const vis = S.sensors.filter(s => !S.hidden.has(s.id) && (S.series[s.id] || []).length);
     const temps = vis.filter(isTemp), pw = vis.filter(s => !isTemp(s));
     const rng = (arr, f) => { let lo = Infinity, hi = -Infinity; arr.forEach(s => S.series[s.id].forEach(p => { const v = f(p[1]); if (v < lo) lo = v; if (v > hi) hi = v; })); return lo === Infinity ? [0, 1] : lo === hi ? [lo - 1, hi + 1] : [lo, hi]; };
@@ -168,7 +168,7 @@ export function mountHvacMon(root, { sb }) {
     if (pw.length) for (let v = pl; v <= ph + 1e-9; v += ps) axes += `<text class="ax" x="${W - Rr + 6}" y="${yP(v) + 4}">${v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v)}</text>`;
     for (let i = 0; i <= nx; i++) { const t = S.from + i * (S.to - S.from) / nx; axes += `<text class="ax" x="${x(t)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === nx ? 'end' : 'middle'}">${fmtX(t)}</text>`; }
     const lines = vis.map(s => { const f = isTemp(s) ? (v) => yT(cv(v)) : yP; const d = S.series[s.id].map((p, i) => (i ? 'L' : 'M') + x(p[0]).toFixed(1) + ' ' + f(p[1]).toFixed(1)).join(''); return `<path d="${d}" fill="none" stroke="${esc(s.color)}" stroke-width="${isTemp(s) ? 2 : 1.6}" stroke-linejoin="round" ${isTemp(s) ? '' : 'stroke-dasharray="5 3" opacity=".85"'}/>`; }).join('');
-    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sensor graph"><text class="ax" x="${L - 6}" y="9" text-anchor="end">${tU()}</text>${pw.length ? `<text class="ax" x="${W - Rr + 6}" y="9">W</text>` : ''}<g class="grid">${grid}</g>${axes}${lines}<line id="cx" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/></svg><div class="tip" id="tip" hidden></div>`;
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sensor graph"><text class="ax" x="${L - 6}" y="11" text-anchor="end" font-weight="700">${tU()}</text>${pw.length ? `<text class="ax" x="${W - Rr + 6}" y="11" font-weight="700">Watts</text>` : ''}<g class="grid">${grid}</g>${axes}${lines}<line id="cx" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/></svg><div class="tip" id="tip" hidden></div>`;
     const svg = box.querySelector('svg'), cx = box.querySelector('#cx'), tip = box.querySelector('#tip');
     const near = (arr, t) => { let lo = 0, hi = arr.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (arr[m][0] < t) lo = m; else hi = m; } return Math.abs(arr[lo][0] - t) < Math.abs(arr[hi][0] - t) ? arr[lo] : arr[hi]; };
     const move = (ev) => {
