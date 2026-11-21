@@ -1,4 +1,4 @@
-// Homestar HQ - Timesheets (v3 2026-11-20: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
+// Homestar HQ - Timesheets (v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
 // Data: time_entries (HCP time, synced by Claude), pay_periods, timesheets (sent/filed), bank_ledger (banked hours vault).
 // Rules (Timesheets\00 TIMESHEETS README.md): start = first of On my way / Time started; each row rounds to 0.1 h (Excel ROUND half up);
 // never over 80 h: the excess is trimmed off rows on the longest days and BANKED at 1.5x; under 80 h with a bank balance -> offer to draw.
@@ -16,8 +16,8 @@ const addDays = (iso, n) => { const d = D(iso); d.setDate(d.getDate() + n); retu
 const todayIso = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Vancouver' }).format(new Date());
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'June', 'July', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
 const MONL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-export const fileName = (first, p) => { const pd = D(p.pay_date), s = D(p.start_date), e = D(p.end_date);
-  return `${first} ${MONL[pd.getMonth()]} ${pd.getDate()}, ${pd.getFullYear()} - ${MON[s.getMonth()]} ${s.getDate()} - ${MON[e.getMonth()]} ${e.getDate()}.xlsx`; };
+export const fileName = (first, p, rev = 0) => { const pd = D(p.pay_date), s = D(p.start_date), e = D(p.end_date);
+  return `${first} ${MONL[pd.getMonth()]} ${pd.getDate()}, ${pd.getFullYear()} - ${MON[s.getMonth()]} ${s.getDate()} - ${MON[e.getMonth()]} ${e.getDate()}${rev ? ' - REVISED' + (rev > 1 ? ' ' + rev : '') : ''}.xlsx`; };
 export const folderOf = (p) => { const pd = D(p.pay_date); return `Harlow Bookkeeping\\Timesheets\\${pd.getFullYear()}\\${String(pd.getMonth() + 1).padStart(2, '0')}. ${MONL[pd.getMonth()]}`; };
 
 // Pure: build the timesheet from entries. Returns rows (sorted), totals, and the >80 trim plan.
@@ -151,7 +151,7 @@ export function mountTimesheets(root, { sb, me, people }) {
       <div class="row2">${all ? `<label class="f">Employee<select data-person>${team.map(t => `<option value="${t.id}" ${t.id === S.person ? 'selected' : ''}>${esc(t.name)}${t.id === me.id ? ' (you)' : ''}</option>`).join('')}</select></label>` : ''}
         <label class="f">Pay period<select data-period>${opts}</select></label></div>
       ${p ? `<div class="small muted" style="margin-top:8px">Sat ${fmtD(p.start_date, { month: 'short', day: 'numeric' })} to Fri ${fmtD(p.end_date, { month: 'short', day: 'numeric' })} · payday ${fmtD(p.pay_date, { weekday: 'long', month: 'short', day: 'numeric' })}</div>` : ''}
-      ${S.sheet && S.sheet.status === 'filed' ? `<div class="good">Already filed ${new Date(S.sheet.filed_at).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' })}: <b>${esc(S.sheet.file_name)}</b>. See History.</div>` : ''}
+      ${S.sheet && S.sheet.status === 'filed' ? `<div class="good">Already filed ${new Date(S.sheet.filed_at).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' })}: <b>${esc(S.sheet.file_name)}</b>.${S.sheet.revision ? ` (revision ${S.sheet.revision})` : ''} <button class="btn" data-revise style="min-height:34px;padding:6px 12px;margin-left:6px">✎ Edit &amp; re-file</button></div>` : ''}
       <button class="btn go" data-go>Generate timesheet</button>
       <div class="small muted" style="margin-top:10px">${S.msMsg ? esc(S.msMsg) : 'Sending saves straight to Harlow with your Microsoft sign-in.'} ${S.msMsg && S.msMsg.startsWith('✅') ? '' : '<button class="btn" data-mstest style="min-height:34px;padding:6px 12px;margin-left:6px">Connect Microsoft</button>'}</div>
       ${S.err ? `<div class="err">${esc(S.err)}</div>` : ''}</div>`;
@@ -216,6 +216,16 @@ export function mountTimesheets(root, { sb, me, people }) {
       }
     };
   }
+  async function startRevise() {
+    const sh = S.sheet; if (!sh) return; await loadBank(S.person);
+    // this sheet's own bank/draw lines are replaced when it is re-filed: give them back for now
+    const own = S.ledger.filter(l => l.timesheet_id === sh.id); S.ledger = S.ledger.filter(l => l.timesheet_id !== sh.id);
+    S.bal = Math.round(S.ledger.reduce((a, l) => a + Number(l.hours), 0) * 100) / 100;
+    const src = (sh.totals && sh.totals.src) || (sh.rows || []).filter(r => !r.drawn).map((r, i) => ({ id: 'f' + i, work_date: r.date, job_no: r.job, customer: r.customer, dept: String(r.dept || 'S')[0], start_t: r.start, end_t: r.end, note: r.note, flag: r.flag, edited: r.edited, reason: r.reason }));
+    S.entries = src.map(e => ({ ...e })); S.edits = { upd: {}, del: [], add: [] }; S.removed = []; S.revise = true;
+    S.res = build(eff()); S.draw = null; S.noDraw = false; S.phase = 'res'; S.synced = sh.filed_at; drawRes();
+    if (own.length) S.err = '';
+  }
   function drawRows(addRows) {
     const r = S.res; const rows = [...r.rows.map(x => ({ ...x })), ...(addRows || [])].sort((a, b) => (a.date + hm(a.s)).localeCompare(b.date + hm(b.s)));
     const days = [...new Set(rows.map(x => x.date))];
@@ -236,7 +246,7 @@ export function mountTimesheets(root, { sb, me, people }) {
     const p = P(); const r = S.res; const rows = finalRows(); const t = totals(rows); const who = people.find(x => x.id === S.person) || me;
     const flagged = rows.filter(x => x.flag).length; const banked = Math.round(r.bank.reduce((a, b) => a + b.hours, 0) * 10) / 10;
     const under = Math.round((80 - t.total) * 10) / 10; const canDraw = !S.draw && !S.noDraw && under > 0 && S.bal > 0.04;
-    const filed = S.sheet && S.sheet.status === 'filed'; S.canEdit = !filed;
+    const filed = S.sheet && S.sheet.status === 'filed' && !S.revise; S.canEdit = !filed;
     body.innerHTML = `<div class="card"><h3>${esc(first(who))} · ${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</h3>
       <div class="tiles"><div class="tile big"><b>${f1(t.total)}</b><span>hours on the sheet</span></div>${Object.entries(t.byDept).filter(([, v]) => v).map(([k, v]) => `<div class="tile"><b>${f1(v)}</b><span>${DEPT[k]}</span></div>`).join('')}<div class="tile"><b>${f1(S.bal)}</b><span>banked hours available</span></div></div>
       <div class="small muted">HCP time last pulled: ${S.synced ? new Date(S.synced).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' }) : 'never'} — anything tracked after that isn't here yet.</div>
@@ -245,7 +255,8 @@ export function mountTimesheets(root, { sb, me, people }) {
       ${canDraw ? `<div class="bankbox"><b>You're at ${f1(t.total)} hours — ${f1(under)} under 80.</b><br>You have <b>${f1(S.bal)} banked hours</b>. Want to use some to bring this pay period up?<div class="acts"><button class="btn pri" data-drawask>Yes, use banked hours</button><button class="btn" data-nodraw>No thanks</button></div></div>` : ''}
       ${flagged ? `<div class="warn">⚑ ${flagged} row${flagged > 1 ? 's' : ''} flagged for a look (see below). Fix the time in HCP and generate again, or send as is.</div>` : ''}
       ${drawRows((S.draw && S.draw.rows) || [])}
-      <div class="acts">${filed ? `<div class="good" style="flex:1">Already filed for this pay period (${esc(S.sheet.file_name)}).</div>` : `<button class="btn go" data-send style="margin-top:0">📤 Send to Harlow Bookkeeping</button>`}<button class="btn" data-again>Start over</button></div>
+      ${S.revise ? `<div class="bankbox"><b>Revising a filed timesheet.</b> Edit what you need, then re-file. The original stays in Harlow untouched; the new file is <b>${esc(fileName(first(who), p, (S.sheet.revision || 0) + 1))}</b>.</div>` : ''}
+      <div class="acts">${filed ? `<div class="good" style="flex:1">Already filed for this pay period (${esc(S.sheet.file_name)}). <button class="btn" data-revise style="min-height:34px;padding:6px 12px">✎ Edit &amp; re-file</button></div>` : `<button class="btn go" data-send style="margin-top:0">📤 ${S.revise ? 'Re-file to Harlow (revised)' : 'Send to Harlow Bookkeeping'}</button>`}<button class="btn" data-again>Start over</button></div>
       <div class="small muted" style="margin-top:6px">Files as <b>${esc(fileName(first(who), p))}</b> in ${esc(folderOf(p))}.</div>
       ${S.err ? `<div class="err">${esc(S.err)}</div>` : ''}</div>`;
   }
@@ -296,9 +307,9 @@ export function mountTimesheets(root, { sb, me, people }) {
     const ledger = [...S.res.bank.map(b => ({ kind: 'bank', work_date: b.date, job_no: b.job, customer: b.customer, dept: b.dept, hours_original: b.hours, multiplier: 1.5, note: `Over 80 h: ${t12(b.from)} → ${t12(b.to)}` })), ...((S.draw && S.draw.ledger) || [])];
     const payload = rows.map(r => ({ date: r.date, job: r.job, customer: r.customer, dept: DEPT_X[r.dept], start: hm(r.s), end: hm(r.e), hours: rh(r.e - r.s), note: r.note || '', flag: r.flag || '', drawn: !!r.drawn, edited: !!r.edited, reason: r.reason || '' }));
     const btn = body.querySelector('[data-send]'); if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
-    const { error } = await sb.rpc('ts_send', { p_person: S.person, p_period: p.start_date, p_rows: payload, p_totals: { total: t.total, byDept: t.byDept, raw: S.res.raw, file_name: fileName(first(who), p), folder: folderOf(p), removed: (S.removed || []).map(r => ({ date: r.work_date, job: r.job_no, start: r.start_t, end: r.end_t, reason: r.reason })) }, p_ledger: ledger });
+    const { error } = await sb.rpc('ts_send', { p_person: S.person, p_period: p.start_date, p_rows: payload, p_totals: { total: t.total, byDept: t.byDept, raw: S.res.raw, file_name: fileName(first(who), p, S.revise ? (S.sheet.revision || 0) + 1 : 0), folder: folderOf(p), src: eff().map(e => ({ id: e.id, work_date: e.work_date, job_no: e.job_no, customer: e.customer, dept: e.dept, start_t: String(e.start_t).slice(0, 5), end_t: String(e.end_t).slice(0, 5), note: e.note || '', flag: e.flag || '', edited: !!e.edited, reason: e.reason || '' })), removed: (S.removed || []).map(r => ({ date: r.work_date, job: r.job_no, start: r.start_t, end: r.end_t, reason: r.reason })) }, p_ledger: ledger, p_revise: !!S.revise });
     if (error) { S.err = "Couldn't send: " + error.message; drawRes(); return; }
-    await loadSheet(S.person, p.start_date); S.phase = 'sent'; draw(); fileNow();
+    await loadSheet(S.person, p.start_date); S.revise = false; S.phase = 'sent'; draw(); fileNow();
   }
   // ---------- Instant filing: Excel built here, saved to Harlow with the person's own Microsoft sign-in ----------
   const GRAPH = 'https://graph.microsoft.com/v1.0';
@@ -377,17 +388,25 @@ export function mountTimesheets(root, { sb, me, people }) {
   // ---------- History ----------
   async function drawHist() {
     body.innerHTML = '<div class="card muted">Loading…</div>';
-    let q = sb.from('timesheets').select('id,person_id,period_start,status,totals,banked,drawn,file_name,storage_path,sent_at,filed_at').order('period_start', { ascending: false }).limit(60);
+    let q = sb.from('timesheets').select('id,person_id,period_start,status,totals,banked,drawn,file_name,storage_path,sent_at,filed_at,revision,verify_status,verify_notes,verified_at').order('period_start', { ascending: false }).limit(60);
     if (!all) q = q.eq('person_id', me.id);
     const { data, error } = await q; if (dead) return;
     if (error) { body.innerHTML = `<div class="card err">${esc(error.message)}</div>`; return; }
-    const list = data || [];
-    body.innerHTML = `<div class="card"><h3>Past timesheets</h3>${list.length ? `<div class="scroll"><table><thead><tr>${all ? '<th>Who</th>' : ''}<th>Pay period</th><th class="n">Hours</th><th class="n">Banked</th><th class="n">Used</th><th>Status</th><th></th></tr></thead><tbody>${list.map(t => {
+    const list = data || []; S.histList = list;
+    body.innerHTML = `<div class="card"><h3>Past timesheets</h3>${list.length ? `<div class="scroll"><table><thead><tr>${all ? '<th>Who</th>' : ''}<th>Pay period</th><th class="n">Hours</th><th class="n">Banked</th><th class="n">Used</th><th>Status</th><th>Check</th><th></th></tr></thead><tbody>${list.map(t => {
       const p = S.periods.find(x => x.start_date === t.period_start) || { start_date: t.period_start, end_date: addDays(t.period_start, 13) };
-      return `<tr>${all ? `<td>${esc(personName(t.person_id))}</td>` : ''}<td>${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</td><td class="n">${f1((t.totals || {}).total || 0)}</td><td class="n">${Number(t.banked) ? f1(t.banked) : '—'}</td><td class="n">${Number(t.drawn) ? f1(t.drawn) : '—'}</td><td>${t.status === 'filed' ? '✅ Filed' : t.status === 'queued' ? '⏳ Filing' : '⚠ ' + esc(t.status)}</td><td>${t.storage_path ? `<button class="btn" data-dlp="${esc(t.storage_path)}" style="min-height:34px;padding:6px 12px">Excel</button>` : ''}</td></tr>`;
+      return `<tr>${all ? `<td>${esc(personName(t.person_id))}</td>` : ''}<td>${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</td><td class="n">${f1((t.totals || {}).total || 0)}</td><td class="n">${Number(t.banked) ? f1(t.banked) : '—'}</td><td class="n">${Number(t.drawn) ? f1(t.drawn) : '—'}</td><td>${t.status === 'filed' ? '✅ Filed' : t.status === 'queued' ? '⏳ Filing' : '⚠ ' + esc(t.status)}${t.revision ? `<div class="note">revision ${t.revision}</div>` : ''}</td><td>${t.verify_status === 'ok' ? `<button class="ed" data-vn="${t.id}">✔ Verified</button>` : t.verify_status === 'issues' ? `<button class="ed" data-vn="${t.id}" style="color:var(--hot)">⚠ ${(t.verify_notes || []).filter(n => n.level === 'issue').length} to look at</button>` : t.status === 'filed' ? '<span class="muted small">checking…</span>' : ''}</td><td>${t.storage_path ? `<button class="btn" data-dlp="${esc(t.storage_path)}" style="min-height:34px;padding:6px 12px">Excel</button>` : ''}</td></tr>`;
     }).join('')}</tbody></table></div>` : '<div class="muted">Nothing sent yet. Timesheets you send to Harlow show up here.</div>'}</div>`;
   }
 
+  function verifyNotes(id) {
+    const t = (S.histList || []).find(x => x.id === id); if (!t) return;
+    const ns = t.verify_notes || [];
+    modal.innerHTML = `<div class="modal"><div class="sheet"><h3>Verification · ${esc(personName(t.person_id))}</h3><div class="small muted">Independent re-check against Housecall Pro, ${t.verified_at ? new Date(t.verified_at).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' }) : ''}.</div>
+      ${ns.length ? ns.map(n => `<div class="kv"><span>${n.level === 'issue' ? '⚠' : n.level === 'ok' ? '✔' : 'ℹ'}</span><b style="text-align:left;flex:1">${esc(n.text)}</b></div>`).join('') : '<div class="good">Everything matched.</div>'}
+      <div class="acts"><button class="btn" data-x>Close</button></div></div></div>`;
+    modal.onclick = (e) => { if (e.target.closest('[data-x]') || e.target === modal.firstElementChild) modal.innerHTML = ''; };
+  }
   // ---------- Banked hours ----------
   async function drawBank() {
     body.innerHTML = '<div class="card muted">Loading…</div>';
@@ -466,7 +485,7 @@ export function mountTimesheets(root, { sb, me, people }) {
   };
   body.onclick = (e) => {
     if (e.target.closest('[data-go]')) return generate();
-    if (e.target.closest('[data-again]')) { S.phase = 'pick'; S.res = null; S.draw = null; S.noDraw = false; S.err = ''; clearInterval(poll); return draw(); }
+    if (e.target.closest('[data-again]')) { S.phase = 'pick'; S.res = null; S.draw = null; S.noDraw = false; S.revise = false; S.err = ''; clearInterval(poll); return draw(); }
     if (e.target.closest('[data-drawask]')) return drawAsk();
     if (e.target.closest('[data-nodraw]')) { S.noDraw = true; return drawRes(); }
     if (e.target.closest('[data-send]')) return send();
@@ -475,6 +494,8 @@ export function mountTimesheets(root, { sb, me, people }) {
     if (e.target.closest('[data-mstest]')) return msTest();
     const ed = e.target.closest('[data-edit]'); if (ed) return editRow(ed.dataset.edit);
     if (e.target.closest('[data-addrow]')) return editRow(null);
+    if (e.target.closest('[data-revise]')) return startRevise();
+    const vn = e.target.closest('[data-vn]'); if (vn) return verifyNotes(vn.dataset.vn);
     const bp = e.target.closest('[data-bperson]'); if (bp) { S.bankPerson = bp.dataset.bperson; return drawBank(); }
     const bl = e.target.closest('[data-bl]'); if (bl) return bankDetail(bl.dataset.bl);
     if (e.target.closest('[data-badj]')) return bankAdjust();

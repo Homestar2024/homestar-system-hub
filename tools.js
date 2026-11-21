@@ -124,7 +124,7 @@ export function mountTools(host, db, extra) {
   if (tool === 'timesheets') {   // v0.31 Timesheets tool (timesheets.js)
     let off = null, gone = false;
     root.innerHTML = '<div class="muted" style="padding:12px">Loading timesheets…</div>';
-    import('./timesheets.js?v=5').then(m => { if (!gone) off = m.mountTimesheets(root, extra || {}); }).catch(e => { root.textContent = "Couldn't load Timesheets (" + e.message + '). Reload the page.'; });
+    import('./timesheets.js?v=6').then(m => { if (!gone) off = m.mountTimesheets(root, extra || {}); }).catch(e => { root.textContent = "Couldn't load Timesheets (" + e.message + '). Reload the page.'; });
     return () => { gone = true; if (off) off(); else root.innerHTML = ''; };
   }
   if (tool !== 'pricing') {
