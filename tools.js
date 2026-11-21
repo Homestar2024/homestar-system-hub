@@ -142,10 +142,17 @@ export function mountTools(host, db, extra) {
     import('./timesheets.js?v=14').then(m => { if (!gone) off = m.mountTimesheets(root, extra || {}); }).catch(e => { root.textContent = "Couldn't load Timesheets (" + e.message + '). Reload the page.'; });
     return () => { gone = true; if (off) off(); else root.innerHTML = ''; };
   }
+  if (tool === 'hvac') {   // v0.38 HVAC Monitoring (hvacmon.js)
+    let off = null, gone = false;
+    root.innerHTML = '<div class="muted" style="padding:12px">Loading HVAC Monitoring…</div>';
+    import('./hvacmon.js?v=1').then(m => { if (!gone) off = m.mountHvacMon(root, extra || {}); }).catch(e => { root.textContent = "Couldn't load HVAC Monitoring (" + e.message + '). Reload the page.'; });
+    return () => { gone = true; if (off) off(); else root.innerHTML = ''; };
+  }
   if (tool !== 'pricing') {
     root.innerHTML = `<style>${CSS}</style><h2>Tools</h2><div class="muted">Homestar's own tools and apps. More get added here as they're built.</div>
       <div class="grid"><a class="tool" href="#/tools/timesheets"><div class="i">⏱️</div><b>Timesheets</b><span class="muted">Build your pay-period timesheet from Housecall Pro in seconds, send it to Harlow, and track banked hours.</span></a>
       <a class="tool" href="#/tools/pricing"><div class="i">💲</div><b>Pricing</b><span class="muted">Price an install, service call or repair from the company rate model in under a minute.</span></a>
+      <a class="tool" href="#/tools/hvac"><div class="i">🌡️</div><b>HVAC Monitoring</b><span class="muted">Live temperatures and power from monitored homes: one graph per house, any timeframe.</span></a>
       <div class="tool soon"><div class="i">➕</div><b>More coming</b><span class="muted">Next tools go here.</span></div></div>`;
     return () => { root.innerHTML = ''; };
   }
