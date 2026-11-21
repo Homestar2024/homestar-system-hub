@@ -1,4 +1,4 @@
-// Homestar HQ - Timesheets (v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
+// Homestar HQ - Timesheets (v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
 // Data: time_entries (HCP time, synced by Claude), pay_periods, timesheets (sent/filed), bank_ledger (banked hours vault).
 // Rules (Timesheets\00 TIMESHEETS README.md): start = first of On my way / Time started; each row rounds to 0.1 h (Excel ROUND half up);
 // never over 80 h: the excess is trimmed off rows on the longest days and BANKED at 1.5x; under 80 h with a bank balance -> offer to draw.
@@ -419,7 +419,7 @@ export function mountTimesheets(root, { sb, me, people }) {
       const p = S.periods.find(x => x.start_date === t.period_start) || { start_date: t.period_start, end_date: addDays(t.period_start, 13) };
       const meta = [all ? esc(first(people.find(x => x.id === t.person_id))) : '', `${f1((t.totals || {}).total || 0)} h`, Number(t.banked) ? `${f1(t.banked)} h banked` : '', Number(t.drawn) ? `${f1(t.drawn)} h used from bank` : '', t.revision ? `revision ${t.revision}` : ''].filter(Boolean).join(' · ');
       return `<div class="hrow"><div class="ht"><b>${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</b><span class="muted small">${meta}</span></div>
-        <div class="ha"><span class="chipb ${t.status === 'filed' ? 'ok' : t.status === 'queued' ? '' : 'bad'}">${t.status === 'filed' ? '✅ Filed' : t.status === 'queued' ? '⏳ Filing' : '⚠ ' + esc(t.status)}</span>${chip(t)}${t.storage_path ? `<button class="chipb" data-dlp="${esc(t.storage_path)}">⬇ Excel</button>` : ''}</div></div>`;
+        <div class="ha"><span class="chipb ${t.status === 'filed' ? 'ok' : t.status === 'queued' ? '' : 'bad'}">${t.status === 'filed' ? '✅ Filed' : t.status === 'queued' ? '⏳ Filing' : '⚠ ' + esc(t.status)}</span>${chip(t)}${t.storage_path ? `<button class="chipb" data-dlp="${esc(t.storage_path)}">⬇ Excel</button>` : ''}${all ? `<button class="chipb bad" data-del="${t.id}" aria-label="Delete timesheet">🗑 Delete</button>` : ''}</div></div>`;
     }).join('')}</div>` : '<div class="muted">Nothing sent yet. Timesheets you send to Harlow show up here.</div>'}</div>`;
   }
 
@@ -430,6 +430,30 @@ export function mountTimesheets(root, { sb, me, people }) {
       ${ns.length ? ns.map(n => `<div class="kv"><span>${n.level === 'issue' ? '⚠' : n.level === 'ok' ? '✔' : 'ℹ'}</span><b style="text-align:left;flex:1">${esc(n.text)}</b></div>`).join('') : '<div class="good">Everything matched.</div>'}
       <div class="acts"><button class="btn" data-x>Close</button></div></div></div>`;
     modal.onclick = (e) => { if (e.target.closest('[data-x]') || e.target === modal.firstElementChild) modal.innerHTML = ''; };
+  }
+  async function deleteSheet(id) {
+    const t = (S.histList || []).find(x => x.id === id); if (!t) return;
+    const p = S.periods.find(x => x.start_date === t.period_start) || { start_date: t.period_start, end_date: addDays(t.period_start, 13) };
+    const { data: lines } = await sb.from('bank_ledger').select('kind,hours').eq('timesheet_id', id);
+    const net = Math.round((lines || []).reduce((a, l) => a + Number(l.hours), 0) * 100) / 100;
+    const who = personName(t.person_id); const when = `${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    modal.innerHTML = `<div class="modal"><div class="sheet"><h3>Delete this timesheet?</h3>
+      <div class="kv"><span>Who</span><b>${esc(who)}</b></div><div class="kv"><span>Pay period</span><b>${when}</b></div><div class="kv"><span>Hours</span><b>${f1((t.totals || {}).total || 0)} h</b></div>
+      ${t.file_name ? `<div class="kv"><span>File</span><b>${esc(t.file_name)}</b></div>` : ''}
+      <div class="warn small">This removes it from HQ History and deletes its saved Excel copy in HQ.${net ? ` Its banked-hours lines go too, so ${esc(who.split(' ')[0])}'s bank changes by <b>${net > 0 ? '−' : '+'}${Math.abs(net).toFixed(2)} h</b>.` : ''} A backup is kept for Claude.</div>
+      ${t.status === 'filed' && t.file_name ? `<label class="small" style="display:flex;gap:8px;align-items:flex-start;margin:10px 0"><input type="checkbox" data-delh style="width:20px;height:20px;flex:none;margin-top:1px"><span>Also remove the Excel from Harlow Bookkeeping (goes to the OneDrive recycle bin). Leave unticked to keep Harlow's copy.</span></label>` : ''}
+      <div class="err" data-delerr></div>
+      <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn" data-delgo style="background:var(--hot);border-color:var(--hot);color:#fff">Delete</button></div></div></div>`;
+    modal.onclick = async (e) => {
+      if (e.target.closest('[data-x]') || e.target === modal.firstElementChild) { modal.innerHTML = ''; return; }
+      const go = e.target.closest('[data-delgo]'); if (!go) return;
+      go.disabled = true; go.textContent = 'Deleting…';
+      const harlow = !!(modal.querySelector('[data-delh]') || {}).checked;
+      const { data, error } = await sb.functions.invoke('ts-file', { body: { delete: id, harlow } });
+      let msg = ''; if (error) { try { msg = (await error.context.json()).error; } catch (x) { msg = error.message; } }
+      if (msg || !data || !data.ok) { modal.querySelector('[data-delerr]').textContent = msg || "Couldn't delete."; go.disabled = false; go.textContent = 'Delete'; return; }
+      modal.innerHTML = ''; S.err = ''; drawHist();
+    };
   }
   // ---------- Banked hours ----------
   async function drawBank() {
@@ -520,6 +544,7 @@ export function mountTimesheets(root, { sb, me, people }) {
     if (e.target.closest('[data-addrow]')) return editRow(null);
     if (e.target.closest('[data-revise]')) return startRevise();
     const vn = e.target.closest('[data-vn]'); if (vn) return verifyNotes(vn.dataset.vn);
+    const dg = e.target.closest('[data-del]'); if (dg) return deleteSheet(dg.dataset.del);
     const bp = e.target.closest('[data-bperson]'); if (bp) { S.bankPerson = bp.dataset.bperson; return drawBank(); }
     const bl = e.target.closest('[data-bl]'); if (bl) return bankDetail(bl.dataset.bl);
     if (e.target.closest('[data-badj]')) return bankAdjust();
