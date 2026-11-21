@@ -105,7 +105,7 @@ export function mountTimesheets(root, { sb, me, people }) {
   const all = !!me.sees_all_timesheets;
   const team = (people || []).filter(p => p.active !== false && (all || p.id === me.id));
   const first = (p) => (p?.name || '').split(' ')[0];
-  const S = { fileErr: '', fileStep: '', tab: 'gen', person: me.id, period: null, periods: [], phase: 'pick', res: null, draw: null, bal: 0, ledger: [], err: '', sheet: null, synced: null };
+  const S = { msMsg: '', fileErr: '', fileStep: '', tab: 'gen', person: me.id, period: null, periods: [], phase: 'pick', res: null, draw: null, bal: 0, ledger: [], err: '', sheet: null, synced: null };
   root.innerHTML = `<style>${CSS}</style><a class="back" href="#/tools">← Tools</a><h2>Timesheets</h2><div id="tabs" class="tabs"></div><div id="body"></div><div id="modal"></div>`;
   const body = root.getElementById('body'), tabsEl = root.getElementById('tabs'), modal = root.getElementById('modal');
   let dead = false, poll = null;
@@ -144,6 +144,7 @@ export function mountTimesheets(root, { sb, me, people }) {
       ${p ? `<div class="small muted" style="margin-top:8px">Sat ${fmtD(p.start_date, { month: 'short', day: 'numeric' })} to Fri ${fmtD(p.end_date, { month: 'short', day: 'numeric' })} · payday ${fmtD(p.pay_date, { weekday: 'long', month: 'short', day: 'numeric' })}</div>` : ''}
       ${S.sheet && S.sheet.status === 'filed' ? `<div class="good">Already filed ${new Date(S.sheet.filed_at).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' })}: <b>${esc(S.sheet.file_name)}</b>. See History.</div>` : ''}
       <button class="btn go" data-go>Generate timesheet</button>
+      <div class="small muted" style="margin-top:10px">${S.msMsg ? esc(S.msMsg) : 'Sending saves straight to Harlow with your Microsoft sign-in.'} ${S.msMsg && S.msMsg.startsWith('✅') ? '' : '<button class="btn" data-mstest style="min-height:34px;padding:6px 12px;margin-left:6px">Connect Microsoft</button>'}</div>
       ${S.err ? `<div class="err">${esc(S.err)}</div>` : ''}</div>`;
   }
   async function generate() {
@@ -254,8 +255,8 @@ export function mountTimesheets(root, { sb, me, people }) {
     const pca = new PublicClientApplication(MS.config); await pca.initialize();
     const acct = pca.getActiveAccount() || pca.getAllAccounts().find(a => (a.username || '').toLowerCase() === (me.email || '').toLowerCase()) || pca.getAllAccounts()[0];
     if (acct) { try { return (await pca.acquireTokenSilent({ scopes: MS.scopes, account: acct })).accessToken; } catch (e) { /* needs sign-in */ } }
-    S.fileStep = 'Opening Microsoft sign-in…'; drawSent();
-    try { sessionStorage.setItem('ts_resume', S.sheet.id); sessionStorage.setItem('ts_back', location.href.split('#')[0] + '#/tools/timesheets'); } catch (e) {}
+    if (S.phase === 'sent') { S.fileStep = 'Opening Microsoft sign-in…'; drawSent(); }
+    try { if (S.phase === 'sent' && S.sheet) sessionStorage.setItem('ts_resume', S.sheet.id); else sessionStorage.setItem('ts_mstest', '1'); sessionStorage.setItem('ts_back', location.href.split('#')[0] + '#/tools/timesheets'); } catch (e) {}
     await pca.acquireTokenRedirect({ scopes: MS.scopes, loginHint: me.email || undefined, redirectUri: MS.config.auth.redirectUri });
     return new Promise(() => {});   // the page navigates to Microsoft
   }
@@ -272,6 +273,12 @@ export function mountTimesheets(root, { sb, me, people }) {
     if (!h) throw new Error("Your Microsoft account can't see the Harlow Bookkeeping folder. Ask Calvin to share it with you.");
     h.user = me.id; try { localStorage.setItem('ts_harlow', JSON.stringify(h)); } catch (e) {}
     return h;
+  }
+  async function msTest() {
+    S.msMsg = 'Checking Microsoft…'; drawPick();
+    try { const tok = await msToken(); const h = await harlowFolder(tok); S.msMsg = '✅ Connected to Microsoft — Harlow Bookkeeping folder found. Send to Harlow will save instantly.'; }
+    catch (e) { S.msMsg = '⚠ ' + (e.message || e); }
+    drawPick();
   }
   async function fileNow() {
     const sh = S.sheet; if (!sh || sh.status === 'filed') return draw();
@@ -363,11 +370,14 @@ export function mountTimesheets(root, { sb, me, people }) {
     if (e.target.closest('[data-send]')) return send();
     if (e.target.closest('[data-dl]')) return download(S.sheet.storage_path);
     if (e.target.closest('[data-refile]')) return fileNow();
+    if (e.target.closest('[data-mstest]')) return msTest();
     const dl = e.target.closest('[data-dlp]'); if (dl) return download(dl.dataset.dlp);
   };
   (async () => {
     try { await loadPeriods(); await loadSheet(S.person, S.period); } catch (e) { body.innerHTML = `<div class="card err">Couldn't load pay periods: ${esc(e.message)}</div>`; return; }
     let resume = null; try { resume = sessionStorage.getItem('ts_resume'); sessionStorage.removeItem('ts_resume'); } catch (e) {}
+    let mst = null; try { mst = sessionStorage.getItem('ts_mstest'); sessionStorage.removeItem('ts_mstest'); } catch (e) {}
+    if (mst && !resume) { draw(); return msTest(); }
     if (resume) {
       const { data } = await sb.from('timesheets').select('*').eq('id', resume).maybeSingle();
       if (data) { S.person = data.person_id; S.period = data.period_start; S.sheet = data; S.phase = 'sent'; draw(); if (data.status !== 'filed') fileNow(); return; }
