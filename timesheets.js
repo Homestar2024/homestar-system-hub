@@ -1,4 +1,4 @@
-// Homestar HQ - Timesheets (v8 2026-11-21: History = clickable list (pay period, Filed tag, warnings/flags); tap opens a preview of every row and hours, with Edit & re-file, Excel and Delete inside (Calvin); v7 2026-11-21: freshness check before Generate; v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
+// Homestar HQ - Timesheets (v9 2026-11-21: History flag / to-look-at chips open a quick dialog; new Payroll dates tab (Calvin); v8 2026-11-21: History = clickable list (pay period, Filed tag, warnings/flags); tap opens a preview of every row and hours, with Edit & re-file, Excel and Delete inside (Calvin); v7 2026-11-21: freshness check before Generate; v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
 // Data: time_entries (HCP time, synced by Claude), pay_periods, timesheets (sent/filed), bank_ledger (banked hours vault).
 // Rules (Timesheets\00 TIMESHEETS README.md): start = first of On my way / Time started; each row rounds to 0.1 h (Excel ROUND half up);
 // never over 80 h: the excess is trimmed off rows on the longest days and BANKED at 1.5x; under 80 h with a bank balance -> offer to draw.
@@ -106,6 +106,7 @@ tr.day td .dh{float:right}
 .err{color:var(--hot);font-weight:600;margin-top:6px}
 br.mob,span.mob{display:none}
 .hl{display:flex;flex-direction:column;gap:8px}
+.curp{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand) inset}
 .hopen{font:inherit;color:inherit;text-align:left;width:100%;cursor:pointer}.hopen:hover{border-color:var(--brand)}.chev{font-size:22px;line-height:1;color:var(--muted);align-self:center}
 .linkb{font:inherit;background:none;border:0;color:var(--brand);padding:0;cursor:pointer;font-weight:700}
 .hrow{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg);display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
@@ -136,7 +137,7 @@ export function mountTimesheets(root, { sb, me, people }) {
   const personName = (id) => (people.find(p => p.id === id) || {}).name || 'Someone';
 
   function drawTabs() {
-    tabsEl.innerHTML = [['gen', 'Generate'], ['hist', 'History'], ['bank', 'Banked hours']].map(([k, l]) => `<button aria-pressed="${S.tab === k}" data-tab="${k}">${l}</button>`).join('');
+    tabsEl.innerHTML = [['gen', 'Generate'], ['hist', 'History'], ['bank', 'Banked hours'], ['dates', 'Payroll dates']].map(([k, l]) => `<button aria-pressed="${S.tab === k}" data-tab="${k}">${l}</button>`).join('');
   }
   tabsEl.onclick = (e) => { const b = e.target.closest('[data-tab]'); if (!b) return; S.tab = b.dataset.tab; drawTabs(); draw(); };
 
@@ -452,7 +453,7 @@ export function mountTimesheets(root, { sb, me, people }) {
       const meta = [all ? esc(first(people.find(x => x.id === t.person_id))) : '', `${f1((t.totals || {}).total || 0)} h`, Number(t.banked) ? `${f1(t.banked)} h banked` : '', Number(t.drawn) ? `${f1(t.drawn)} h used from bank` : '', t.revision ? `revision ${t.revision}` : ''].filter(Boolean).join(' · ');
       const issues = t.verify_status === 'issues' ? (t.verify_notes || []).filter(n => n.level === 'issue').length : 0, flags = (t.rows || []).filter(r => r.flag && !r.edited).length;
       return `<button class="hrow hopen" data-hopen="${t.id}"><div class="ht"><b>${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</b><span class="muted small">${meta}</span></div>
-        <div class="ha"><span class="chipb ${t.status === 'filed' ? 'ok' : t.status === 'queued' ? '' : 'bad'}">${t.status === 'filed' ? '✅ Filed' : t.status === 'queued' ? '⏳ Filing' : '⚠ ' + esc(t.status)}</span>${issues ? `<span class="chipb bad">⚠ ${issues} to look at</span>` : t.verify_status === 'ok' ? '<span class="chipb ok">✔ Verified</span>' : t.status === 'filed' ? '<span class="chipb">Checking…</span>' : ''}${flags ? `<span class="chipb bad">⚑ ${flags} flagged</span>` : ''}<span class="chev" aria-hidden="true">›</span></div></button>`;
+        <div class="ha"><span class="chipb ${t.status === 'filed' ? 'ok' : t.status === 'queued' ? '' : 'bad'}">${t.status === 'filed' ? '✅ Filed' : t.status === 'queued' ? '⏳ Filing' : '⚠ ' + esc(t.status)}</span>${issues ? `<span class="chipb bad" data-vn="${t.id}" role="button">⚠ ${issues} to look at</span>` : t.verify_status === 'ok' ? '<span class="chipb ok">✔ Verified</span>' : t.status === 'filed' ? '<span class="chipb">Checking…</span>' : ''}${flags ? `<span class="chipb bad" data-hflags="${t.id}" role="button">⚑ ${flags} flagged</span>` : ''}<span class="chev" aria-hidden="true">›</span></div></button>`;
     }).join('')}</div>` : '<div class="muted">Nothing sent yet. Timesheets you send to Harlow show up here.</div>'}</div>`;
   }
 
@@ -484,6 +485,23 @@ export function mountTimesheets(root, { sb, me, people }) {
     S.tab = 'gen'; S.person = t.person_id; S.period = t.period_start; drawTabs();
     await loadSheet(S.person, S.period); if (!S.sheet) return draw();
     return startRevise();
+  }
+  function flagNotes(id) {
+    const t = (S.histList || []).find(x => x.id === id); if (!t) return;
+    const rs = (t.rows || []).filter(r => r.flag && !r.edited).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
+    modal.innerHTML = `<div class="modal"><div class="sheet"><h3>⚑ Flagged rows · ${esc(first(people.find(x => x.id === t.person_id) || me))}</h3>
+      ${rs.map(r => `<div class="kv" style="flex-direction:column;gap:2px"><b style="text-align:left">${fmtD(r.date)} · ${esc(r.job)} · ${esc(r.customer)}</b><span>${t12(r.start)} – ${t12(r.end)} · ${f1(r.hours || 0)} h</span><span style="color:var(--hot)">⚑ ${esc(r.flag)}</span></div>`).join('') || '<div class="good">No flagged rows.</div>'}
+      <div class="acts"><button class="btn" data-x>Close</button><button class="btn" data-hopen="${t.id}">Open timesheet</button></div></div></div>`;
+    modal.onclick = (e) => { if (e.target.closest('[data-x]') || e.target === modal.firstElementChild) { modal.innerHTML = ''; return; } const o = e.target.closest('[data-hopen]'); if (o) { modal.innerHTML = ''; openSheet(o.dataset.hopen); } };
+  }
+  function drawDates() {
+    const today = todayIso(); const cur = S.periods.find(p => p.start_date <= today && today <= p.end_date);
+    const nextPay = S.periods.find(p => p.pay_date >= today);
+    const d = (iso, y) => fmtD(iso, y ? { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' } : { weekday: 'short', month: 'short', day: 'numeric' });
+    body.innerHTML = `<div class="card"><h3>Payroll dates</h3><div class="small muted">Bi-weekly, Saturday to Friday. Payday is the Friday after the period ends.</div>
+      ${S.periods.length ? `<div class="hl" style="margin-top:8px">${S.periods.map(p => { const isCur = cur && p.start_date === cur.start_date, isNext = nextPay && p.pay_date === nextPay.pay_date;
+        return `<div class="hrow${isCur ? ' curp' : ''}" ${isCur ? 'id="curp"' : ''}><div class="ht"><b>${d(p.start_date)} – ${d(p.end_date, 1)}</b><span class="muted small">Pay period</span></div><div class="ha">${isCur ? '<span class="chipb ok">Current period</span>' : ''}${isNext ? '<span class="chipb">Next payday</span>' : ''}<span class="chipb">💵 Paid ${d(p.pay_date, 1)}</span></div></div>`; }).join('')}</div>` : '<div class="muted">No pay periods set up yet.</div>'}</div>`;
+    const c = root.getElementById('curp'); if (c) c.scrollIntoView({ block: 'center' });
   }
   function verifyNotes(id) {
     const t = (S.histList || []).find(x => x.id === id); if (!t) return;
@@ -585,6 +603,7 @@ export function mountTimesheets(root, { sb, me, people }) {
     if (dead) return; drawTabs(); modal.innerHTML = '';
     if (S.tab === 'hist') return drawHist();
     if (S.tab === 'bank') return drawBank();
+    if (S.tab === 'dates') return drawDates();
     if (S.phase === 'res') return drawRes();
     if (S.phase === 'sent') return drawSent();
     if (S.phase !== 'load') return drawPick();
@@ -606,6 +625,7 @@ export function mountTimesheets(root, { sb, me, people }) {
     if (e.target.closest('[data-addrow]')) return editRow(null);
     if (e.target.closest('[data-revise]')) return startRevise();
     const vn = e.target.closest('[data-vn]'); if (vn) return verifyNotes(vn.dataset.vn);
+    const hf = e.target.closest('[data-hflags]'); if (hf) return flagNotes(hf.dataset.hflags);
     const ho = e.target.closest('[data-hopen]'); if (ho) return openSheet(ho.dataset.hopen);
     if (e.target.closest('[data-hback]')) return drawHist();
     if (e.target.closest('[data-hedit]')) return editFromHist();
