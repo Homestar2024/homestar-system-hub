@@ -3,7 +3,8 @@
 // maths (C dates, J regular, K overtime, N row total, K19/L19 period, C90:F90 dept totals, C94 over 80, C96 total)
 // and the linked text boxes, and sets fullCalcOnLoad so Excel recalculates on open. Returns a Uint8Array.
 // rows = [{date:'YYYY-MM-DD', job, dept:'I - Install', start:'HH:MM', end:'HH:MM'}] (max 4 per day)
-export async function buildTimesheetXlsx(JSZip, templateBytes, rows, startIso, endIso) {
+// employee (2026-11-21): the person's full name, written into the unlinked EMPLOYEE text box (the template says Calvin Windsor).
+export async function buildTimesheetXlsx(JSZip, templateBytes, rows, startIso, endIso, employee) {
   const z = await JSZip.loadAsync(templateBytes);
   let x = await z.file('xl/worksheets/sheet1.xml').async('string');
   const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -49,6 +50,7 @@ export async function buildTimesheetXlsx(JSZip, templateBytes, rows, startIso, e
     attrs = attrs.replace(/\s*t="[^"]*"/, ''); inner = inner.replace(/<v>[\s\S]*?<\/v>|<v\/>/g, '');
     return `<c r="${ref}"${attrs}>${inner}<v>${val[ref]}</v></c>`;
   });
+  if (employee) setc('C15', employee);   // hidden leftover name cell under the EMPLOYEE box
   z.file('xl/worksheets/sheet1.xml', x);
   let wb = await z.file('xl/workbook.xml').async('string');
   if (!wb.includes('fullCalcOnLoad')) wb = wb.replace(/<calcPr([^>]*?)\/>/, '<calcPr$1 fullCalcOnLoad="1"/>');
@@ -64,6 +66,13 @@ export async function buildTimesheetXlsx(JSZip, templateBytes, rows, startIso, e
     const k = d.indexOf(`textlink="${ref}"`); if (k < 0) throw new Error('text box missing ' + ref);
     const endK = d.indexOf('</xdr:sp>', k); const seg = d.slice(k, endK).replace(/<a:t>[^<]*<\/a:t>/, `<a:t>${esc(txt)}</a:t>`);
     d = d.slice(0, k) + seg + d.slice(endK);
+  }
+  if (employee) {   // EMPLOYEE box: keep the 'EMPLOYEE' label run, put the name in the next run, blank any others
+    const k = d.indexOf('>EMPLOYEE</a:t>'); if (k < 0) throw new Error('EMPLOYEE text box missing');
+    const s0 = d.lastIndexOf('<xdr:sp', k), e0 = d.indexOf('</xdr:sp>', k); let n = 0;
+    const seg = d.slice(s0, e0).replace(/<a:t>([^<]*)<\/a:t>/g, (m, v) => { n++; return n === 1 ? m : n === 2 ? `<a:t>${esc(employee)}</a:t>` : '<a:t></a:t>'; });
+    if (n < 2) throw new Error('EMPLOYEE text box has no name line');
+    d = d.slice(0, s0) + seg + d.slice(e0);
   }
   z.file('xl/drawings/drawing1.xml', d);
   return { bytes: await z.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }), total: tot, dept };

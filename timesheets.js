@@ -1,4 +1,4 @@
-// Homestar HQ - Timesheets (v9 2026-11-21: History flag / to-look-at chips open a quick dialog; new Payroll dates tab (Calvin); v8 2026-11-21: History = clickable list (pay period, Filed tag, warnings/flags); tap opens a preview of every row and hours, with Edit & re-file, Excel and Delete inside (Calvin); v7 2026-11-21: freshness check before Generate; v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
+// Homestar HQ - Timesheets (v10 2026-11-21: Excel EMPLOYEE box = the person's HQ name (was always the template's Calvin Windsor) - server ts-file + this fallback (Calvin); v9 2026-11-21: History flag / to-look-at chips open a quick dialog; new Payroll dates tab (Calvin); v8 2026-11-21: History = clickable list (pay period, Filed tag, warnings/flags); tap opens a preview of every row and hours, with Edit & re-file, Excel and Delete inside (Calvin); v7 2026-11-21: freshness check before Generate; v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
 // Data: time_entries (HCP time, synced by Claude), pay_periods, timesheets (sent/filed), bank_ledger (banked hours vault).
 // Rules (Timesheets\00 TIMESHEETS README.md): start = first of On my way / Time started; each row rounds to 0.1 h (Excel ROUND half up);
 // never over 80 h: the excess is trimmed off rows on the longest days and BANKED at 1.5x; under 80 h with a bank balance -> offer to draw.
@@ -403,11 +403,11 @@ export function mountTimesheets(root, { sb, me, people }) {
       }
       const tok = await msToken();
       S.fileStep = 'Building the Excel…'; drawSent();
-      const [{ default: JSZip }, { buildTimesheetXlsx }] = await Promise.all([import('https://esm.sh/jszip@3.10.1'), import('./ts_excel.js?v=1')]);
+      const [{ default: JSZip }, { buildTimesheetXlsx }] = await Promise.all([import('https://esm.sh/jszip@3.10.1'), import('./ts_excel.js?v=2')]);
       const { data: tpl, error: te } = await sb.storage.from('timesheets').download('_template/timesheet_template.xlsx');
       if (te) throw new Error("Couldn't load the timesheet template: " + te.message);
       const rows = (sh.rows || []).map(r => ({ date: r.date, job: r.job, dept: r.dept, start: r.start, end: r.end }));
-      const out = await buildTimesheetXlsx(JSZip, await tpl.arrayBuffer(), rows, p.start_date, p.end_date);
+      const out = await buildTimesheetXlsx(JSZip, await tpl.arrayBuffer(), rows, p.start_date, p.end_date, (people.find(x => x.id === sh.person_id) || {}).name);
       if (Math.abs(out.total - Number((sh.totals || {}).total || 0)) > 0.05) throw new Error(`Excel total ${out.total} doesn't match HQ total ${(sh.totals || {}).total}. Not filed.`);
       S.fileStep = 'Saving to Harlow Bookkeeping…'; drawSent();
       const h = await harlowFolder(tok); const pd = D(p.pay_date);
