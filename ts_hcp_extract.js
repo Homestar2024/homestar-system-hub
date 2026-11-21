@@ -45,9 +45,10 @@
   window.__TSOUT = out;
   // delta vs what HQ already has (T.known = {id: sig}); one line per change: U~id~personKey~date~job~customer~dept~start~end~note~flag  or  D~id
   const cl = (s) => (s || '').replace(/[~\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-  const sig = (o) => [o.start_t, o.end_t, o.dept, o.job_no, cl(o.flag), cl(o.note)].join('|');
-  const known = T.known || {}, seen = new Set(), lines = [];
-  for (const o of out) { seen.add(o.id); if (known[o.id] !== sig(o)) lines.push(['U', o.id, o.person_id, o.work_date, o.job_no, o.customer, o.dept, o.start_t, o.end_t, cl(o.note), cl(o.flag)].join('~')); }
+  const fnv = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16); };
+  const sig = (o) => fnv([o.start_t, o.end_t, o.dept, o.job_no, cl(o.flag), cl(o.note)].join('|'));
+  const known = Object.fromEntries(Object.entries(T.known || {}).map(([k, v]) => ['ptt_' + k, v])), seen = new Set(), lines = [];
+  for (const o of out) { seen.add(o.id); if (known[o.id] !== sig(o)) lines.push(['U', o.id, o.person_id.slice(0, 8), o.work_date, o.job_no, o.customer, o.dept, o.start_t, o.end_t, cl(o.note), cl(o.flag)].join('~')); }
   for (const id of Object.keys(known)) if (!seen.has(id)) lines.push('D~' + id);
   window.__TSD = lines.join('\n');
   return out.length + ' entries; ' + lines.length + ' changes; ' + window.__TSD.length + ' chars (read window.__TSD in 900-char slices)';
