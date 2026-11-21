@@ -1,4 +1,4 @@
-// Homestar HQ - Tools (v0.30.5 diagnostic = FLAT $159, period: no hours, no travel, no extra time (Calvin 2026-11-21, matches HCP 'Diagnostic Visit - Flat Rate'); v0.30.4 diagnostic = FLAT $159 for the first hour on site, travel included, extra hours $159/h only with the customer's OK (Calvin 2026-11-21; replaces v0.30.3 travel-at-break-even, which a later deploy had overwritten); v0.30.2 departments = Installation + Service only; diagnostic bills one person, no parts/PST (Calvin 2026-11-20); v0.30.1 installs priced on 12% net only, 40% gross = target shown as a note (Calvin 2026-11-20); v0.30 RATE RESET 2026-11-20 (Calvin confirmed): overhead $96.24 per PERSON-hour on the job (QBO Jun-Oct overhead $78,415 / HCP job hours Calvin 585 + Jacob 230); Calvin $44.47, Jacob $29.87 burdened; install 12% net -> Calvin $159.90 / Jacob $143.30; service 18% -> $172 / $154; travel at break-even $140.71 / $126.11. Earlier v0.29.x crew models are retired.)
+// Homestar HQ - Tools (v0.30.6 diagnostic: flat $159, no time or who's-going inputs; internal margin panel back, costed as 1 h of Calvin at break-even, travel not included (Calvin 2026-11-21); v0.30.5 diagnostic = FLAT $159, period: no hours, no travel, no extra time (Calvin 2026-11-21, matches HCP 'Diagnostic Visit - Flat Rate'); v0.30.4 diagnostic = FLAT $159 for the first hour on site, travel included, extra hours $159/h only with the customer's OK (Calvin 2026-11-21; replaces v0.30.3 travel-at-break-even, which a later deploy had overwritten); v0.30.2 departments = Installation + Service only; diagnostic bills one person, no parts/PST (Calvin 2026-11-20); v0.30.1 installs priced on 12% net only, 40% gross = target shown as a note (Calvin 2026-11-20); v0.30 RATE RESET 2026-11-20 (Calvin confirmed): overhead $96.24 per PERSON-hour on the job (QBO Jun-Oct overhead $78,415 / HCP job hours Calvin 585 + Jacob 230); Calvin $44.47, Jacob $29.87 burdened; install 12% net -> Calvin $159.90 / Jacob $143.30; service 18% -> $172 / $154; travel at break-even $140.71 / $126.11. Earlier v0.29.x crew models are retired.)
 // mountTools(host, db, extra) renders into a shadow root on host and returns a cleanup function. extra.tool = '' (list) or 'pricing'.
 // RATES = the company rate model - the RATE RESET line in START HERE s8 is the source. Change them here AND there the same day; recompute at each month-end close.
 export const RATES = {
@@ -46,8 +46,9 @@ export function price(s, R = RATES) {
     Object.assign(out, { pre: sub + card, fee: card, direct: direct + s.travel * crewLab, cost: direct + ohCost + travelPrice, floor: byGross > byNet ? 'gross' : 'net' });
   } else if (s.dept === 'service' && s.kind === 'diag') {   // FLAT diagnostic (Calvin 2026-11-21): $159 flat, travel included, no added hours, one person, no parts
     const hr = R.diag.calvin;
+    const be1 = R.crew[0].rate + oh;                                     // cost basis: 1 h of Calvin at break-even ($140.71), travel not included
     out.lines = [['Diagnostic - flat rate (travel included)', hr]];
-    Object.assign(out, { pre: hr, flat: true });
+    Object.assign(out, { pre: hr, flat: true, direct: R.crew[0].rate, cost: be1, hourly: hr, crewHour: be1 });
   } else if (s.dept === 'service') {
     const rates = crew.map(c => ({ c, hr: Math.round(be(c) / (1 - net)) }));      // 18% -> Calvin $172, Jacob $154
     const rows = rates.map(({ c, hr }) => [`Labour ${c.name} ${s.hours} h × ${money(hr)}/h`, s.hours * hr]);
@@ -149,7 +150,7 @@ export function mountTools(host, db, extra) {
     inEl.innerHTML = `
       <div class="step"><div class="lbl"><span class="n">${n++}</span>Department</div><div class="seg" data-g="dept">${Object.entries(R.dept).filter(([k]) => k !== 'maint').map(([k, v]) => `<button aria-pressed="${d === k}" data-v="${k}">${v.label}</button>`).join('')}</div>
         ${svc ? `<div class="seg" data-g="kind" style="margin-top:8px"><button aria-pressed="${S.kind === 'repair'}" data-v="repair">Repair</button><button aria-pressed="${diag}" data-v="diag">Diagnostic</button></div>` : ''}</div>
-      <div class="step"><div class="lbl"><span class="n">${n++}</span>Who's going</div><div class="seg">${R.crew.map(c => `<button class="chk ${S.crew.includes(c.id) ? 'on' : ''}" data-crew="${c.id}">${S.crew.includes(c.id) ? '✓ ' : ''}${c.name}</button>`).join('')}</div>${diag ? `<div class="muted" style="font-size:13px;margin-top:6px">Diagnostic is a flat $${R.diag.calvin}, travel included, no matter who goes.</div>` : ''}</div>
+      ${diag ? '' : `<div class="step"><div class="lbl"><span class="n">${n++}</span>Who's going</div><div class="seg">${R.crew.map(c => `<button class="chk ${S.crew.includes(c.id) ? 'on' : ''}" data-crew="${c.id}">${S.crew.includes(c.id) ? '✓ ' : ''}${c.name}</button>`).join('')}</div>${diag ? `<div class="muted" style="font-size:13px;margin-top:6px">Diagnostic is a flat $${R.diag.calvin}, travel included, no matter who goes.</div>` : ''}</div>`}
       ${diag ? '' : `<div class="step"><div class="lbl"><span class="n">${n++}</span>Time</div><div class="fields">${field('hours', (d === 'install' ? 'Job hours on site' : 'Repair hours on site') + ' (clock time)', 'e.g. 8')}${field('travel', 'Travel hours, round trip (clock time)', 'e.g. 1')}</div></div>`}
       ${diag ? '' : svc ? `<div class="step"><div class="lbl"><span class="n">${n++}</span>Parts (your cost before tax)</div><div class="parts">${S.parts.map((p, i) => `<div class="prow"><input inputmode="decimal" data-part="${i}" value="${esc(p)}" placeholder="Part ${i + 1} cost">${S.parts.length > 1 ? `<button class="x" data-del="${i}" aria-label="Remove part">✕</button>` : ''}</div>`).join('')}<button class="add" data-addpart>+ Add another part</button></div>
           <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px"><input type="checkbox" data-warranty style="width:auto" ${S.warranty ? 'checked' : ''}> Warranty parts (no charge to the customer)</label>${pstBox}</div>`
@@ -157,7 +158,7 @@ export function mountTools(host, db, extra) {
       ${d !== 'maint' && !diag ? `<div class="step"><div class="lbl"><span class="n">${n++}</span>Net margin</div><div class="mrow"><button class="step-btn" data-net="-1" aria-label="Lower margin">−</button><input type="range" min="${R.dept[d].net}" max="50" step="1" value="${S.net}" data-netr><button class="step-btn" data-net="1" aria-label="Raise margin">+</button><span class="mv" id="mv">${S.net}%</span></div><div class="muted" style="font-size:13px;margin-top:4px">Minimum ${R.dept[d].net}% net${d === 'install' ? ` (aim for ${R.dept[d].gross}% gross)` : ''}.</div></div>` : ''}`;
   }
   function drawOut() {
-    const k = S.pst ? 1 + R.pst : 1; const s = { dept: S.dept, kind: S.kind, crew: S.crew, hours: num(S.hours), travel: num(S.travel), materials: num(S.materials) * k, subs: num(S.subs), parts: S.parts.map(num).filter(Boolean).map(x => x * k), warranty: S.warranty, net: S.net };
+    const k = S.pst ? 1 + R.pst : 1; const s = { dept: S.dept, kind: S.kind, crew: (S.dept === 'service' && S.kind === 'diag') ? ['calvin'] : S.crew, hours: num(S.hours), travel: num(S.travel), materials: num(S.materials) * k, subs: num(S.subs), parts: S.parts.map(num).filter(Boolean).map(x => x * k), warranty: S.warranty, net: S.net };
     const r = price(s);
     if (r.error) { outEl.innerHTML = `<h3>Price</h3><div class="muted">${r.error}</div>`; return; }
     if (!s.hours && !s.travel && !(S.dept === 'service' && S.kind === 'diag')) { outEl.innerHTML = `<h3>Price</h3><div class="muted">Enter the hours to see the price.</div>`; return; }
@@ -165,6 +166,12 @@ export function mountTools(host, db, extra) {
     if (r.flat) {
       outEl.innerHTML = `<h3>Price before GST <span class="tag">flat rate</span></h3><div class="big" id="pre">${money(r.pre)}</div>${rows}
       <div class="sub c"><span>GST 5%</span><span>${money(r.gst)}</span></div><div class="sub c tot"><span>Total with GST</span><span>${money(r.total)}</span></div>
+      <div class="int"><h4>Internal - never show the customer</h4>
+        <div class="sub"><span>Our cost (1 h of Calvin at break-even, travel not included)</span><span>${money(r.cost)}</span></div>
+        <div class="sub"><span>Profit</span><span>${money(r.profit)}</span></div>
+        <div class="sub"><span>Net margin</span><span>${pct(r.netPct)}</span></div>
+        <div class="sub"><span>Gross margin</span><span>${pct(r.grossPct)}</span></div>
+        <div class="sub"><span>Break-even per hour (Calvin)</span><span>${money(r.crewHour)}/h</span></div></div>
       <div class="warn">Diagnostic is a flat $${R.diag.calvin}: travel included, no added hours. Repairs are quoted separately.</div>
       <div class="acts"><button class="btn pri" data-copy>Copy summary</button><button class="btn" data-reset>Start over</button></div><div class="muted" id="copied" style="font-size:13px;margin-top:6px"></div>`;
       return;
