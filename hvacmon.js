@@ -268,7 +268,7 @@ export function mountHvacMon(root, { sb }) {
         <button class="mini" data-addunit="${sy.id}">+ Add ${sy.type === 'multi_zone' || !us.some(u => u.role === 'indoor') ? 'indoor unit' : 'unit'}</button>${sy.notes ? `<div class="muted small" style="margin-top:6px">${esc(sy.notes)}</div>` : ''}</div>`; }).join('') || '<div class="muted small">No equipment yet. Add a system (central ducted, single-zone or multi-zone), then its outdoor and indoor units with model and serial.</div>'}
       <div class="hint">Model numbers drive the performance analysis against the manufacturer's engineering data.</div>`;
   }
-  function eventsInRange() { return S.events.filter(ev => { const t = Date.parse(ev.ts); return t >= S.from && t <= S.to; }); }
+  function eventsInRange() { return S.events.filter(ev => Date.parse(ev.ts) >= S.from); }
   function drawEvents() {
     const el = root.getElementById('evs'); if (!el) return;
     const inR = eventsInRange(); const older = S.events.length - inR.length;
@@ -326,7 +326,7 @@ export function mountHvacMon(root, { sb }) {
     for (let i = 0; i <= nx; i++) { const t = S.from + i * (S.to - S.from) / nx; axes += `<text class="ax" x="${x(t)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === nx ? 'end' : 'middle'}">${fmtX(t)}</text>`; }
     const lines = vis.map(s => { const f = isTemp(s) ? (v) => yT(cv(v)) : yP; const d = S.series[s.id].map((p, i) => (i ? 'L' : 'M') + x(p[0]).toFixed(1) + ' ' + f(p[1]).toFixed(1)).join(''); return `<path d="${d}" fill="none" stroke="${esc(s.color)}" stroke-width="${isTemp(s) ? 2 : 1.6}" stroke-linejoin="round" ${isTemp(s) ? '' : 'stroke-dasharray="5 3" opacity=".85"'}/>`; }).join('');
     const evs = eventsInRange();
-    const marks = evs.map(ev => { const px = x(Date.parse(ev.ts)).toFixed(1); const c = EVC[ev.kind] || EVC.note; return `<line x1="${px}" x2="${px}" y1="${T}" y2="${H - B}" stroke="${c}" stroke-width="1.5" stroke-dasharray="3 3"/><path d="M${px - 6} ${T - 9}h12l-6 8z" fill="${c}"/>`; }).join('');
+    const marks = evs.map(ev => { const px = Math.min(W - Rr, x(Date.parse(ev.ts))).toFixed(1); const c = EVC[ev.kind] || EVC.note; return `<line x1="${px}" x2="${px}" y1="${T}" y2="${H - B}" stroke="${c}" stroke-width="1.5" stroke-dasharray="3 3"/><path d="M${px - 6} ${T - 9}h12l-6 8z" fill="${c}"/>`; }).join('');
     box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sensor graph"><text class="ax" x="${L - 6}" y="11" text-anchor="end" font-weight="700">${tU()}</text>${pw.length ? `<text class="ax" x="${W - Rr + 6}" y="11" font-weight="700">Watts</text>` : ''}<g class="grid">${grid}</g>${axes}${lines}${marks}<line id="cx" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/></svg><div class="tip" id="tip" hidden></div>`;
     const svg = box.querySelector('svg'), cx = box.querySelector('#cx'), tip = box.querySelector('#tip');
     const near = (arr, t) => { let lo = 0, hi = arr.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (arr[m][0] < t) lo = m; else hi = m; } return Math.abs(arr[lo][0] - t) < Math.abs(arr[hi][0] - t) ? arr[lo] : arr[hi]; };
@@ -465,7 +465,7 @@ export function mountHvacMon(root, { sb }) {
       if (!row.title) row.title = EVK[row.kind][1];
       const q = ev ? sb.from('monitor_events').update(row).eq('id', ev.id) : sb.from('monitor_events').insert(Object.assign(row, { site_id: S.site.id }));
       const { error } = await q; if (error) return errOut(error.message);
-      closeModal(); await reloadMeta(); drawEvents(); drawChart();
+      closeModal(); await reloadMeta(); await load(); drawEvents(); drawChart(); drawTiles();
     };
   }
 
