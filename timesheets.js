@@ -1,4 +1,4 @@
-// Homestar HQ - Timesheets (v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
+// Homestar HQ - Timesheets (v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
 // Data: time_entries (HCP time, synced by Claude), pay_periods, timesheets (sent/filed), bank_ledger (banked hours vault).
 // Rules (Timesheets\00 TIMESHEETS README.md): start = first of On my way / Time started; each row rounds to 0.1 h (Excel ROUND half up);
 // never over 80 h: the excess is trimmed off rows on the longest days and BANKED at 1.5x; under 80 h with a bank balance -> offer to draw.
@@ -127,7 +127,7 @@ export function mountTimesheets(root, { sb, me, people }) {
   const all = !!me.sees_all_timesheets;
   const team = (people || []).filter(p => p.active !== false && (all || p.id === me.id));
   const first = (p) => (p?.name || '').split(' ')[0];
-  const S = { msMsg: '', fileErr: '', fileStep: '', tab: 'gen', person: me.id, period: null, periods: [], phase: 'pick', res: null, draw: null, bal: 0, ledger: [], err: '', sheet: null, synced: null };
+  const S = { server: null, msMsg: '', fileErr: '', fileStep: '', tab: 'gen', person: me.id, period: null, periods: [], phase: 'pick', res: null, draw: null, bal: 0, ledger: [], err: '', sheet: null, synced: null };
   root.innerHTML = `<style>${CSS}</style><a class="back" href="#/tools">← Tools</a><h2>Timesheets</h2><div id="tabs" class="tabs"></div><div id="body"></div><div id="modal"></div>`;
   const body = root.getElementById('body'), tabsEl = root.getElementById('tabs'), modal = root.getElementById('modal');
   let dead = false, poll = null;
@@ -166,7 +166,7 @@ export function mountTimesheets(root, { sb, me, people }) {
       ${p ? `<div class="small muted" style="margin-top:8px">Sat ${fmtD(p.start_date, { month: 'short', day: 'numeric' })} to Fri ${fmtD(p.end_date, { month: 'short', day: 'numeric' })} · payday ${fmtD(p.pay_date, { weekday: 'long', month: 'short', day: 'numeric' })}</div>` : ''}
       ${S.sheet && S.sheet.status === 'filed' ? `<div class="good">Already filed ${new Date(S.sheet.filed_at).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' })}: <b>${esc(S.sheet.file_name)}</b>.${S.sheet.revision ? ` (revision ${S.sheet.revision})` : ''} <button class="btn" data-revise style="min-height:34px;padding:6px 12px;margin-left:6px">✎ Edit &amp; re-file</button></div>` : ''}
       <button class="btn go" data-go>Generate timesheet</button>
-      <div class="small muted" style="margin-top:10px">${S.msMsg ? esc(S.msMsg) : 'Sending saves straight to Harlow with your Microsoft sign-in.'} ${S.msMsg && S.msMsg.startsWith('✅') ? '' : '<button class="btn" data-mstest style="min-height:34px;padding:6px 12px;margin-left:6px">Connect Microsoft</button>'}</div>
+      <div class="small muted" style="margin-top:10px">${S.server ? 'Sending saves straight to Harlow Bookkeeping — no sign-in needed.' : `${S.msMsg ? esc(S.msMsg) : 'Sending saves straight to Harlow with your Microsoft sign-in.'} ${S.msMsg && S.msMsg.startsWith('✅') ? '' : '<button class="btn" data-mstest style="min-height:34px;padding:6px 12px;margin-left:6px">Connect Microsoft</button>'}`}</div>
       ${S.err ? `<div class="err">${esc(S.err)}</div>` : ''}</div>`;
   }
   async function generate() {
@@ -361,6 +361,13 @@ export function mountTimesheets(root, { sb, me, people }) {
     const sh = S.sheet; if (!sh || sh.status === 'filed') return draw();
     const p = S.periods.find(x => x.start_date === sh.period_start); S.fileErr = ''; S.fileStep = 'Building the Excel…'; drawSent();
     try {
+      if (S.server !== false) {   // server filing (no Microsoft sign-in on this device)
+        S.fileStep = 'Saving to Harlow Bookkeeping…'; drawSent();
+        const { data: sv, error: se } = await sb.functions.invoke('ts-file', { body: { id: sh.id } });
+        if (!se && sv && sv.ok) { await loadSheet(sh.person_id, sh.period_start); S.fileStep = ''; drawSent(); return; }
+        let msg = ''; try { const j = se && se.context && await se.context.json(); msg = (j && j.error) || ''; if (j && j.code === 'not_configured') { S.server = false; msg = ''; } } catch (x) {}
+        if (msg) throw new Error(msg);   // server reached Microsoft/HQ and said why; otherwise fall back to this device's sign-in
+      }
       const tok = await msToken();
       S.fileStep = 'Building the Excel…'; drawSent();
       const [{ default: JSZip }, { buildTimesheetXlsx }] = await Promise.all([import('https://esm.sh/jszip@3.10.1'), import('./ts_excel.js?v=1')]);
@@ -520,6 +527,7 @@ export function mountTimesheets(root, { sb, me, people }) {
   };
   (async () => {
     try { await loadPeriods(); await loadSheet(S.person, S.period); } catch (e) { body.innerHTML = `<div class="card err">Couldn't load pay periods: ${esc(e.message)}</div>`; return; }
+    sb.functions.invoke('ts-file', { body: { ping: true } }).then(({ data }) => { S.server = !!(data && data.configured); if (!S.server) S.server = false; if (!dead && S.phase === 'pick' && S.tab === 'gen') drawPick(); }).catch(() => { S.server = false; });
     let resume = null; try { resume = sessionStorage.getItem('ts_resume'); sessionStorage.removeItem('ts_resume'); } catch (e) {}
     let mst = null; try { mst = sessionStorage.getItem('ts_mstest'); sessionStorage.removeItem('ts_mstest'); } catch (e) {}
     if (mst && !resume) { draw(); return msTest(); }
