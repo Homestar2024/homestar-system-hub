@@ -1,4 +1,4 @@
-// Homestar HQ - Timesheets (v2 2026-11-20: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
+// Homestar HQ - Timesheets (v3 2026-11-20: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
 // Data: time_entries (HCP time, synced by Claude), pay_periods, timesheets (sent/filed), bank_ledger (banked hours vault).
 // Rules (Timesheets\00 TIMESHEETS README.md): start = first of On my way / Time started; each row rounds to 0.1 h (Excel ROUND half up);
 // never over 80 h: the excess is trimmed off rows on the longest days and BANKED at 1.5x; under 80 h with a bank balance -> offer to draw.
@@ -22,7 +22,7 @@ export const folderOf = (p) => { const pd = D(p.pay_date); return `Harlow Bookke
 
 // Pure: build the timesheet from entries. Returns rows (sorted), totals, and the >80 trim plan.
 export function build(entries, cap = 80) {
-  const rows = entries.map(e => ({ id: e.id, date: e.work_date, job: e.job_no, customer: e.customer || '', dept: e.dept, s: mins(e.start_t), e: mins(e.end_t), note: e.note || '', flag: e.flag || '' }))
+  const rows = entries.map(e => ({ id: e.id, date: e.work_date, job: e.job_no, customer: e.customer || '', dept: e.dept, s: mins(e.start_t), e: mins(e.end_t), note: e.note || '', flag: e.flag || '', edited: !!e.edited, reason: e.reason || '', manual: !!e.manual }))
     .filter(r => r.e > r.s).sort((a, b) => (a.date + hm(a.s)).localeCompare(b.date + hm(b.s)));
   const tot = (rs) => Math.round(rs.reduce((a, r) => a + rh(r.e - r.s) * 10, 0)) / 10;
   const raw = tot(rows); const bank = [];
@@ -98,6 +98,15 @@ tr.day td .dh{float:right}
 .stepper button{width:48px;height:48px;font-size:22px;flex:none}
 .err{color:var(--hot);font-weight:600;margin-top:6px}
 br.mob,span.mob{display:none}
+.ed{font:inherit;border:1px solid var(--line);background:var(--bg);color:var(--brand);border-radius:8px;padding:2px 8px;margin-top:4px;cursor:pointer}
+.pill.ed-p{background:#fff1c2;color:#7a5200}
+button.tile{font:inherit;color:inherit;border:0;text-align:left;cursor:pointer}
+.blist{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.bl{display:flex;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer}
+.bl .bh{font-family:var(--display);font-size:20px;font-weight:700;min-width:84px}.bh.pos{color:var(--ok)}.bh.neg{color:var(--hot)}
+.bl .bt{flex:1;min-width:0}.bl .chev{color:var(--muted);font-size:22px}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}.kv span{color:var(--muted)}.kv b{text-align:right;font-weight:600}
+.sheet{max-height:90vh;overflow:auto}
 @media(max-width:600px){.btn{flex:1}.dc{display:none}span.mob{display:inline-block;margin-top:3px}br.mob{display:inline}table{min-width:0}th,td{padding:7px 5px}}
 `;
 
@@ -160,9 +169,52 @@ export function mountTimesheets(root, { sb, me, people }) {
     if (q.error) { S.phase = 'pick'; S.err = "Couldn't read the time entries: " + q.error.message; return draw(); }
     const { data: sy } = await sb.from('time_entries').select('synced_at').eq('person_id', S.person).order('synced_at', { ascending: false }).limit(1);
     S.synced = sy && sy[0] ? sy[0].synced_at : null;
-    S.res = build(q.data || []); S.draw = null; S.noDraw = false; S.phase = 'res';
+    S.removed = []; S.entries = q.data || []; S.edits = { upd: {}, del: [], add: [] }; S.res = build(eff()); S.draw = null; S.noDraw = false; S.phase = 'res';
     body.innerHTML = `<div class="card load"><div class="done">✅</div><div class="steps">Timesheet ready</div></div>`;
     setTimeout(() => { if (!dead) draw(); }, 900);
+  }
+  // ---------- Manual edits (kept on top of the HCP time; every change needs a reason and is marked 'edited') ----------
+  function eff() {
+    const E = S.edits || { upd: {}, del: [], add: [] };
+    return [...S.entries.filter(e => !E.del.includes(e.id)).map(e => E.upd[e.id] ? { ...e, ...E.upd[e.id], edited: true } : e), ...E.add];
+  }
+  function recompute() { S.res = build(eff()); S.draw = null; S.noDraw = false; drawRes(); }
+  function editRow(id) {
+    const p = P(); const E = S.edits; const src = id ? (eff().find(e => e.id === id) || {}) : {};
+    const orig = id ? S.entries.find(e => e.id === id) : null; const days = []; for (let d = 0; d < 14; d++) days.push(addDays(p.start_date, d));
+    const v = { date: src.work_date || days[0], job: src.job_no || '', cust: src.customer || '', dept: src.dept || 'S', s: (src.start_t || '08:00').slice(0, 5), e: (src.end_t || '09:00').slice(0, 5) };
+    modal.innerHTML = `<div class="modal"><div class="sheet"><h3>${id ? 'Edit row' : 'Add a row'}</h3>
+      <div class="row2"><label class="f">Day<select id="m_d">${days.map(d => `<option value="${d}" ${d === v.date ? 'selected' : ''}>${fmtD(d)}</option>`).join('')}</select></label>
+        <label class="f">Dept<select id="m_dp">${Object.entries(DEPT).map(([k, l]) => `<option value="${k}" ${k === v.dept ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="f">Job #<input id="m_j" value="${esc(v.job)}" placeholder="e.g. 2456-75 or Office"></label>
+        <label class="f">Customer<input id="m_c" value="${esc(v.cust)}"></label>
+        <label class="f">Start<input id="m_s" type="time" value="${v.s}"></label><label class="f">End<input id="m_e" type="time" value="${v.e}"></label></div>
+      <label class="f" style="margin-top:10px">Reason (shows on the sheet record)<input id="m_r" value="${esc((E.upd[id] || {}).reason || '')}" placeholder="e.g. forgot to stop my timer"></label>
+      ${orig ? `<div class="small muted" style="margin-top:6px">HCP had ${fmtD(orig.work_date)} ${t12(orig.start_t)} – ${t12(orig.end_t)}.</div>` : ''}
+      <div class="err" id="m_err"></div>
+      <div class="acts"><button class="btn" data-x>Cancel</button>${id ? '<button class="btn" data-mdel style="color:var(--hot)">Remove row</button>' : ''}${id && E.upd[id] ? '<button class="btn" data-mres>Restore HCP time</button>' : ''}<button class="btn pri" data-msave>Save</button></div></div></div>`;
+    const g = (k) => modal.querySelector('#' + k).value.trim(), er = modal.querySelector('#m_err');
+    modal.onclick = (ev) => {
+      if (ev.target.closest('[data-x]')) { modal.innerHTML = ''; return; }
+      if (ev.target.closest('[data-mres]')) { delete E.upd[id]; modal.innerHTML = ''; return recompute(); }
+      const reason = g('m_r');
+      if (ev.target.closest('[data-mdel]')) {
+        if (!reason) { er.textContent = 'Add a reason first.'; return; }
+        if (id.startsWith('man')) E.add = E.add.filter(a => a.id !== id); else { E.del.push(id); S.removed = [...(S.removed || []), { ...src, reason }]; }
+        modal.innerHTML = ''; return recompute();
+      }
+      if (ev.target.closest('[data-msave]')) {
+        const st = g('m_s'), en = g('m_e');
+        if (!g('m_j')) { er.textContent = 'Enter a job # (or Office).'; return; }
+        if (!st || !en || mins(en) <= mins(st)) { er.textContent = 'End time has to be after the start time.'; return; }
+        if (!reason) { er.textContent = 'Add a reason so the change is on record.'; return; }
+        const rec = { work_date: g('m_d'), job_no: g('m_j'), customer: g('m_c'), dept: g('m_dp'), start_t: st, end_t: en, reason };
+        if (!id) E.add.push({ id: 'man' + Date.now(), ...rec, note: '', flag: '', edited: true, manual: true });
+        else if (id.startsWith('man')) Object.assign(E.add.find(a => a.id === id), rec);
+        else E.upd[id] = rec;
+        modal.innerHTML = ''; recompute();
+      }
+    };
   }
   function drawRows(addRows) {
     const r = S.res; const rows = [...r.rows.map(x => ({ ...x })), ...(addRows || [])].sort((a, b) => (a.date + hm(a.s)).localeCompare(b.date + hm(b.s)));
@@ -171,9 +223,9 @@ export function mountTimesheets(root, { sb, me, people }) {
       const rs = rows.filter(x => x.date === d); const dh = rs.reduce((a, x) => a + rh(x.e - x.s), 0);
       return `<tr class="day"><td colspan="5">${fmtD(d, { weekday: 'long', month: 'short', day: 'numeric' })}<span class="dh">${f1(dh)} h${dh > 10.0001 ? ' ⚠ over 10' : ''}</span></td></tr>` + rs.map(x => {
         const tr = r.bank.filter(b => b.date === d && b.job === x.job && b.to === hm(x.e));
-        return `<tr><td style="white-space:nowrap">${esc(x.job)}${x.drawn ? ' <span class="pill">banked</span>' : ''}</td><td>${esc(x.customer)} <span class="pill ${x.dept} mob">${DEPT[x.dept]}</span>${x.flag ? `<div class="flag">⚑ ${esc(x.flag)}</div>` : ''}${x.note ? `<div class="note">${esc(x.note)}</div>` : ''}${tr.map(b => `<div class="trim">−${f1(b.hours)} h moved to the bank (ended ${t12(b.from)} → ${t12(b.to)})</div>`).join('')}</td><td class="dc"><span class="pill ${x.dept}">${DEPT[x.dept]}</span></td><td style="white-space:nowrap">${t12(hm(x.s))} –<br class="mob"> ${t12(hm(x.e))}</td><td class="n">${f1(rh(x.e - x.s))}</td></tr>`;
+        return `<tr><td style="white-space:nowrap">${esc(x.job)}${x.drawn ? ' <span class="pill">banked</span>' : ''}${x.edited ? ' <span class="pill ed-p">edited</span>' : ''}</td><td>${esc(x.customer)} <span class="pill ${x.dept} mob">${DEPT[x.dept]}</span>${x.reason ? `<div class="note">✎ ${esc(x.reason)}</div>` : ''}${x.flag && !x.edited ? `<div class="flag">⚑ ${esc(x.flag)}</div>` : ''}${x.note ? `<div class="note">${esc(x.note)}</div>` : ''}${tr.map(b => `<div class="trim">−${f1(b.hours)} h moved to the bank (ended ${t12(b.from)} → ${t12(b.to)})</div>`).join('')}</td><td class="dc"><span class="pill ${x.dept}">${DEPT[x.dept]}</span></td><td style="white-space:nowrap">${t12(hm(x.s))} –<br class="mob"> ${t12(hm(x.e))}</td><td class="n">${f1(rh(x.e - x.s))}${!x.drawn && S.canEdit ? `<br><button class="ed" data-edit="${esc(x.id)}" aria-label="Edit row">✎</button>` : ''}</td></tr>`;
       }).join('');
-    }).join('')}</tbody></table></div>`;
+    }).join('')}</tbody></table></div>${S.canEdit ? '<div class="acts" style="margin-top:8px"><button class="btn" data-addrow>+ Add a row</button></div>' : ''}${(S.removed || []).length ? `<div class="small muted" style="margin-top:6px">Removed: ${S.removed.map(r => `${esc(r.job_no)} ${fmtD(r.work_date)} (${esc(r.reason)})`).join('; ')}</div>` : ''}`;
   }
   function finalRows() {
     const add = (S.draw && S.draw.rows) || [];
@@ -184,7 +236,7 @@ export function mountTimesheets(root, { sb, me, people }) {
     const p = P(); const r = S.res; const rows = finalRows(); const t = totals(rows); const who = people.find(x => x.id === S.person) || me;
     const flagged = rows.filter(x => x.flag).length; const banked = Math.round(r.bank.reduce((a, b) => a + b.hours, 0) * 10) / 10;
     const under = Math.round((80 - t.total) * 10) / 10; const canDraw = !S.draw && !S.noDraw && under > 0 && S.bal > 0.04;
-    const filed = S.sheet && S.sheet.status === 'filed';
+    const filed = S.sheet && S.sheet.status === 'filed'; S.canEdit = !filed;
     body.innerHTML = `<div class="card"><h3>${esc(first(who))} · ${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</h3>
       <div class="tiles"><div class="tile big"><b>${f1(t.total)}</b><span>hours on the sheet</span></div>${Object.entries(t.byDept).filter(([, v]) => v).map(([k, v]) => `<div class="tile"><b>${f1(v)}</b><span>${DEPT[k]}</span></div>`).join('')}<div class="tile"><b>${f1(S.bal)}</b><span>banked hours available</span></div></div>
       <div class="small muted">HCP time last pulled: ${S.synced ? new Date(S.synced).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' }) : 'never'} — anything tracked after that isn't here yet.</div>
@@ -227,7 +279,7 @@ export function mountTimesheets(root, { sb, me, people }) {
     let need = Math.round(v * 10); const rows = []; const ledger = [];
     for (const b of banks) {
       let take = Math.min(need, Math.round(b.left * 10)); if (take <= 0) continue; need -= take;
-      ledger.push({ kind: 'draw', hours: take / 10, job_no: b.job_no, customer: b.customer, dept: b.dept, note: 'Used on this timesheet' });
+      ledger.push({ kind: 'draw', hours: take / 10, job_no: b.job_no, customer: b.customer, dept: b.dept, source_id: b.id, work_date: b.work_date || '', note: `Used to top up to 80 h · from ${b.period_start ? fmtD(b.period_start, { month: 'short', day: 'numeric', year: 'numeric' }) + ' pay period' : 'a manual adjustment'}` });
       while (take > 0) {
         const d = Object.keys(load).sort((a, c) => load[a] - load[c] || a.localeCompare(c))[0];
         const room = Math.round((10 - load[d]) * 10); const piece = Math.min(take, room); if (piece <= 0) break;
@@ -242,9 +294,9 @@ export function mountTimesheets(root, { sb, me, people }) {
   async function send() {
     const p = P(); const rows = finalRows(); const t = totals(rows); const who = people.find(x => x.id === S.person) || me;
     const ledger = [...S.res.bank.map(b => ({ kind: 'bank', work_date: b.date, job_no: b.job, customer: b.customer, dept: b.dept, hours_original: b.hours, multiplier: 1.5, note: `Over 80 h: ${t12(b.from)} → ${t12(b.to)}` })), ...((S.draw && S.draw.ledger) || [])];
-    const payload = rows.map(r => ({ date: r.date, job: r.job, customer: r.customer, dept: DEPT_X[r.dept], start: hm(r.s), end: hm(r.e), hours: rh(r.e - r.s), note: r.note || '', flag: r.flag || '', drawn: !!r.drawn }));
+    const payload = rows.map(r => ({ date: r.date, job: r.job, customer: r.customer, dept: DEPT_X[r.dept], start: hm(r.s), end: hm(r.e), hours: rh(r.e - r.s), note: r.note || '', flag: r.flag || '', drawn: !!r.drawn, edited: !!r.edited, reason: r.reason || '' }));
     const btn = body.querySelector('[data-send]'); if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
-    const { error } = await sb.rpc('ts_send', { p_person: S.person, p_period: p.start_date, p_rows: payload, p_totals: { total: t.total, byDept: t.byDept, raw: S.res.raw, file_name: fileName(first(who), p), folder: folderOf(p) }, p_ledger: ledger });
+    const { error } = await sb.rpc('ts_send', { p_person: S.person, p_period: p.start_date, p_rows: payload, p_totals: { total: t.total, byDept: t.byDept, raw: S.res.raw, file_name: fileName(first(who), p), folder: folderOf(p), removed: (S.removed || []).map(r => ({ date: r.work_date, job: r.job_no, start: r.start_t, end: r.end_t, reason: r.reason })) }, p_ledger: ledger });
     if (error) { S.err = "Couldn't send: " + error.message; drawRes(); return; }
     await loadSheet(S.person, p.start_date); S.phase = 'sent'; draw(); fileNow();
   }
@@ -339,15 +391,65 @@ export function mountTimesheets(root, { sb, me, people }) {
   // ---------- Banked hours ----------
   async function drawBank() {
     body.innerHTML = '<div class="card muted">Loading…</div>';
-    let q = sb.from('bank_ledger').select('*').order('created_at', { ascending: false });
-    if (!all) q = q.eq('person_id', me.id);
-    const { data, error } = await q; if (dead) return;
+    let q = sb.from('bank_ledger').select('*').order('created_at', { ascending: true });
+    let qt = sb.from('timesheets').select('id,person_id,period_start,file_name,storage_path,status');
+    if (!all) { q = q.eq('person_id', me.id); qt = qt.eq('person_id', me.id); }
+    const [{ data, error }, { data: sheets }] = await Promise.all([q, qt]); if (dead) return;
     if (error) { body.innerHTML = `<div class="card err">${esc(error.message)}</div>`; return; }
-    const list = data || []; const ids = all ? team.map(t => t.id) : [me.id];
+    const list = data || []; S.bankList = list; S.bankSheets = sheets || [];
+    const ids = all ? team.map(t => t.id) : [me.id]; if (!S.bankPerson || !ids.includes(S.bankPerson)) S.bankPerson = me.id;
     const bal = (id) => list.filter(l => l.person_id === id).reduce((a, l) => a + Number(l.hours), 0);
-    body.innerHTML = `<div class="card"><h3>Banked hours vault</h3><div class="small muted">Hours over 80 in a pay period come off the timesheet and bank here at time and a half (1 h over = 1.5 h banked). Use them on short pay periods to get back to 80.</div>
-      <div class="tiles">${ids.map(id => `<div class="tile ${id === me.id ? 'big' : ''}"><b>${f1(bal(id))}</b><span>${esc(first(people.find(p => p.id === id)))} · banked hours</span></div>`).join('')}</div>
-      ${list.length ? `<div class="scroll"><table><thead><tr>${all ? '<th>Who</th>' : ''}<th>Pay period</th><th>Type</th><th>Job #</th><th>Customer</th><th>Dept</th><th class="n">Hours over</th><th class="n">× 1.5</th><th class="n">Bank</th></tr></thead><tbody>${list.map(l => `<tr>${all ? `<td>${esc(first(people.find(p => p.id === l.person_id)))}</td>` : ''}<td>${l.period_start ? fmtD(l.period_start, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}${l.work_date ? `<div class="note">worked ${fmtD(l.work_date)}</div>` : ''}</td><td>${l.kind === 'bank' ? 'Banked' : l.kind === 'draw' ? 'Used' : 'Opening'}${l.note ? `<div class="note">${esc(l.note)}</div>` : ''}</td><td>${esc(l.job_no || '—')}</td><td>${esc(l.customer || '')}</td><td>${l.dept ? `<span class="pill ${l.dept}">${DEPT[l.dept] || esc(l.dept)}</span>` : ''}</td><td class="n">${l.kind === 'bank' ? f1(l.hours_original) : ''}</td><td class="n">${l.kind === 'bank' ? '×' + Number(l.multiplier) : ''}</td><td class="n" style="font-weight:700;color:${Number(l.hours) < 0 ? 'var(--hot)' : 'var(--ok)'}">${Number(l.hours) > 0 ? '+' : ''}${Number(l.hours).toFixed(2)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="muted" style="margin-top:8px">No banked hours yet.</div>'}</div>`;
+    // what is still in the bank from each bank line (used lines point at their source; older data falls back to oldest-first)
+    const left = {}; list.filter(l => Number(l.hours) > 0).forEach(l => left[l.id] = Number(l.hours));
+    list.filter(l => l.kind === 'draw' && l.source_id && left[l.source_id] != null).forEach(l => left[l.source_id] += Number(l.hours));
+    ids.forEach(pid => { let un = -list.filter(l => l.person_id === pid && l.kind === 'draw' && !l.source_id).reduce((a, l) => a + Number(l.hours), 0);
+      list.filter(l => l.person_id === pid && Number(l.hours) > 0).forEach(l => { const u = Math.min(left[l.id], un); left[l.id] -= u; un -= u; }); });
+    S.bankLeft = left;
+    const mine = list.filter(l => l.person_id === S.bankPerson).slice().reverse();
+    const kindTxt = (l) => l.kind === 'bank' ? 'Banked' : l.kind === 'draw' ? 'Used' : Number(l.hours) >= 0 ? 'Added by hand' : 'Removed by hand';
+    body.innerHTML = `<div class="card"><h3>Banked hours vault</h3><div class="small muted">Hours over 80 in a pay period come off the timesheet and bank here at time and a half (1 h over = 1.5 h banked). Tap any line to see where it came from.</div>
+      <div class="tiles">${ids.map(id => `<button class="tile tbtn ${id === S.bankPerson ? 'big' : ''}" data-bperson="${id}"><b>${f1(bal(id))}</b><span>${esc(first(people.find(p => p.id === id)))} · banked hours</span></button>`).join('')}</div>
+      ${all ? '<div class="acts" style="margin:0 0 8px"><button class="btn" data-badj>± Adjust bank by hand</button></div>' : ''}
+      ${mine.length ? `<div class="blist">${mine.map(l => `<button class="bl" data-bl="${l.id}"><span class="bh ${Number(l.hours) < 0 ? 'neg' : 'pos'}">${Number(l.hours) > 0 ? '+' : ''}${Number(l.hours).toFixed(2)} h</span>
+        <span class="bt"><b>${kindTxt(l)}</b>${l.job_no ? ` · ${esc(l.job_no)}` : ''}${l.customer ? ` · ${esc(l.customer)}` : ''}<br><span class="muted small">${l.period_start ? fmtD(l.period_start, { month: 'short', day: 'numeric', year: 'numeric' }) + ' pay period' : new Date(l.created_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}${l.kind !== 'draw' && Number(l.hours) > 0 ? ` · ${f1(left[l.id] || 0)} h still banked` : ''}</span></span><span class="chev">›</span></button>`).join('')}</div>`
+        : '<div class="muted" style="margin-top:8px">No banked hours yet.</div>'}</div>`;
+  }
+  function bankDetail(id) {
+    const l = S.bankList.find(x => x.id === id); if (!l) return;
+    const sheet = S.bankSheets.find(t => t.id === l.timesheet_id); const src = l.source_id ? S.bankList.find(x => x.id === l.source_id) : null;
+    const uses = S.bankList.filter(x => x.kind === 'draw' && x.source_id === l.id);
+    const row = (k, v) => v ? `<div class="kv"><span>${k}</span><b>${v}</b></div>` : '';
+    const per = (iso) => { const p = S.periods.find(x => x.start_date === iso); return p ? `${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}` : iso; };
+    modal.innerHTML = `<div class="modal"><div class="sheet"><h3>${l.kind === 'bank' ? 'Banked overtime' : l.kind === 'draw' ? 'Banked hours used' : 'Bank adjusted by hand'}</h3>
+      <div class="tiles"><div class="tile big"><b>${Number(l.hours) > 0 ? '+' : ''}${Number(l.hours).toFixed(2)}</b><span>bank hours</span></div>${l.kind === 'bank' ? `<div class="tile"><b>${f1(l.hours_original)}</b><span>hours over 80 × ${Number(l.multiplier)}</span></div><div class="tile"><b>${f1(S.bankLeft[l.id] || 0)}</b><span>still banked</span></div>` : ''}</div>
+      ${row('Who', esc(first(people.find(p => p.id === l.person_id))))}
+      ${row(l.kind === 'draw' ? 'Used on pay period' : 'Pay period', l.period_start ? per(l.period_start) : '')}
+      ${row('Timesheet', sheet ? esc(sheet.file_name || '(not filed yet)') : '')}
+      ${row('Day worked', l.work_date ? fmtD(l.work_date, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }) : '')}
+      ${row('Job #', esc(l.job_no || ''))}${row('Customer', esc(l.customer || ''))}${row('Dept', l.dept ? DEPT[l.dept] || esc(l.dept) : '')}
+      ${row('Note', esc(l.note || ''))}
+      ${src ? row('Came from', `${f1(src.hours_original)} h over on ${src.work_date ? fmtD(src.work_date) : '—'} · ${esc(src.job_no || '')} ${esc(src.customer || '')} (${src.period_start ? per(src.period_start) : 'manual'})`) : ''}
+      ${uses.length ? `<div class="kv"><span>Used on</span><b>${uses.map(u => `${Math.abs(Number(u.hours)).toFixed(2)} h · ${per(u.period_start)}`).join('<br>')}</b></div>` : ''}
+      ${row('Recorded', new Date(l.created_at).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' }))}
+      <div class="acts">${sheet && sheet.storage_path ? `<button class="btn pri" data-dlp="${esc(sheet.storage_path)}">Open timesheet</button>` : ''}<button class="btn" data-x>Close</button></div></div></div>`;
+    modal.onclick = (e) => { if (e.target.closest('[data-x]') || e.target === modal.firstElementChild) { modal.innerHTML = ''; return; } const d = e.target.closest('[data-dlp]'); if (d) download(d.dataset.dlp); };
+  }
+  function bankAdjust() {
+    modal.innerHTML = `<div class="modal"><div class="sheet"><h3>Adjust banked hours</h3><div class="small muted">For hours banked before this tool, or a correction. Enter BANK hours (already at time and a half).</div>
+      <div class="row2"><label class="f">Who<select id="a_p">${team.map(t => `<option value="${t.id}" ${t.id === S.bankPerson ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
+        <label class="f">Add or remove<select id="a_s"><option value="1">Add hours</option><option value="-1">Remove hours</option></select></label>
+        <label class="f">Bank hours<input id="a_h" inputmode="decimal" placeholder="e.g. 7.5"></label><label class="f">Job # (optional)<input id="a_j"></label></div>
+      <label class="f" style="margin-top:8px">Reason<input id="a_r" placeholder="e.g. 5 h over on Oct 10-23 sheet, banked by hand"></label><div class="err" id="a_err"></div>
+      <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn pri" data-asave>Save</button></div></div></div>`;
+    const g = (k) => modal.querySelector('#' + k).value.trim();
+    modal.onclick = async (e) => {
+      if (e.target.closest('[data-x]')) { modal.innerHTML = ''; return; }
+      if (!e.target.closest('[data-asave]')) return;
+      const h = Math.round(parseFloat(g('a_h')) * 100) / 100; const er = modal.querySelector('#a_err');
+      if (!(h > 0)) { er.textContent = 'Enter the hours.'; return; } if (!g('a_r')) { er.textContent = 'Add a reason.'; return; }
+      const { error } = await sb.rpc('ts_bank_adjust', { p_person: g('a_p'), p_hours: h * Number(g('a_s')), p_note: g('a_r'), p_job: g('a_j') || null, p_dept: null });
+      if (error) { er.textContent = error.message; return; } S.bankPerson = g('a_p'); modal.innerHTML = ''; drawBank();
+    };
   }
 
   function draw() {
@@ -371,6 +473,11 @@ export function mountTimesheets(root, { sb, me, people }) {
     if (e.target.closest('[data-dl]')) return download(S.sheet.storage_path);
     if (e.target.closest('[data-refile]')) return fileNow();
     if (e.target.closest('[data-mstest]')) return msTest();
+    const ed = e.target.closest('[data-edit]'); if (ed) return editRow(ed.dataset.edit);
+    if (e.target.closest('[data-addrow]')) return editRow(null);
+    const bp = e.target.closest('[data-bperson]'); if (bp) { S.bankPerson = bp.dataset.bperson; return drawBank(); }
+    const bl = e.target.closest('[data-bl]'); if (bl) return bankDetail(bl.dataset.bl);
+    if (e.target.closest('[data-badj]')) return bankAdjust();
     const dl = e.target.closest('[data-dlp]'); if (dl) return download(dl.dataset.dlp);
   };
   (async () => {
