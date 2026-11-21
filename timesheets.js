@@ -68,6 +68,13 @@ select,input{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);b
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:8px 0}
 .tile{background:var(--sunk);border-radius:10px;padding:10px}.tile b{display:block;font-family:var(--display);font-size:24px}.tile span{font-size:12px;color:var(--muted)}
 .tile.big{background:var(--brand);color:var(--accent-ink)}.tile.big span{color:inherit;opacity:.85}
+.tl{display:flex;flex-direction:column;margin-top:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.tday{display:flex;justify-content:space-between;gap:8px;background:var(--sunk);font-weight:700;padding:8px 12px;font-size:14px}
+.te{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 12px;border-top:1px solid var(--line)}
+.tm{min-width:0}.tj{font-size:14.5px;overflow-wrap:anywhere}.tt{font-size:13px;color:var(--muted);margin-top:2px}
+.th{display:flex;flex-direction:column;align-items:flex-end;gap:4px}.th b{font-family:var(--display);font-size:18px}
+.th .ed{margin-top:0;font-size:12.5px;white-space:nowrap}
+.tn{grid-column:1/-1}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
 table{border-collapse:collapse;width:100%;min-width:560px;font-size:14px}
 th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -235,13 +242,14 @@ export function mountTimesheets(root, { sb, me, people }) {
   function drawRows(addRows) {
     const r = S.res; const rows = [...r.rows.map(x => ({ ...x })), ...(addRows || [])].sort((a, b) => (a.date + hm(a.s)).localeCompare(b.date + hm(b.s)));
     const days = [...new Set(rows.map(x => x.date))];
-    return `<div class="scroll"><table><thead><tr><th>Job #</th><th>Customer</th><th class="dc">Dept</th><th>Start – End</th><th class="n">Hours</th></tr></thead><tbody>${days.map(d => {
+    return `<div class="tl">${days.map(d => {
       const rs = rows.filter(x => x.date === d); const dh = rs.reduce((a, x) => a + rh(x.e - x.s), 0);
-      return `<tr class="day"><td colspan="5">${fmtD(d, { weekday: 'long', month: 'short', day: 'numeric' })}<span class="dh">${f1(dh)} h${dh > 10.0001 ? ' ⚠ over 10' : ''}</span></td></tr>` + rs.map(x => {
+      return `<div class="tday"><span>${fmtD(d, { weekday: 'long', month: 'short', day: 'numeric' })}</span><span>${f1(dh)} h${dh > 10.0001 ? ' ⚠ over 10' : ''}</span></div>` + rs.map(x => {
         const tr = r.bank.filter(b => b.date === d && b.job === x.job && b.to === hm(x.e));
-        return `<tr><td style="white-space:nowrap">${esc(x.job)}${x.drawn ? ' <span class="pill">banked</span>' : ''}${x.edited ? ' <span class="pill ed-p">edited</span>' : ''}</td><td>${esc(x.customer)} <span class="pill ${x.dept} mob">${DEPT[x.dept]}</span>${x.reason ? `<div class="note">✎ ${esc(x.reason)}</div>` : ''}${x.flag && !x.edited ? `<div class="flag">⚑ ${esc(x.flag)}</div>` : ''}${x.note ? `<div class="note">${esc(x.note)}</div>` : ''}${tr.map(b => `<div class="trim">−${f1(b.hours)} h moved to the bank (ended ${t12(b.from)} → ${t12(b.to)})</div>`).join('')}</td><td class="dc"><span class="pill ${x.dept}">${DEPT[x.dept]}</span></td><td style="white-space:nowrap">${t12(hm(x.s))} –<br class="mob"> ${t12(hm(x.e))}</td><td class="n">${f1(rh(x.e - x.s))}${!x.drawn && S.canEdit ? `<br><button class="ed" data-edit="${esc(x.id)}" aria-label="Edit row">✎</button>` : ''}</td></tr>`;
+        const notes = `${x.reason ? `<div class="note">✎ ${esc(x.reason)}</div>` : ''}${x.flag && !x.edited ? `<div class="flag">⚑ ${esc(x.flag)}</div>` : ''}${x.note ? `<div class="note">${esc(x.note)}</div>` : ''}${tr.map(b => `<div class="trim">−${f1(b.hours)} h moved to the bank (ended ${t12(b.from)} → ${t12(b.to)})</div>`).join('')}`;
+        return `<div class="te"><div class="tm"><div class="tj"><b>${esc(x.job)}</b> · ${esc(x.customer)}</div><div class="tt">${t12(hm(x.s))} – ${t12(hm(x.e))} <span class="pill ${x.dept}">${DEPT[x.dept]}</span>${x.drawn ? ' <span class="pill">banked</span>' : ''}${x.edited ? ' <span class="pill ed-p">edited</span>' : ''}</div></div><div class="th"><b>${f1(rh(x.e - x.s))}</b>${!x.drawn && S.canEdit ? `<button class="ed" data-edit="${esc(x.id)}" aria-label="Edit row">✎ Edit</button>` : ''}</div>${notes ? `<div class="tn">${notes}</div>` : ''}</div>`;
       }).join('');
-    }).join('')}</tbody></table></div>${S.canEdit ? '<div class="acts" style="margin-top:8px"><button class="btn" data-addrow>+ Add a row</button></div>' : ''}${(S.removed || []).length ? `<div class="small muted" style="margin-top:6px">Removed: ${S.removed.map(r => `${esc(r.job_no)} ${fmtD(r.work_date)} (${esc(r.reason)})`).join('; ')}</div>` : ''}`;
+    }).join('')}</div>${S.canEdit ? '<div class="acts" style="margin-top:8px"><button class="btn" data-addrow>+ Add a row</button></div>' : ''}${(S.removed || []).length ? `<div class="small muted" style="margin-top:6px">Removed: ${S.removed.map(r => `${esc(r.job_no)} ${fmtD(r.work_date)} (${esc(r.reason)})`).join('; ')}</div>` : ''}`;
   }
   function finalRows() {
     const add = (S.draw && S.draw.rows) || [];
