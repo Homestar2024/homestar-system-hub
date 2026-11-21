@@ -1,4 +1,4 @@
-// Homestar HQ - HVAC Monitoring (v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
+// Homestar HQ - HVAC Monitoring (v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
 // graph of every sensor over time (temps on the left axis, watts on the right), 24 h / 7 d / 30 d / 1 y, legend with colour,
 // show/hide checkbox and editable names. Data: monitor_sites / monitor_sensors / monitor_series() (db/025). Until a house has
 // readings the dashboard shows clearly-labelled SAMPLE data so the layout can be judged.
@@ -67,6 +67,19 @@ input[type=color]{height:44px;padding:3px}
 .linked{font-size:13px;color:var(--ok,var(--brand));font-weight:600;margin-top:6px}
 textarea{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%;min-height:70px;resize:vertical}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.colh{cursor:pointer;user-select:none;-webkit-user-select:none;display:flex;align-items:center;gap:7px}
+.colh::before{content:"";width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid currentColor;flex:none;transition:transform .15s}
+.colh.shut::before{transform:rotate(-90deg)}
+.tgh.colh.shut + *{display:none}
+.card.shut > .cb{display:none}
+h3.ch{margin:0;font-size:18px}
+.tiles,.lgg{min-height:40px}
+.tile{cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;transition:box-shadow .15s,transform .15s}
+.tile.drag{position:relative;z-index:5;transform:scale(1.04);box-shadow:0 10px 28px rgba(0,0,0,.35);outline:2px solid var(--brand)}
+.lg{cursor:pointer}
+.lg .chev{font-size:20px;flex:none}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--line);font-size:14.5px}.kv span{color:var(--muted)}.kv b{font-weight:600;text-align:right;overflow-wrap:anywhere}
+.big{font-family:var(--display);font-size:34px;font-weight:700;margin:4px 0 10px}.big small{font-size:18px;color:var(--muted)}
 `;
 const RANGES = [{ k: '24h', label: '24 h', ms: 864e5, bucket: 300 }, { k: '7d', label: '7 days', ms: 7 * 864e5, bucket: 1800 }, { k: '30d', label: '30 days', ms: 30 * 864e5, bucket: 7200 }, { k: '1y', label: '1 year', ms: 365 * 864e5, bucket: 86400 }];
 const KIND = { supply: 'Supply air', return: 'Return air', outdoor: 'Outdoor', room: 'Room', power: 'Power (W)', fan_power: 'Fan power (W)', humidity: 'Humidity (%)', other: 'Other' };
@@ -90,7 +103,7 @@ const fmtDT = (t) => new Date(t).toLocaleString('en-CA', { month: 'short', day: 
 export function mountHvacMon(root, { sb }) {
   root.innerHTML = `<style>${CSS}</style><a class="back" href="#/tools">← Tools</a><div id="body"></div><div id="modal"></div>`;
   const body = root.getElementById('body'), modal = root.getElementById('modal');
-  const S = { sites: [], site: null, sensors: [], all: [], systems: [], units: [], events: [], cust: null, custs: null, range: lsGet('hm_range', '24h'), unit: lsGet('hm_unit', 'F'), hidden: new Set(JSON.parse(lsGet('hm_hidden', '[]'))), series: null, sample: false };
+  const S = { sites: [], site: null, sensors: [], all: [], systems: [], units: [], events: [], cust: null, custs: null, range: lsGet('hm_range', '24h'), unit: lsGet('hm_unit', 'F'), hidden: new Set(JSON.parse(lsGet('hm_hidden', '[]'))), shut: new Set(JSON.parse(lsGet('hm_shut', '[]'))), rh: {}, series: null, sample: false };
   let dead = false, timer = null;
   const cv = (c) => S.unit === 'F' ? c * 9 / 5 + 32 : c;   // stored C -> shown unit
   const tU = () => '°' + S.unit;
@@ -222,93 +235,122 @@ export function mountHvacMon(root, { sb }) {
   function dash() {
     const s = S.site;
     const contact = [s.phone ? `<a href="tel:${esc(s.phone.replace(/[^\d+]/g, ''))}">${esc(s.phone)}</a>` : '', s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a>` : ''].filter(Boolean).join(' · ');
-    body.innerHTML = `<div class="head"><div><h2>${esc(nameOf(s))}</h2><div class="muted small">${esc(s.address)}</div>${contact ? `<div class="small" style="margin-top:2px">${contact}</div>` : ''}${s.equipment && !S.systems.length ? `<div class="muted small">${esc(s.equipment)}</div>` : ''}</div>
+    body.innerHTML = `<div class="head"><div><h2>${esc(nameOf(s))}</h2><div class="muted small">${esc(s.address)}</div>${contact ? `<div class="small" style="margin-top:2px">${contact}</div>` : ''}</div>
         <div class="chips"><button class="chip" data-editsite>Edit client</button><button class="chip" data-list>All houses</button></div></div>
       ${S.err ? `<div class="err">${esc(S.err)}</div>` : ''}
-      ${S.sample ? '<div class="sample"><b>Sample data.</b> These sensors aren\'t connected yet - the lines show made-up readings so you can judge the layout. Real readings replace them automatically.</div>' : ''}
+      ${S.sample ? '<div class="sample"><b>Sample data</b> - sensors not connected yet.</div>' : ''}
       <div class="bar"><div class="chips">${RANGES.map(r => `<button class="chip${r.k === S.range ? ' on' : ''}" data-range="${r.k}">${r.label}</button>`).join('')}</div>
         <div class="chips"><button class="chip${S.unit === 'F' ? ' on' : ''}" data-unit="F">°F</button><button class="chip${S.unit === 'C' ? ' on' : ''}" data-unit="C">°C</button></div></div>
       <div class="card"><div class="chartbox" id="cb"></div><div class="legend" id="lg"></div></div>
       <div id="tiles"></div>
-      <div class="card" id="eq"></div>
-      <div class="card" id="evs"></div>`;
+      <div class="card${S.shut.has('eq') ? ' shut' : ''}" id="eq" data-card="eq"></div>
+      <div class="card${S.shut.has('evs') ? ' shut' : ''}" id="evs" data-card="evs"></div>`;
     drawChart(); drawLegend(); drawTiles(); drawEquipment(); drawEvents();
   }
   const last = (id) => { const a = (S.series && S.series[id]) || []; return a.length ? a[a.length - 1] : null; };
-  function drawTiles() {
-    const el = root.getElementById('tiles'); if (!el) return;
-    const tile = (s) => { const l = last(s.id); const h = S.rh && S.rh[s.id] && last(S.rh[s.id].id); return `<div class="tile" style="--c:${esc(s.color)}"><b>${l ? (isTemp(s) ? cv(l[1]).toFixed(1) + tU() : Math.round(l[1]) + ' ' + esc(s.unit)) : '–'}</b>${S.rh && S.rh[s.id] ? `<em>${h ? Math.round(h[1]) + '% RH' : '– RH'}</em>` : ''}<span>${esc(s.label)}</span></div>`; };
-    const out = [];
-    for (const g of Object.keys(GRP)) {
-      const list = S.sensors.filter(s => grpOf(s) === g).map(tile);
-      if (g === 'equipment') {
-        // one ΔT tile per indoor unit that has both a supply and a return sensor (falls back to the first pair on the house)
-        const pairs = []; const seen = new Set();
-        S.sensors.filter(s => s.kind === 'supply').forEach(sup => { const ret = S.sensors.find(r => r.kind === 'return' && (r.unit_id || null) === (sup.unit_id || null)); if (ret && !seen.has(sup.unit_id || '-')) { seen.add(sup.unit_id || '-'); pairs.push([sup, ret]); } });
-        pairs.reverse().forEach(([sup, ret]) => { if (last(sup.id) && last(ret.id)) { const d = last(sup.id)[1] - last(ret.id)[1]; const u = unitById(sup.unit_id); list.unshift(`<div class="tile" style="--c:var(--brand)"><b>${(S.unit === 'F' ? d * 9 / 5 : d).toFixed(1)}${tU()}</b><span>ΔT${u ? ' · ' + esc(unitName(u)) : ' supply − return'}</span></div>`); } });
-      }
-      if (list.length) out.push(`<div class="tgh">${GRP[g]}</div><div class="tiles">${list.join('')}</div>`);
-    }
-    el.innerHTML = out.join('');
+  const colh = (key, label, tag = 'div', cls = 'tgh') => `<${tag} class="${cls} colh${S.shut.has(key) ? ' shut' : ''}" data-col="${key}">${label}</${tag}>`;
+  const fmtVal = (s, v) => v == null ? '–' : isTemp(s) ? cv(v).toFixed(1) + tU() : Math.round(v) + ' ' + esc(s.unit);
+  // ---- tiles: one layout for everyone (monitor_sites.tile_layout = {equipment:[keys], ambient:[keys]}); keys = sensor id or dt:<unit id>
+  function tileItems() {
+    const items = S.sensors.map(s => ({ key: s.id, s, grp: grpOf(s) }));
+    const seen = new Set();
+    S.sensors.filter(s => s.kind === 'supply').forEach(sup => { const ret = S.sensors.find(r => r.kind === 'return' && (r.unit_id || null) === (sup.unit_id || null)); const k = 'dt:' + (sup.unit_id || 'house'); if (ret && !seen.has(k)) { seen.add(k); items.push({ key: k, dt: [sup, ret], grp: 'equipment' }); } });
+    const lay = S.site.tile_layout || {};
+    items.forEach(it => { if (it.dt) for (const g of Object.keys(GRP)) if ((lay[g] || []).includes(it.key)) it.grp = g; });
+    const out = {}; for (const g of Object.keys(GRP)) { const order = lay[g] || []; const mine = items.filter(it => it.grp === g); const rank = (it) => { const i = order.indexOf(it.key); return i < 0 ? 1e6 + (it.dt ? -1 : items.indexOf(it)) : i; }; out[g] = mine.sort((a, b) => rank(a) - rank(b)); }
+    return out;
   }
+  function drawTiles() {
+    const el = root.getElementById('tiles'); if (!el || !S.site) return;
+    const tile = (it) => {
+      if (it.dt) { const [sup, ret] = it.dt; const a = last(sup.id), b = last(ret.id); const d = a && b ? a[1] - b[1] : null; const u = unitById(sup.unit_id); return `<div class="tile" data-tile="${it.key}" style="--c:var(--brand)"><b>${d == null ? '–' : (S.unit === 'F' ? d * 9 / 5 : d).toFixed(1) + tU()}</b><span>ΔT${u ? ' · ' + esc(unitName(u)) : ''}</span></div>`; }
+      const s = it.s, l = last(s.id), h = S.rh[s.id] && last(S.rh[s.id].id);
+      return `<div class="tile" data-tile="${it.key}" style="--c:${esc(s.color)}"><b>${fmtVal(s, l && l[1])}</b>${S.rh[s.id] ? `<em>${h ? Math.round(h[1]) + '% RH' : '– RH'}</em>` : ''}<span>${esc(s.label)}</span></div>`;
+    };
+    const by = tileItems();
+    el.innerHTML = Object.keys(GRP).map(g => `${colh('t-' + g, GRP[g])}<div class="tiles" data-grp="${g}">${by[g].map(tile).join('')}</div>`).join('');
+    bindDrag(el, '.tile', '.tiles', saveTiles);
+  }
+  async function saveTiles(moved, toGrp) {
+    const lay = {}; root.querySelectorAll('#tiles .tiles').forEach(g => { lay[g.dataset.grp] = [...g.querySelectorAll('.tile')].map(t => t.dataset.tile); });
+    S.site.tile_layout = lay;
+    const s = S.sensors.find(x => x.id === moved);
+    const jobs = [sb.from('monitor_sites').update({ tile_layout: lay }).eq('id', S.site.id)];
+    if (s && grpOf(s) !== toGrp) { s.grp = toGrp; jobs.push(sb.from('monitor_sensors').update({ grp: toGrp }).eq('id', s.id)); drawLegend(); }
+    const res = await Promise.all(jobs); const bad = res.find(r => r.error); if (bad) toast("Couldn't save the layout: " + bad.error.message);
+  }
+  // ---- legend: name only; tap a sensor for its details, press and hold to move it (also between groups)
   function drawLegend() {
     const el = root.getElementById('lg'); if (!el) return;
-    const row = (s) => { const u = unitById(s.unit_id); return `<div class="lg" data-row="${s.id}"><span class="hd" aria-hidden="true">⠿</span><input type="checkbox" data-show="${s.id}" ${S.hidden.has(s.id) ? '' : 'checked'} aria-label="Show ${esc(s.label)}"><span class="sw" style="background:${esc(s.color)}"></span><span class="nm"><b>${esc(s.label)}</b><span>${esc(KIND[s.kind] || s.kind)}${S.rh && S.rh[s.id] ? ' + humidity' : ''}${u ? ' · on ' + esc(unitName(u)) : ''}${s.model ? ' · ' + esc(s.model) : ''}</span></span><button class="ed" data-editsensor="${s.id}">✎ Edit</button></div>`; };
-    el.innerHTML = Object.keys(GRP).map(g => { const l = S.sensors.filter(s => grpOf(s) === g); return l.length ? `<div class="tgh">${GRP[g]} sensors</div><div class="lgg" data-grp="${g}">${l.map(row).join('')}</div>` : ''; }).join('') + '<button class="mini" data-addsensor>+ Add a sensor</button><div class="hint">Press and hold a sensor, then drag to change the order.</div>';
-    el.querySelectorAll('.lgg').forEach(bindDrag);
+    const row = (s) => `<div class="lg" data-row="${s.id}"><span class="hd" aria-hidden="true">⠿</span><input type="checkbox" data-show="${s.id}" ${S.hidden.has(s.id) ? '' : 'checked'} aria-label="Show ${esc(s.label)}"><span class="sw" style="background:${esc(s.color)}"></span><span class="nm"><b>${esc(s.label)}</b></span><span class="chev muted">›</span></div>`;
+    el.innerHTML = Object.keys(GRP).map(g => `${colh('lg-' + g, GRP[g] + ' sensors')}<div class="lgg" data-grp="${g}">${S.sensors.filter(s => grpOf(s) === g).map(row).join('')}</div>`).join('') + '<button class="mini" data-addsensor>+ Add a sensor</button>';
+    bindDrag(el, '.lg', '.lgg', saveLegend);
+  }
+  async function saveLegend(moved, toGrp) {
+    const ids = [...root.querySelectorAll('#lg .lg')].map(r => r.dataset.row);
+    S.sensors.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id)); S.sensors.forEach((s, i) => { s.sort = i + 1; });
+    const m = S.sensors.find(x => x.id === moved); const regrp = m && grpOf(m) !== toGrp; if (regrp) m.grp = toGrp;
+    drawChart(); if (regrp) drawTiles();
+    const res = await Promise.all(S.sensors.map(s => sb.from('monitor_sensors').update(s === m && regrp ? { sort: s.sort, grp: toGrp } : { sort: s.sort }).eq('id', s.id)));
+    const bad = res.find(r => r.error); if (bad) toast("Couldn't save the new order: " + bad.error.message);
   }
   function drawEquipment() {
     const el = root.getElementById('eq'); if (!el) return;
-    const sensorsOn = (u) => S.all.filter(x => x.unit_id === u.id && x.kind !== 'humidity').length;
-    const unitBtn = (u) => { const sub = [STYLE[u.style] || '', u.capacity, u.serial ? 'S/N ' + u.serial : 'no serial yet', sensorsOn(u) ? sensorsOn(u) + ' sensor' + (sensorsOn(u) > 1 ? 's' : '') : '', u.photos && u.photos.length ? '📷 ' + u.photos.length : ''].filter(Boolean).join(' · ');
-      return `<button class="unit ${u.role === 'outdoor' ? 'out' : 'in'}" data-eunit="${u.id}"><span class="ui">${u.role === 'outdoor' ? '🌀' : '❄️'}</span><span class="ut"><b>${esc(u.role === 'outdoor' ? 'Outdoor' : (u.location || 'Indoor unit'))}${u.make || u.model ? ' · ' + esc([u.make, u.model].filter(Boolean).join(' ')) : ' · model not set'}</b><span>${esc(sub)}</span></span><span class="chev muted">›</span></button>`; };
-    el.innerHTML = `<div class="head"><h3>Equipment</h3><button class="chip" data-addsys>+ Add system</button></div>
-      ${S.systems.map(sy => { const us = S.units.filter(u => u.system_id === sy.id); return `<div class="sys"><div class="sysh"><b>${esc(sy.name || SYSTYPE[sy.type] || 'System')}</b><span class="badge">${esc(SYSTYPE[sy.type] || sy.type)}</span>${sy.installed ? `<span class="muted small">Installed ${esc(sy.installed)}</span>` : ''}<button class="ed" data-editsys="${sy.id}">✎ Edit</button></div>
-        ${us.map(unitBtn).join('') || '<div class="muted small" style="margin-top:6px">No units yet.</div>'}
-        <button class="mini" data-addunit="${sy.id}">+ Add ${sy.type === 'multi_zone' || !us.some(u => u.role === 'indoor') ? 'indoor unit' : 'unit'}</button>${sy.notes ? `<div class="muted small" style="margin-top:6px">${esc(sy.notes)}</div>` : ''}</div>`; }).join('') || '<div class="muted small">No equipment yet. Add a system (central ducted, single-zone or multi-zone), then its outdoor and indoor units with model and serial.</div>'}
-      <div class="hint">Model numbers drive the performance analysis against the manufacturer's engineering data.</div>`;
+    const unitBtn = (u) => { const sub = [STYLE[u.style] && u.role !== 'outdoor' ? STYLE[u.style] : '', u.capacity].filter(Boolean).join(' · ');
+      return `<button class="unit ${u.role === 'outdoor' ? 'out' : 'in'}" data-eunit="${u.id}"><span class="ui">${u.role === 'outdoor' ? '🌀' : '❄️'}</span><span class="ut"><b>${esc(u.role === 'outdoor' ? 'Outdoor unit' : (u.location || 'Indoor unit'))}</b>${sub || u.model ? `<span>${esc([u.model, sub].filter(Boolean).join(' · '))}</span>` : ''}</span><span class="chev muted">›</span></button>`; };
+    el.innerHTML = `<div class="head">${colh('eq', 'Equipment', 'h3', 'ch')}<button class="chip" data-addsys>+ System</button></div><div class="cb">
+      ${S.systems.map(sy => { const us = S.units.filter(u => u.system_id === sy.id); return `<div class="sys"><div class="sysh"><b>${esc(sy.name || SYSTYPE[sy.type] || 'System')}</b><span class="badge">${esc(SYSTYPE[sy.type] || sy.type)}</span><button class="ed" data-editsys="${sy.id}">✎</button></div>
+        ${us.map(unitBtn).join('')}<button class="mini" data-addunit="${sy.id}">+ Unit</button></div>`; }).join('') || '<div class="muted small">No equipment yet.</div>'}</div>`;
   }
   function eventsInRange() { return S.events.filter(ev => Date.parse(ev.ts) >= S.from); }
   function drawEvents() {
     const el = root.getElementById('evs'); if (!el) return;
     const inR = eventsInRange(); const older = S.events.length - inR.length;
-    el.innerHTML = `<div class="head"><h3>Events</h3><button class="chip" data-addev>+ Log event</button></div>
-      <div class="muted small">Service visits, filter changes and setting changes. Each one shows as a marker on the graph so you can compare before and after.</div>
-      <div style="margin-top:6px">${inR.map(ev => { const k = EVK[ev.kind] || EVK.note; const u = unitById(ev.unit_id); return `<button class="ev" data-ev="${ev.id}"><span class="ei">${k[0]}</span><span><b>${esc(ev.title || k[1])}</b><span>${esc(fmtDT(ev.ts))} · ${esc(k[1])}${u ? ' · ' + esc(unitName(u)) : ''}</span>${ev.note ? `<span>${esc(ev.note)}</span>` : ''}</span></button>`; }).join('') || '<div class="muted small" style="margin-top:6px">No events in this time range.</div>'}</div>
-      ${older ? `<div class="hint">${older} older event${older > 1 ? 's' : ''} outside this range - pick a longer range to see ${older > 1 ? 'them' : 'it'}.</div>` : ''}`;
+    el.innerHTML = `<div class="head">${colh('evs', 'Events', 'h3', 'ch')}<button class="chip" data-addev>+ Event</button></div><div class="cb">
+      ${inR.map(ev => { const k = EVK[ev.kind] || EVK.note; const u = unitById(ev.unit_id); return `<button class="ev" data-ev="${ev.id}"><span class="ei">${k[0]}</span><span><b>${esc(ev.title || k[1])}</b><span>${esc(fmtDT(ev.ts))}${u ? ' · ' + esc(unitName(u)) : ''}</span></span></button>`; }).join('') || '<div class="muted small">None in this range.</div>'}
+      ${older ? `<div class="hint">${older} older - pick a longer range.</div>` : ''}</div>`;
   }
-  // press-and-hold to reorder (touch + mouse); order saved to monitor_sensors.sort for everyone
-  function bindDrag(el) {
+  function toast(t) { const d = document.createElement('div'); d.className = 'err'; d.textContent = t; body.prepend(d); setTimeout(() => d.remove(), 6000); }
+  // ---- press-and-hold drag for any list or grid: items `sel` inside groups `gsel`; moves within and between groups
+  function bindDrag(el, sel, gsel, onDone) {
     if (el._dragBound) return; el._dragBound = true;
-    let timer = null, drag = null, sx = 0, sy = 0;
+    let timer = null, drag = null, sx = 0, sy = 0, from = null;
     const cancelHold = () => { clearTimeout(timer); timer = null; };
     el.addEventListener('pointerdown', (e) => {
-      const row = e.target.closest('.lg'); if (!row || e.target.closest('input,button')) return;
+      const it = e.target.closest(sel); if (!it || e.target.closest('input,button')) return;
       sx = e.clientX; sy = e.clientY; cancelHold();
-      timer = setTimeout(() => { timer = null; drag = row; row.classList.add('drag'); try { row.setPointerCapture(e.pointerId); } catch (x) {} if (navigator.vibrate) navigator.vibrate(15); }, e.pointerType === 'mouse' ? 180 : 400);
+      timer = setTimeout(() => { timer = null; drag = it; from = it.parentElement.dataset.grp + ':' + [...it.parentElement.children].indexOf(it); it.classList.add('drag'); try { it.setPointerCapture(e.pointerId); } catch (x) {} if (navigator.vibrate) navigator.vibrate(15); }, e.pointerType === 'mouse' ? 220 : 400);
     });
     el.addEventListener('pointermove', (e) => {
       if (!drag) { if (timer && (Math.abs(e.clientX - sx) > 8 || Math.abs(e.clientY - sy) > 8)) cancelHold(); return; }
       e.preventDefault();
-      const rows = [...el.querySelectorAll('.lg')].filter(r => r !== drag); let before = null;
-      for (const r of rows) { const b = r.getBoundingClientRect(); if (e.clientY < b.top + b.height / 2) { before = r; break; } }
-      if (before) { if (drag.nextSibling !== before) el.insertBefore(drag, before); } else { const lastRow = rows[rows.length - 1]; if (lastRow && lastRow.nextSibling !== drag) lastRow.after(drag); }
+      const hit = (root.elementFromPoint ? root.elementFromPoint(e.clientX, e.clientY) : document.elementFromPoint(e.clientX, e.clientY));
+      const over = hit && hit.closest && hit.closest(sel); const grp = hit && hit.closest && hit.closest(gsel);
+      if (over && over !== drag && el.contains(over)) { const b = over.getBoundingClientRect(); const grid = getComputedStyle(over.parentElement).display === 'grid'; const after = grid ? e.clientX > b.left + b.width / 2 : e.clientY > b.top + b.height / 2; if (after) { if (over.nextSibling !== drag) over.after(drag); } else if (over.previousSibling !== drag) over.before(drag); }
+      else if (grp && el.contains(grp) && !grp.contains(drag)) grp.appendChild(drag);
     });
-    const end = () => { cancelHold(); if (drag) finish(); };
+    const end = () => { cancelHold(); if (!drag) return; const it = drag; drag = null; it.classList.remove('drag'); el._justDragged = Date.now(); const to = it.parentElement.dataset.grp + ':' + [...it.parentElement.children].indexOf(it); if (to !== from) onDone(it.dataset.row || it.dataset.tile, it.parentElement.dataset.grp); };
     el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
     el.addEventListener('touchmove', (e) => { if (drag) e.preventDefault(); }, { passive: false });
     el.addEventListener('contextmenu', (e) => { if (drag || timer) e.preventDefault(); });
-    async function finish() {
-      drag.classList.remove('drag'); drag = null;
-      const ids = [...root.querySelectorAll('#lg .lg')].map(r => r.dataset.row);
-      if (!ids.some((id, i) => (S.sensors[i] || {}).id !== id)) return;
-      S.sensors.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id)); S.sensors.forEach((s, i) => { s.sort = i + 1; });
-      drawTiles(); drawChart();
-      const res = await Promise.all(S.sensors.map(s => sb.from('monitor_sensors').update({ sort: s.sort }).eq('id', s.id)));
-      const bad = res.find(r => r.error); if (bad) alertMsg("Couldn't save the new order: " + bad.error.message);
-    }
   }
-  function alertMsg(t) { const h = root.querySelector('#lg .hint'); if (h) h.textContent = t; }
+  const recentDrag = (e) => { const c = e.target.closest('#lg,#tiles'); return c && c._justDragged && Date.now() - c._justDragged < 400; };
+  // ---- sensor details (tap a sensor in the list or its tile)
+  function sensorInfo(id) {
+    const s = S.sensors.find(x => x.id === id); if (!s) return;
+    const l = last(s.id), h = S.rh[s.id] && last(S.rh[s.id].id), u = unitById(s.unit_id);
+    const row = (k, v) => v ? `<div class="kv"><span>${k}</span><b>${v}</b></div>` : '';
+    sheet(`<span class="sw" style="background:${esc(s.color)};display:inline-block;vertical-align:middle;margin-right:8px"></span>${esc(s.label)}`, `
+      <div class="big">${fmtVal(s, l && l[1])}${S.rh[s.id] ? ` <small>${h ? Math.round(h[1]) + '% RH' : ''}</small>` : ''}</div>
+      ${row('Measures', esc(KIND[s.kind] || s.kind) + (S.rh[s.id] ? ' + humidity' : ''))}
+      ${row('Attached to', u ? esc(unitName(u)) + (u.model ? ' · ' + esc(u.model) : '') : 'Not attached')}
+      ${row('Group', GRP[grpOf(s)])}
+      ${row('Sensor', esc([s.provider === 'yolink' ? 'YoLink' : s.provider === 'shelly' ? 'Shelly' : s.provider, s.model].filter(Boolean).join(' ')))}
+      ${row('Status', s.external_id ? 'Connected · ' + esc(s.external_id) : 'Not connected yet')}
+      ${row('Last reading', l && !S.sample ? esc(fmtDT(l[0])) : '')}
+      <div class="acts"><button class="btn" data-x>Close</button><button class="btn pri" data-edit>✎ Edit</button></div>`);
+    modal.onclick = (e) => { if (isBackdrop(e)) return closeModal(); if (e.target.closest('[data-edit]')) { closeModal(); sensorForm(id); } };
+  }
   function niceStep(span, n) { const raw = span / n; const p = Math.pow(10, Math.floor(Math.log10(raw))); const f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
   function drawChart() {
     const box = root.getElementById('cb'); if (!box) return;
@@ -476,6 +518,10 @@ export function mountHvacMon(root, { sb }) {
     if (e.target.closest('[data-list]')) return list();
     const r = e.target.closest('[data-range]'); if (r) { S.range = r.dataset.range; lsSet('hm_range', S.range); body.querySelectorAll('[data-range]').forEach(b => b.classList.toggle('on', b === r)); await load(); drawChart(); drawTiles(); drawEvents(); return; }
     const u = e.target.closest('[data-unit]'); if (u) { S.unit = u.dataset.unit; lsSet('hm_unit', S.unit); body.querySelectorAll('[data-unit]').forEach(b => b.classList.toggle('on', b === u)); drawChart(); drawTiles(); return; }
+    const col = e.target.closest('[data-col]'); if (col) { const k = col.dataset.col; if (S.shut.has(k)) S.shut.delete(k); else S.shut.add(k); lsSet('hm_shut', JSON.stringify([...S.shut])); col.classList.toggle('shut', S.shut.has(k)); const card = col.closest('[data-card]'); if (card) card.classList.toggle('shut', S.shut.has(k)); return; }
+    if (recentDrag(e)) return;
+    const lr = e.target.closest('.lg'); if (lr && !e.target.closest('input,button')) return sensorInfo(lr.dataset.row);
+    const tl = e.target.closest('[data-tile]'); if (tl && !tl.dataset.tile.startsWith('dt:')) return sensorInfo(tl.dataset.tile);
     const eu = e.target.closest('[data-eunit]'); if (eu) return unitForm(eu.dataset.eunit);
     const ed = e.target.closest('[data-editsensor]'); if (ed) return sensorForm(ed.dataset.editsensor);
     if (e.target.closest('[data-addsensor]')) return sensorForm(null);
