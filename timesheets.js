@@ -1,4 +1,4 @@
-// Homestar HQ - Timesheets (v1 2026-11-20, Calvin). mountTimesheets(root, {sb, me, people})
+// Homestar HQ - Timesheets (v2 2026-11-20: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
 // Data: time_entries (HCP time, synced by Claude), pay_periods, timesheets (sent/filed), bank_ledger (banked hours vault).
 // Rules (Timesheets\00 TIMESHEETS README.md): start = first of On my way / Time started; each row rounds to 0.1 h (Excel ROUND half up);
 // never over 80 h: the excess is trimmed off rows on the longest days and BANKED at 1.5x; under 80 h with a bank balance -> offer to draw.
@@ -105,7 +105,7 @@ export function mountTimesheets(root, { sb, me, people }) {
   const all = !!me.sees_all_timesheets;
   const team = (people || []).filter(p => p.active !== false && (all || p.id === me.id));
   const first = (p) => (p?.name || '').split(' ')[0];
-  const S = { tab: 'gen', person: me.id, period: null, periods: [], phase: 'pick', res: null, draw: null, bal: 0, ledger: [], err: '', sheet: null, synced: null };
+  const S = { fileErr: '', fileStep: '', tab: 'gen', person: me.id, period: null, periods: [], phase: 'pick', res: null, draw: null, bal: 0, ledger: [], err: '', sheet: null, synced: null };
   root.innerHTML = `<style>${CSS}</style><a class="back" href="#/tools">← Tools</a><h2>Timesheets</h2><div id="tabs" class="tabs"></div><div id="body"></div><div id="modal"></div>`;
   const body = root.getElementById('body'), tabsEl = root.getElementById('tabs'), modal = root.getElementById('modal');
   let dead = false, poll = null;
@@ -245,14 +245,67 @@ export function mountTimesheets(root, { sb, me, people }) {
     const btn = body.querySelector('[data-send]'); if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
     const { error } = await sb.rpc('ts_send', { p_person: S.person, p_period: p.start_date, p_rows: payload, p_totals: { total: t.total, byDept: t.byDept, raw: S.res.raw, file_name: fileName(first(who), p), folder: folderOf(p) }, p_ledger: ledger });
     if (error) { S.err = "Couldn't send: " + error.message; drawRes(); return; }
-    await loadSheet(S.person, p.start_date); S.phase = 'sent'; draw(); startPoll();
+    await loadSheet(S.person, p.start_date); S.phase = 'sent'; draw(); fileNow();
+  }
+  // ---------- Instant filing: Excel built here, saved to Harlow with the person's own Microsoft sign-in ----------
+  const GRAPH = 'https://graph.microsoft.com/v1.0';
+  async function msToken() {
+    const { MS } = await import('./ts_ms.js?v=1'); const { PublicClientApplication } = await import(MS.lib);
+    const pca = new PublicClientApplication(MS.config); await pca.initialize();
+    const acct = pca.getActiveAccount() || pca.getAllAccounts().find(a => (a.username || '').toLowerCase() === (me.email || '').toLowerCase()) || pca.getAllAccounts()[0];
+    if (acct) { try { return (await pca.acquireTokenSilent({ scopes: MS.scopes, account: acct })).accessToken; } catch (e) { /* needs sign-in */ } }
+    S.fileStep = 'Opening Microsoft sign-in…'; drawSent();
+    try { sessionStorage.setItem('ts_resume', S.sheet.id); sessionStorage.setItem('ts_back', location.href.split('#')[0] + '#/tools/timesheets'); } catch (e) {}
+    await pca.acquireTokenRedirect({ scopes: MS.scopes, loginHint: me.email || undefined, redirectUri: MS.config.auth.redirectUri });
+    return new Promise(() => {});   // the page navigates to Microsoft
+  }
+  const gget = async (tok, path) => { const r = await fetch(GRAPH + path, { headers: { Authorization: 'Bearer ' + tok } }); return r.ok ? r.json() : null; };
+  async function harlowFolder(tok) {
+    try { const c = JSON.parse(localStorage.getItem('ts_harlow') || 'null'); if (c && c.user === me.id) return c; } catch (e) {}
+    let h = null; const own = await gget(tok, '/me/drive/root:/Harlow%20Bookkeeping?$select=id,name,parentReference');
+    if (own && own.id) h = { d: own.parentReference.driveId, id: own.id, base: '' };
+    if (!h) {
+      const sw = await gget(tok, '/me/drive/sharedWithMe?$top=200'); const items = (sw && sw.value) || [];
+      const hb = items.find(i => (i.remoteItem || i).name === 'Harlow Bookkeeping'); const ts = items.find(i => (i.remoteItem || i).name === 'Timesheets' && JSON.stringify(i).includes('Harlow'));
+      const it = hb || ts; if (it) { const ri = it.remoteItem || it; h = { d: ri.parentReference.driveId, id: ri.id, base: hb ? '' : 'skipTimesheets' }; }
+    }
+    if (!h) throw new Error("Your Microsoft account can't see the Harlow Bookkeeping folder. Ask Calvin to share it with you.");
+    h.user = me.id; try { localStorage.setItem('ts_harlow', JSON.stringify(h)); } catch (e) {}
+    return h;
+  }
+  async function fileNow() {
+    const sh = S.sheet; if (!sh || sh.status === 'filed') return draw();
+    const p = S.periods.find(x => x.start_date === sh.period_start); S.fileErr = ''; S.fileStep = 'Building the Excel…'; drawSent();
+    try {
+      const tok = await msToken();
+      S.fileStep = 'Building the Excel…'; drawSent();
+      const [{ default: JSZip }, { buildTimesheetXlsx }] = await Promise.all([import('https://esm.sh/jszip@3.10.1'), import('./ts_excel.js?v=1')]);
+      const { data: tpl, error: te } = await sb.storage.from('timesheets').download('_template/timesheet_template.xlsx');
+      if (te) throw new Error("Couldn't load the timesheet template: " + te.message);
+      const rows = (sh.rows || []).map(r => ({ date: r.date, job: r.job, dept: r.dept, start: r.start, end: r.end }));
+      const out = await buildTimesheetXlsx(JSZip, await tpl.arrayBuffer(), rows, p.start_date, p.end_date);
+      if (Math.abs(out.total - Number((sh.totals || {}).total || 0)) > 0.05) throw new Error(`Excel total ${out.total} doesn't match HQ total ${(sh.totals || {}).total}. Not filed.`);
+      S.fileStep = 'Saving to Harlow Bookkeeping…'; drawSent();
+      const h = await harlowFolder(tok); const pd = D(p.pay_date);
+      const parts = [...(h.base === 'skipTimesheets' ? [] : ['Timesheets']), String(pd.getFullYear()), `${String(pd.getMonth() + 1).padStart(2, '0')}. ${MONL[pd.getMonth()]}`, sh.totals.file_name];
+      const url = `${GRAPH}/drives/${h.d}/items/${h.id}:/${parts.map(encodeURIComponent).join('/')}:/content?@microsoft.graph.conflictBehavior=fail`;
+      const r = await fetch(url, { method: 'PUT', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/octet-stream' }, body: out.bytes });
+      if (r.status === 409) throw new Error(`"${sh.totals.file_name}" is already in that Harlow folder. Nothing was overwritten.`);
+      if (!r.ok) throw new Error('OneDrive said ' + r.status + ': ' + ((await r.text()).slice(0, 160)));
+      const blob = new Blob([out.bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const sp = `${sh.person_id}/${sh.totals.file_name}`;
+      await sb.storage.from('timesheets').upload(sp, blob, { upsert: true, contentType: blob.type });
+      const { error: me2 } = await sb.rpc('ts_mark_filed', { p_id: sh.id, p_file_name: sh.totals.file_name, p_file_path: sh.totals.folder + '\\' + sh.totals.file_name, p_storage_path: sp });
+      if (me2) throw new Error('Saved to Harlow, but HQ could not mark it filed: ' + me2.message);
+      await loadSheet(sh.person_id, sh.period_start); S.fileStep = ''; drawSent();
+    } catch (e) { S.fileErr = e.message || String(e); drawSent(); startPoll(); }
   }
   function drawSent() {
     const p = P(); const sh = S.sheet || {}; const filed = sh.status === 'filed';
     body.innerHTML = `<div class="card load"><div class="${filed ? 'done' : 'logo'}">${filed ? '📁' : '<svg viewBox="0 0 110 110"><circle cx="55" cy="55" r="48"/></svg><img src="./icon-192.png" alt="">'}</div>
-      <div class="steps">${filed ? 'Filed to Harlow Bookkeeping' : sh.status === 'error' ? 'Filing hit a problem' : 'Sent — filing to Harlow Bookkeeping…'}</div>
-      <div class="muted" style="max-width:520px">${filed ? `<b>${esc(sh.file_name)}</b> is in ${esc(folderOf(p))}. A copy is saved in History.` : sh.status === 'error' ? esc(sh.error || '') : `Claude builds the Excel from the company template and saves it as <b>${esc((sh.totals || {}).file_name || '')}</b> in ${esc(folderOf(p))}. This page updates by itself when it's done.`}</div>
-      <div class="acts">${filed && sh.storage_path ? '<button class="btn pri" data-dl>Download Excel</button>' : ''}<button class="btn" data-again>New timesheet</button></div></div>`;
+      <div class="steps">${filed ? 'Filed to Harlow Bookkeeping ✅' : S.fileErr ? "Couldn't save to Harlow yet" : (S.fileStep || 'Saving to Harlow Bookkeeping…')}</div>
+      <div class="muted" style="max-width:520px">${filed ? `<b>${esc(sh.file_name)}</b> is in ${esc(folderOf(p))}. A copy is saved in History.` : S.fileErr ? `${esc(S.fileErr)}<br>Your timesheet is saved in HQ; tap Try again, or Claude files it on the next hourly run.` : `Building the Excel from the company template and saving it as <b>${esc((sh.totals || {}).file_name || '')}</b> in ${esc(folderOf(p))}.`}</div>
+      <div class="acts">${filed && sh.storage_path ? '<button class="btn pri" data-dl>Download Excel</button>' : ''}${!filed && S.fileErr ? '<button class="btn pri" data-refile>Try again</button>' : ''}<button class="btn" data-again>New timesheet</button></div></div>`;
   }
   function startPoll() {
     clearInterval(poll); poll = setInterval(async () => { const p = P(); await loadSheet(S.person, p.start_date); if (dead) return clearInterval(poll); if (S.phase === 'sent' && S.tab === 'gen') drawSent(); if (S.sheet && S.sheet.status !== 'queued') clearInterval(poll); }, 15000);
@@ -309,10 +362,16 @@ export function mountTimesheets(root, { sb, me, people }) {
     if (e.target.closest('[data-nodraw]')) { S.noDraw = true; return drawRes(); }
     if (e.target.closest('[data-send]')) return send();
     if (e.target.closest('[data-dl]')) return download(S.sheet.storage_path);
+    if (e.target.closest('[data-refile]')) return fileNow();
     const dl = e.target.closest('[data-dlp]'); if (dl) return download(dl.dataset.dlp);
   };
   (async () => {
     try { await loadPeriods(); await loadSheet(S.person, S.period); } catch (e) { body.innerHTML = `<div class="card err">Couldn't load pay periods: ${esc(e.message)}</div>`; return; }
+    let resume = null; try { resume = sessionStorage.getItem('ts_resume'); sessionStorage.removeItem('ts_resume'); } catch (e) {}
+    if (resume) {
+      const { data } = await sb.from('timesheets').select('*').eq('id', resume).maybeSingle();
+      if (data) { S.person = data.person_id; S.period = data.period_start; S.sheet = data; S.phase = 'sent'; draw(); if (data.status !== 'filed') fileNow(); return; }
+    }
     draw();
   })();
   return () => { dead = true; clearInterval(poll); root.innerHTML = ''; };

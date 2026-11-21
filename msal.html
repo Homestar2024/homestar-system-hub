@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Homestar HQ</title>
+<style>body{font-family:system-ui,sans-serif;background:#0b1020;color:#e9eef8;display:grid;place-items:center;min-height:100vh;margin:0;text-align:center;padding:16px}</style></head>
+<body><div id="m">Finishing Microsoft sign-in…</div>
+<script type="module">
+import { MS } from './ts_ms.js?v=1';
+const back = sessionStorage.getItem('ts_back') || './#/tools/timesheets';
+try {
+  const { PublicClientApplication } = await import(MS.lib);
+  const pca = new PublicClientApplication(MS.config); await pca.initialize();
+  const r = await pca.handleRedirectPromise(); if (r && r.account) pca.setActiveAccount(r.account);
+  location.replace(back);
+} catch (e) { document.getElementById('m').textContent = 'Microsoft sign-in failed: ' + e.message; setTimeout(() => location.replace(back), 4000); }
+</script></body></html>
