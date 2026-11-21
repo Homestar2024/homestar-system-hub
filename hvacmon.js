@@ -1,4 +1,4 @@
-// Homestar HQ - HVAC Monitoring (v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
+// Homestar HQ - HVAC Monitoring (v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
 // graph of every sensor over time (temps on the left axis, watts on the right), 24 h / 7 d / 30 d / 1 y, legend with colour,
 // show/hide checkbox and editable names. Data: monitor_sites / monitor_sensors / monitor_series() (db/025). Until a house has
 // readings the dashboard shows clearly-labelled SAMPLE data so the layout can be judged.
@@ -22,7 +22,10 @@ a.back{color:var(--brand);text-decoration:none;font-weight:600;display:inline-bl
 .chip.on{background:var(--brand);border-color:var(--brand);color:var(--accent-ink)}
 .bar{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
 .sample{border:1px dashed var(--warn);background:color-mix(in srgb,var(--warn) 12%,transparent);border-radius:10px;padding:8px 12px;margin-top:10px;font-size:14px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:12px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:6px}
+.tgh{font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:14px 0 2px}
+.tile em{display:block;font-style:normal;font-weight:700;font-size:14px;color:var(--ink);opacity:.85;margin-top:-2px}
+.lgg{display:flex;flex-direction:column;gap:6px}
 .tile{background:var(--sunk);border-radius:10px;padding:9px 11px;border-left:4px solid var(--c,var(--line));min-width:0}
 .tile b{display:block;font-family:var(--display);font-size:22px}.tile span{font-size:12.5px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chartbox{position:relative;margin-top:12px;touch-action:pan-y}
@@ -51,6 +54,8 @@ const RANGES = [{ k: '24h', label: '24 h', ms: 864e5, bucket: 300 }, { k: '7d', 
 const KIND = { supply: 'Supply air', return: 'Return air', outdoor: 'Outdoor', room: 'Room', power: 'Power (W)', fan_power: 'Fan power (W)', humidity: 'Humidity (%)', other: 'Other' };
 const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const isTemp = (s) => s.unit === 'C';
+const GRP = { equipment: 'Equipment', ambient: 'Ambient' };
+const grpOf = (s) => s.grp || (['room', 'outdoor', 'humidity'].includes(s.kind) ? 'ambient' : 'equipment');
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
 
@@ -100,7 +105,7 @@ export function mountHvacMon(root, { sb }) {
     const seed = (x) => { const s = Math.sin(x * 12.9898) * 43758.5453; return s - Math.floor(s); };
     const pts = []; for (let i = 0; i <= n; i++) pts.push(from + i * bucket * 1000);
     const outdoor = pts.map((t, i) => { const d = new Date(t); const day = (d.getHours() + d.getMinutes() / 60) / 24; const yr = (t / 864e5) / 365.25 * 2 * Math.PI; return 6 - 7 * Math.cos(yr) * 0 + 4 * Math.sin((day - 0.35) * 2 * Math.PI) + 3 * Math.cos(yr + 0.3) + (seed(i) - 0.5) * 0.8; });
-    S.sensors.forEach((s, k) => {
+    (S.all || S.sensors).forEach((s, k) => {
       out[s.id] = pts.map((t, i) => {
         const od = outdoor[i]; const load = Math.max(0, Math.min(1, (18 - od) / 22)); const defrost = od < 3 && (Math.floor(t / 36e5) % 2 === 0) && (new Date(t).getMinutes() < 8);
         if (s.kind === 'outdoor') return od;
@@ -109,6 +114,7 @@ export function mountHvacMon(root, { sb }) {
         if (s.kind === 'supply') return defrost ? 24 : 21.4 + 12 + load * 14 + (seed(i + 3) - 0.5);
         if (s.kind === 'power') return defrost ? 180 : 250 + load * 1500 + (seed(i + 5) - 0.5) * 40;
         if (s.kind === 'fan_power') return 18 + load * 22;
+        if (s.kind === 'humidity') return 44 + (k % 2 ? -4 : 2) + Math.sin(i / 15) * 2 + (seed(i + k) - 0.5);
         return 0;
       }).map((v, i) => [pts[i], v]);
     });
@@ -121,7 +127,8 @@ export function mountHvacMon(root, { sb }) {
     body.innerHTML = '<div class="muted">Loading…</div>';
     const { data, error } = await sb.from('monitor_sensors').select('*').eq('site_id', id).eq('active', true).order('sort');
     if (dead) return; if (error) { body.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
-    S.sensors = data || []; await load(); dash();
+    S.all = data || []; S.sensors = S.all.filter(x => x.kind !== 'humidity'); S.rh = {}; S.all.filter(x => x.kind === 'humidity' && x.pair_id).forEach(h => { S.rh[h.pair_id] = h; });
+    await load(); dash();
     clearInterval(timer); timer = setInterval(async () => { if (S.site && !dead) { await load(); drawChart(); drawTiles(); } }, 60000);
   }
   async function load() {
@@ -140,21 +147,26 @@ export function mountHvacMon(root, { sb }) {
       <div class="bar"><div class="chips">${RANGES.map(r => `<button class="chip${r.k === S.range ? ' on' : ''}" data-range="${r.k}">${r.label}</button>`).join('')}</div>
         <div class="chips"><button class="chip${S.unit === 'F' ? ' on' : ''}" data-unit="F">°F</button><button class="chip${S.unit === 'C' ? ' on' : ''}" data-unit="C">°C</button></div></div>
       <div class="card"><div class="chartbox" id="cb"></div><div class="legend" id="lg"></div></div>
-      <div class="tiles" id="tiles"></div>`;
+      <div id="tiles"></div>`;
     drawChart(); drawLegend(); drawTiles();
   }
   const last = (id) => { const a = (S.series && S.series[id]) || []; return a.length ? a[a.length - 1] : null; };
   function drawTiles() {
     const el = root.getElementById('tiles'); if (!el) return;
-    const tiles = S.sensors.map(s => { const l = last(s.id); return `<div class="tile" style="--c:${esc(s.color)}"><b>${l ? (isTemp(s) ? cv(l[1]).toFixed(1) + tU() : Math.round(l[1]) + ' ' + esc(s.unit)) : '–'}</b><span>${esc(s.label)}</span></div>`; });
-    const sup = S.sensors.find(s => s.kind === 'supply'), ret = S.sensors.find(s => s.kind === 'return');
-    if (sup && ret && last(sup.id) && last(ret.id)) { const d = last(sup.id)[1] - last(ret.id)[1]; tiles.unshift(`<div class="tile" style="--c:var(--brand)"><b>${(S.unit === 'F' ? d * 9 / 5 : d).toFixed(1)}${tU()}</b><span>Supply − return (ΔT)</span></div>`); }
-    el.innerHTML = tiles.join('');
+    const tile = (s) => { const l = last(s.id); const h = S.rh && S.rh[s.id] && last(S.rh[s.id].id); return `<div class="tile" style="--c:${esc(s.color)}"><b>${l ? (isTemp(s) ? cv(l[1]).toFixed(1) + tU() : Math.round(l[1]) + ' ' + esc(s.unit)) : '–'}</b>${S.rh && S.rh[s.id] ? `<em>${h ? Math.round(h[1]) + '% RH' : '– RH'}</em>` : ''}<span>${esc(s.label)}</span></div>`; };
+    const out = [];
+    for (const g of Object.keys(GRP)) {
+      const list = S.sensors.filter(s => grpOf(s) === g).map(tile);
+      if (g === 'equipment') { const sup = S.sensors.find(s => s.kind === 'supply'), ret = S.sensors.find(s => s.kind === 'return'); if (sup && ret && last(sup.id) && last(ret.id)) { const d = last(sup.id)[1] - last(ret.id)[1]; list.unshift(`<div class="tile" style="--c:var(--brand)"><b>${(S.unit === 'F' ? d * 9 / 5 : d).toFixed(1)}${tU()}</b><span>Supply − return (ΔT)</span></div>`); } }
+      if (list.length) out.push(`<div class="tgh">${GRP[g]}</div><div class="tiles">${list.join('')}</div>`);
+    }
+    el.innerHTML = out.join('');
   }
   function drawLegend() {
     const el = root.getElementById('lg');
-    el.innerHTML = S.sensors.map(s => `<div class="lg" data-row="${s.id}"><span class="hd" aria-hidden="true">⠿</span><input type="checkbox" data-show="${s.id}" ${S.hidden.has(s.id) ? '' : 'checked'} aria-label="Show ${esc(s.label)}"><span class="sw" style="background:${esc(s.color)}"></span><span class="nm"><b>${esc(s.label)}</b><span>${esc(KIND[s.kind] || s.kind)}${s.model ? ' · ' + esc(s.model) : ''}</span></span><button class="ed" data-editsensor="${s.id}">✎ Edit</button></div>`).join('') + '<div class="hint">Press and hold a sensor, then drag to change the order.</div>';
-    bindDrag(el);
+    const row = (s) => `<div class="lg" data-row="${s.id}"><span class="hd" aria-hidden="true">⠿</span><input type="checkbox" data-show="${s.id}" ${S.hidden.has(s.id) ? '' : 'checked'} aria-label="Show ${esc(s.label)}"><span class="sw" style="background:${esc(s.color)}"></span><span class="nm"><b>${esc(s.label)}</b><span>${esc(KIND[s.kind] || s.kind)}${S.rh && S.rh[s.id] ? ' + humidity' : ''}${s.model ? ' · ' + esc(s.model) : ''}</span></span><button class="ed" data-editsensor="${s.id}">✎ Edit</button></div>`;
+    el.innerHTML = Object.keys(GRP).map(g => { const l = S.sensors.filter(s => grpOf(s) === g); return l.length ? `<div class="tgh">${GRP[g]} sensors</div><div class="lgg" data-grp="${g}">${l.map(row).join('')}</div>` : ''; }).join('') + '<div class="hint">Press and hold a sensor, then drag to change the order.</div>';
+    el.querySelectorAll('.lgg').forEach(bindDrag);
   }
   // press-and-hold to reorder (touch + mouse); order saved to monitor_sensors.sort for everyone
   function bindDrag(el) {
@@ -179,7 +191,7 @@ export function mountHvacMon(root, { sb }) {
     el.addEventListener('contextmenu', (e) => { if (drag || timer) e.preventDefault(); });
     async function finish() {
       drag.classList.remove('drag'); drag = null;
-      const ids = [...el.querySelectorAll('.lg')].map(r => r.dataset.row);
+      const ids = [...root.querySelectorAll('#lg .lg')].map(r => r.dataset.row);
       if (!ids.some((id, i) => (S.sensors[i] || {}).id !== id)) return;
       S.sensors.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id)); S.sensors.forEach((s, i) => { s.sort = i + 1; });
       drawTiles(); drawChart();
@@ -223,6 +235,7 @@ export function mountHvacMon(root, { sb }) {
     modal.innerHTML = `<div class="modal"><div class="sheet"><h3>Edit sensor</h3>
       <label class="f">Name (location)<input data-f="label" value="${esc(s.label)}"></label>
       <label class="f">Line colour<input type="color" data-f="color" value="${esc(s.color)}"></label>
+      <label class="f">Group<select data-f="grp">${Object.entries(GRP).map(([k, v]) => `<option value="${k}" ${k === grpOf(s) ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <label class="f">What it measures<select data-f="kind">${Object.entries(KIND).map(([k, v]) => `<option value="${k}" ${k === s.kind ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <div class="small muted" style="margin-top:8px">${esc(s.provider)} ${esc(s.model)}${s.external_id ? ' · ' + esc(s.external_id) : ' · not connected yet'}</div>
       <div class="err" data-err></div><div class="acts"><button class="btn" data-x>Cancel</button><button class="btn pri" data-save>Save</button></div></div></div>`;
