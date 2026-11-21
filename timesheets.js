@@ -1,4 +1,4 @@
-// Homestar HQ - Timesheets (v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
+// Homestar HQ - Timesheets (v7 2026-11-21: freshness check before Generate; v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
 // Data: time_entries (HCP time, synced by Claude), pay_periods, timesheets (sent/filed), bank_ledger (banked hours vault).
 // Rules (Timesheets\00 TIMESHEETS README.md): start = first of On my way / Time started; each row rounds to 0.1 h (Excel ROUND half up);
 // never over 80 h: the excess is trimmed off rows on the longest days and BANKED at 1.5x; under 80 h with a bank balance -> offer to draw.
@@ -168,6 +168,36 @@ export function mountTimesheets(root, { sb, me, people }) {
       <button class="btn go" data-go>Generate timesheet</button>
       <div class="small muted" style="margin-top:10px">${S.server ? 'Sending saves straight to Harlow Bookkeeping — no sign-in needed.' : `${S.msMsg ? esc(S.msMsg) : 'Sending saves straight to Harlow with your Microsoft sign-in.'} ${S.msMsg && S.msMsg.startsWith('✅') ? '' : '<button class="btn" data-mstest style="min-height:34px;padding:6px 12px;margin-left:6px">Connect Microsoft</button>'}`}</div>
       ${S.err ? `<div class="err">${esc(S.err)}</div>` : ''}</div>`;
+  }
+  // Freshness check (Calvin 2026-11-21): before generating, say when HCP time was last pulled if the pay period isn't fully pulled yet.
+  const ptParts = (d) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Vancouver', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(d).map(x => [x.type, x.value]));
+  const ptTime = (d) => d.toLocaleTimeString('en-CA', { timeZone: 'America/Vancouver', hour: 'numeric', minute: '2-digit' });
+  function nextPull(now) {   // hourly sync runs at :25, 6:25 AM - 9:25 PM Pacific; the pull lands a few minutes later
+    const t = ptParts(now); const h = +t.hour, m = +t.minute;
+    if (h < 6 || (h === 6 && m < 25)) return 'about 6:30 AM';
+    if (h > 21 || (h === 21 && m >= 25)) return 'about 6:30 AM tomorrow';
+    const nh = m < 25 ? h : h + 1; return `about ${((nh % 12) || 12)}:30 ${nh < 12 ? 'AM' : 'PM'}`;
+  }
+  async function preGenerate() {
+    const p = P(); const now = new Date();
+    const { data: sy } = await sb.from('time_entries').select('synced_at').eq('person_id', S.person).order('synced_at', { ascending: false }).limit(1);
+    const last = sy && sy[0] ? new Date(sy[0].synced_at) : null;
+    const lp = last ? ptParts(last) : null; const lastDay = lp ? `${lp.year}-${lp.month}-${lp.day}` : '';
+    const covered = last && lastDay > p.end_date;   // a pull ran after the last day of the period ended
+    if (covered) return generate();
+    const ago = last ? Math.round((now - last) / 60000) : null;
+    const agoTxt = ago == null ? 'never' : ago < 60 ? `${ago} min ago` : `${Math.floor(ago / 60)} h ${ago % 60} min ago`;
+    const stale = ago == null || ago > 100;
+    const lastTxt = last ? `${fmtD(lastDay, { weekday: 'short', month: 'short', day: 'numeric' })} at ${ptTime(last)}` : 'never';
+    modal.innerHTML = `<div class="modal"><div class="sheet"><h3>Heads up: HCP time last pulled ${esc(agoTxt)}</h3>
+      <div class="kv"><span>Last pull</span><b>${esc(lastTxt)}</b></div><div class="kv"><span>Next pull</span><b>${esc(nextPull(now))}</b></div>
+      <div class="warn small">Anything tracked in Housecall Pro after ${last ? esc(ptTime(last)) : 'the last pull'} won't be on this timesheet yet${p.end_date >= `${ptParts(now).year}-${ptParts(now).month}-${ptParts(now).day}` ? ', and this pay period is still running' : ''}. If you've worked since then, wait for the next pull.${stale ? '<br><b>The hourly pull looks behind</b> — Calvin\'s laptop may be off.' : ''}</div>
+      <div class="small muted" style="margin-top:6px">If anything is missed, the hourly check still catches HCP time that isn't on a sent sheet and flags it for Edit &amp; re-file.</div>
+      <div class="acts"><button class="btn" data-x>I'll wait</button><button class="btn pri" data-gonow>Generate anyway</button></div></div></div>`;
+    modal.onclick = (e) => {
+      if (e.target.closest('[data-x]') || e.target === modal.firstElementChild) { modal.innerHTML = ''; return; }
+      if (e.target.closest('[data-gonow]')) { modal.innerHTML = ''; generate(); }
+    };
   }
   async function generate() {
     S.err = ''; S.phase = 'load'; const steps = ['Reading Housecall Pro time…', 'Checking notes and corrections…', 'Applying the 80-hour rule…', 'Checking your banked hours…', 'Building your timesheet…'];
@@ -532,7 +562,7 @@ export function mountTimesheets(root, { sb, me, people }) {
     if (e.target.matches('[data-period]')) { S.period = e.target.value; await loadSheet(S.person, S.period); drawPick(); }
   };
   body.onclick = (e) => {
-    if (e.target.closest('[data-go]')) return generate();
+    if (e.target.closest('[data-go]')) return preGenerate();
     if (e.target.closest('[data-again]')) { S.phase = 'pick'; S.res = null; S.draw = null; S.noDraw = false; S.revise = false; S.err = ''; clearInterval(poll); return draw(); }
     if (e.target.closest('[data-drawask]')) return drawAsk();
     if (e.target.closest('[data-nodraw]')) { S.noDraw = true; return drawRes(); }
