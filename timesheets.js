@@ -97,7 +97,8 @@ tr.day td .dh{float:right}
 .stepper{display:flex;gap:8px;align-items:center;margin:10px 0}.stepper input{text-align:center;font-size:22px;font-weight:700}
 .stepper button{width:48px;height:48px;font-size:22px;flex:none}
 .err{color:var(--hot);font-weight:600;margin-top:6px}
-@media(max-width:600px){.btn{flex:1}}
+br.mob,span.mob{display:none}
+@media(max-width:600px){.btn{flex:1}.dc{display:none}span.mob{display:inline-block;margin-top:3px}br.mob{display:inline}table{min-width:0}th,td{padding:7px 5px}}
 `;
 
 export function mountTimesheets(root, { sb, me, people }) {
@@ -165,11 +166,11 @@ export function mountTimesheets(root, { sb, me, people }) {
   function drawRows(addRows) {
     const r = S.res; const rows = [...r.rows.map(x => ({ ...x })), ...(addRows || [])].sort((a, b) => (a.date + hm(a.s)).localeCompare(b.date + hm(b.s)));
     const days = [...new Set(rows.map(x => x.date))];
-    return `<div class="scroll"><table><thead><tr><th>Job #</th><th>Customer</th><th>Dept</th><th>Start – End</th><th class="n">Hours</th></tr></thead><tbody>${days.map(d => {
+    return `<div class="scroll"><table><thead><tr><th>Job #</th><th>Customer</th><th class="dc">Dept</th><th>Start – End</th><th class="n">Hours</th></tr></thead><tbody>${days.map(d => {
       const rs = rows.filter(x => x.date === d); const dh = rs.reduce((a, x) => a + rh(x.e - x.s), 0);
       return `<tr class="day"><td colspan="5">${fmtD(d, { weekday: 'long', month: 'short', day: 'numeric' })}<span class="dh">${f1(dh)} h${dh > 10.0001 ? ' ⚠ over 10' : ''}</span></td></tr>` + rs.map(x => {
         const tr = r.bank.filter(b => b.date === d && b.job === x.job && b.to === hm(x.e));
-        return `<tr><td>${esc(x.job)}${x.drawn ? ' <span class="pill">banked</span>' : ''}</td><td>${esc(x.customer)}${x.flag ? `<div class="flag">⚑ ${esc(x.flag)}</div>` : ''}${x.note ? `<div class="note">${esc(x.note)}</div>` : ''}${tr.map(b => `<div class="trim">−${f1(b.hours)} h moved to the bank (ended ${t12(b.from)} → ${t12(b.to)})</div>`).join('')}</td><td><span class="pill ${x.dept}">${DEPT[x.dept]}</span></td><td style="white-space:nowrap">${t12(hm(x.s))} – ${t12(hm(x.e))}</td><td class="n">${f1(rh(x.e - x.s))}</td></tr>`;
+        return `<tr><td style="white-space:nowrap">${esc(x.job)}${x.drawn ? ' <span class="pill">banked</span>' : ''}</td><td>${esc(x.customer)} <span class="pill ${x.dept} mob">${DEPT[x.dept]}</span>${x.flag ? `<div class="flag">⚑ ${esc(x.flag)}</div>` : ''}${x.note ? `<div class="note">${esc(x.note)}</div>` : ''}${tr.map(b => `<div class="trim">−${f1(b.hours)} h moved to the bank (ended ${t12(b.from)} → ${t12(b.to)})</div>`).join('')}</td><td class="dc"><span class="pill ${x.dept}">${DEPT[x.dept]}</span></td><td style="white-space:nowrap">${t12(hm(x.s))} –<br class="mob"> ${t12(hm(x.e))}</td><td class="n">${f1(rh(x.e - x.s))}</td></tr>`;
       }).join('');
     }).join('')}</tbody></table></div>`;
   }
@@ -185,7 +186,7 @@ export function mountTimesheets(root, { sb, me, people }) {
     const filed = S.sheet && S.sheet.status === 'filed';
     body.innerHTML = `<div class="card"><h3>${esc(first(who))} · ${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</h3>
       <div class="tiles"><div class="tile big"><b>${f1(t.total)}</b><span>hours on the sheet</span></div>${Object.entries(t.byDept).filter(([, v]) => v).map(([k, v]) => `<div class="tile"><b>${f1(v)}</b><span>${DEPT[k]}</span></div>`).join('')}<div class="tile"><b>${f1(S.bal)}</b><span>banked hours available</span></div></div>
-      <div class="small muted">HCP time last pulled ${S.synced ? new Date(S.synced).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' }) : 'never'}. Anything tracked after that isn't here yet.</div>
+      <div class="small muted">HCP time last pulled: ${S.synced ? new Date(S.synced).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' }) : 'never'} — anything tracked after that isn't here yet.</div>
       ${banked ? `<div class="warn"><b>Over 80 hours.</b> HCP shows ${f1(r.raw)} h. ${f1(banked)} h came off the longest days (marked in red below) and go to your bank at time and a half = <b>${f1(banked * 1.5)} banked hours</b>. The sheet Harlow gets shows ${f1(t.total)} h.</div>` : ''}
       ${S.draw ? `<div class="good"><b>${f1(S.draw.hours)} banked hours added</b>, bringing you to ${f1(t.total)} h. Balance after this: ${f1(S.bal - S.draw.hours)} h.</div>` : ''}
       ${canDraw ? `<div class="bankbox"><b>You're at ${f1(t.total)} hours — ${f1(under)} under 80.</b><br>You have <b>${f1(S.bal)} banked hours</b>. Want to use some to bring this pay period up?<div class="acts"><button class="btn pri" data-drawask>Yes, use banked hours</button><button class="btn" data-nodraw>No thanks</button></div></div>` : ''}
