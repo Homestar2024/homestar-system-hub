@@ -1,4 +1,4 @@
-// Homestar HQ - Tools (v0.30.7 refrigerant picker on service repairs: R-22/R-410A/R-32/R-454B, qty in lb or oz, 1/2 lb minimum, HCP per-lb prices, Masters cost (Calvin 2026-11-21); v0.30.6 diagnostic: flat $159, no time or who's-going inputs; internal margin panel back, costed as 1 h of Calvin at break-even, travel not included (Calvin 2026-11-21); v0.30.5 diagnostic = FLAT $159, period: no hours, no travel, no extra time (Calvin 2026-11-21, matches HCP 'Diagnostic Visit - Flat Rate'); v0.30.4 diagnostic = FLAT $159 for the first hour on site, travel included, extra hours $159/h only with the customer's OK (Calvin 2026-11-21; replaces v0.30.3 travel-at-break-even, which a later deploy had overwritten); v0.30.2 departments = Installation + Service only; diagnostic bills one person, no parts/PST (Calvin 2026-11-20); v0.30.1 installs priced on 12% net only, 40% gross = target shown as a note (Calvin 2026-11-20); v0.30 RATE RESET 2026-11-20 (Calvin confirmed): overhead $96.24 per PERSON-hour on the job (QBO Jun-Oct overhead $78,415 / HCP job hours Calvin 585 + Jacob 230); Calvin $44.47, Jacob $29.87 burdened; install 12% net -> Calvin $159.90 / Jacob $143.30; service 18% -> $172 / $154; travel at break-even $140.71 / $126.11. Earlier v0.29.x crew models are retired.)
+// Homestar HQ - Tools (v0.30.8 refrigerant: below 1/2 lb (8 oz) goes red and is not priced; order R-22, R-410A, R-32, R-454B (Calvin 2026-11-21); v0.30.7 refrigerant picker on service repairs: R-22/R-410A/R-32/R-454B, qty in lb or oz, 1/2 lb minimum, HCP per-lb prices, Masters cost (Calvin 2026-11-21); v0.30.6 diagnostic: flat $159, no time or who's-going inputs; internal margin panel back, costed as 1 h of Calvin at break-even, travel not included (Calvin 2026-11-21); v0.30.5 diagnostic = FLAT $159, period: no hours, no travel, no extra time (Calvin 2026-11-21, matches HCP 'Diagnostic Visit - Flat Rate'); v0.30.4 diagnostic = FLAT $159 for the first hour on site, travel included, extra hours $159/h only with the customer's OK (Calvin 2026-11-21; replaces v0.30.3 travel-at-break-even, which a later deploy had overwritten); v0.30.2 departments = Installation + Service only; diagnostic bills one person, no parts/PST (Calvin 2026-11-20); v0.30.1 installs priced on 12% net only, 40% gross = target shown as a note (Calvin 2026-11-20); v0.30 RATE RESET 2026-11-20 (Calvin confirmed): overhead $96.24 per PERSON-hour on the job (QBO Jun-Oct overhead $78,415 / HCP job hours Calvin 585 + Jacob 230); Calvin $44.47, Jacob $29.87 burdened; install 12% net -> Calvin $159.90 / Jacob $143.30; service 18% -> $172 / $154; travel at break-even $140.71 / $126.11. Earlier v0.29.x crew models are retired.)
 // mountTools(host, db, extra) renders into a shadow root on host and returns a cleanup function. extra.tool = '' (list) or 'pricing'.
 // RATES = the company rate model - the RATE RESET line in START HERE s8 is the source. Change them here AND there the same day; recompute at each month-end close.
 export const RATES = {
@@ -17,10 +17,10 @@ export const RATES = {
   pst: 0.07,                                    // added to materials/parts by default (box can be unticked), never to subs (Calvin 2026-11-20)
   // Refrigerant (Calvin 2026-11-21): sell per lb = HCP price book, 1/2 lb minimum; cost per lb = Masters Nanaimo price 2026-11-21 (deposit excluded)
   refrigerant: {
+    R22: { label: 'R-22', price: 145, cost: 19.36 },
     R410A: { label: 'R-410A', price: 125, cost: 12.57 },
     R32: { label: 'R-32', price: 145, cost: 21.89 },
-    R454B: { label: 'R-454B', price: 185, cost: 37.98 },
-    R22: { label: 'R-22', price: 145, cost: 19.36 }
+    R454B: { label: 'R-454B', price: 185, cost: 37.98 }
   },
   refMinLb: 0.5
 };
@@ -171,13 +171,18 @@ export function mountTools(host, db, extra) {
       <div class="step"><div class="lbl"><span class="n">${n++}</span>Refrigerant needed?</div><div class="seg" data-g="ref"><button aria-pressed="${!S.ref}" data-v="no">No</button><button aria-pressed="${S.ref}" data-v="yes">Yes</button></div>
         ${S.ref ? `<div class="seg" data-g="reftype" style="margin-top:8px">${Object.entries(R.refrigerant).map(([k, g]) => `<button aria-pressed="${S.refType === k}" data-v="${k}">${g.label}</button>`).join('')}</div>
         <div class="fields" style="margin-top:8px">${field('refQty', 'Amount added', S.refUnit === 'oz' ? 'e.g. 12' : 'e.g. 1.5')}<div class="seg" data-g="refunit" style="align-self:end"><button aria-pressed="${S.refUnit === 'lb'}" data-v="lb">lb</button><button aria-pressed="${S.refUnit === 'oz'}" data-v="oz">oz</button></div></div>
-        <div class="muted" style="font-size:13px;margin-top:6px">${R.refrigerant[S.refType].label}: ${money(R.refrigerant[S.refType].price)}/lb, ½ lb minimum.</div>` : ''}</div>`
+        <div class="muted" id="refnote" style="font-size:13px;margin-top:6px">${R.refrigerant[S.refType].label}: ${money(R.refrigerant[S.refType].price)}/lb, minimum ½ lb (8 oz).</div>` : ''}</div>`
         : `<div class="step"><div class="lbl"><span class="n">${n++}</span>Costs (your cost before tax)</div><div class="fields">${field('materials', 'Materials', 'e.g. 6500')}${d === 'install' ? field('subs', 'Subcontractors (real quotes)', 'e.g. 1200') : ''}</div>${pstBox}</div>`}
       ${d !== 'maint' && !diag ? `<div class="step"><div class="lbl"><span class="n">${n++}</span>Net margin</div><div class="mrow"><button class="step-btn" data-net="-1" aria-label="Lower margin">−</button><input type="range" min="${R.dept[d].net}" max="50" step="1" value="${S.net}" data-netr><button class="step-btn" data-net="1" aria-label="Raise margin">+</button><span class="mv" id="mv">${S.net}%</span></div><div class="muted" style="font-size:13px;margin-top:4px">Minimum ${R.dept[d].net}% net${d === 'install' ? ` (aim for ${R.dept[d].gross}% gross)` : ''}.</div></div>` : ''}`;
   }
   function drawOut() {
     const k = S.pst ? 1 + R.pst : 1; const rq = num(S.refQty), s = { ref: (S.ref && S.dept === 'service' && S.kind !== 'diag') ? { type: S.refType, lb: S.refUnit === 'oz' ? rq / 16 : rq, k } : null, dept: S.dept, kind: S.kind, crew: (S.dept === 'service' && S.kind === 'diag') ? ['calvin'] : S.crew, hours: num(S.hours), travel: num(S.travel), materials: num(S.materials) * k, subs: num(S.subs), parts: S.parts.map(num).filter(Boolean).map(x => x * k), warranty: S.warranty, net: S.net };
     const r = price(s);
+    const refIn = root.querySelector('[data-k="refQty"]'), refNote = root.getElementById('refnote');
+    const refLow = !!(s.ref && rq > 0 && (S.refUnit === 'oz' ? rq < 16 * R.refMinLb : rq < R.refMinLb));   // below 1/2 lb or 8 oz = not allowed (Calvin 2026-11-21)
+    if (refIn) { refIn.style.borderColor = refLow ? '#e5484d' : ''; refIn.style.background = refLow ? 'rgba(229,72,77,.15)' : ''; refIn.style.color = refLow ? '#ff8b8f' : ''; }
+    if (refNote) { refNote.style.color = refLow ? '#ff8b8f' : ''; refNote.textContent = refLow ? `Below the minimum charge: enter at least ${S.refUnit === 'oz' ? '8 oz' : '0.5 lb'}.` : `${R.refrigerant[S.refType].label}: ${money(R.refrigerant[S.refType].price)}/lb, minimum ½ lb (8 oz).`; }
+    if (refLow) { outEl.innerHTML = `<h3>Price</h3><div class="warn">Refrigerant is below the ½ lb (8 oz) minimum. Enter ${S.refUnit === 'oz' ? '8 oz' : '0.5 lb'} or more.</div>`; return; }
     if (r.error) { outEl.innerHTML = `<h3>Price</h3><div class="muted">${r.error}</div>`; return; }
     if (!s.hours && !s.travel && !(S.dept === 'service' && S.kind === 'diag')) { outEl.innerHTML = `<h3>Price</h3><div class="muted">Enter the hours to see the price.</div>`; return; }
     const rows = r.lines.map(([l, v]) => `<div class="sub c"><span>${esc(l)}</span><span>${money(v)}</span></div>`).join('');
