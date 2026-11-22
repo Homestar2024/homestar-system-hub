@@ -1,4 +1,4 @@
-// Homestar HQ - HVAC Monitoring (v33 2026-11-22: filter health tile per indoor unit - blower watts per speed vs a clean-filter baseline (captured speeds, or the 3 days after the last Filter change event), steady fan-only runs with heat off, direction by motor type; v32 2026-11-22: blower motor type per indoor unit (PSC / ECM constant torque / ECM constant airflow); heat kit on the same feed as the blower - one clamp on the main feed, map each fan speed with heat off and with heat on, the app splits blower vs heat kit watts; v30 2026-11-22: vertical pinch removed; the °F/W scale stays fixed while zoomed or sliding (taken from the full-range view, never changes until Reset); v28 2026-11-22: finer °F grid (~5° per line, 1-2° zoomed), vertical scale fits the time on screen, 2-finger pinch up/down zooms the °F scale (watts follow), Reset clears both; v27 2026-11-22: equipment icons drawn like the real kit - outdoor heat pump, wall head, air handler, ducted, cassette, console, hydronic; v26 2026-11-22: watts scale lines up with the °F grid lines; v25 2026-11-22: short tag before each live number on the graph - S/A, R/A, ODT, PWR, rooms from their name; v24 2026-11-22: scrub shows no value where there is no reading; v23 2026-11-22: °F and W axes side by side on the left, live value of every line on the right in its colour; 1 finger = white scrub line with readings (no pop-up box), 2 fingers = pinch zoom + slide timeline; v22 2026-11-22: gesture freeze fix - pointers captured on the chart box (svg is rebuilt each frame), stale fingers cleared, background reloads paused mid-gesture and late loads dropped, empty zoomed window no longer flips to sample data; v21 2026-11-22: one-finger slide along the timeline, pinch zoom follows the fingers, double-tap removed (desktop double-click kept), zoomed loads pad half a window each side; v20 2026-11-22: zoom anchor fix; v19 2026-11-22: round clock-time x labels up to 2 days; v18 2026-11-22: zoom the graph - pinch or double-tap (ctrl/trackpad-pinch + double-click on desktop), arrows to slide, Reset; zoomed data loads at up to 1-minute detail; v17 2026-11-22: always live while a dashboard is on screen, Live button removed; v16 2026-11-22: Live on by default, no time limit; v15 2026-11-22: Live button - Shelly watts every 5 s, YoLink latest report every 15 s, auto-off after 30 min; v14 2026-11-22: live tiles - latest reading every 15 s, refresh when the app comes back to the screen, 'Latest reading' time; v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
+// Homestar HQ - HVAC Monitoring (v34 2026-11-22: Bin hours card - hours in each 1 °C outdoor band from 18 °C down to the coldest reading, with kWh, average kW, COP and aux-heat hours per band; v33 2026-11-22: filter health tile per indoor unit - blower watts per speed vs a clean-filter baseline (captured speeds, or the 3 days after the last Filter change event), steady fan-only runs with heat off, direction by motor type; v32 2026-11-22: blower motor type per indoor unit (PSC / ECM constant torque / ECM constant airflow); heat kit on the same feed as the blower - one clamp on the main feed, map each fan speed with heat off and with heat on, the app splits blower vs heat kit watts; v30 2026-11-22: vertical pinch removed; the °F/W scale stays fixed while zoomed or sliding (taken from the full-range view, never changes until Reset); v28 2026-11-22: finer °F grid (~5° per line, 1-2° zoomed), vertical scale fits the time on screen, 2-finger pinch up/down zooms the °F scale (watts follow), Reset clears both; v27 2026-11-22: equipment icons drawn like the real kit - outdoor heat pump, wall head, air handler, ducted, cassette, console, hydronic; v26 2026-11-22: watts scale lines up with the °F grid lines; v25 2026-11-22: short tag before each live number on the graph - S/A, R/A, ODT, PWR, rooms from their name; v24 2026-11-22: scrub shows no value where there is no reading; v23 2026-11-22: °F and W axes side by side on the left, live value of every line on the right in its colour; 1 finger = white scrub line with readings (no pop-up box), 2 fingers = pinch zoom + slide timeline; v22 2026-11-22: gesture freeze fix - pointers captured on the chart box (svg is rebuilt each frame), stale fingers cleared, background reloads paused mid-gesture and late loads dropped, empty zoomed window no longer flips to sample data; v21 2026-11-22: one-finger slide along the timeline, pinch zoom follows the fingers, double-tap removed (desktop double-click kept), zoomed loads pad half a window each side; v20 2026-11-22: zoom anchor fix; v19 2026-11-22: round clock-time x labels up to 2 days; v18 2026-11-22: zoom the graph - pinch or double-tap (ctrl/trackpad-pinch + double-click on desktop), arrows to slide, Reset; zoomed data loads at up to 1-minute detail; v17 2026-11-22: always live while a dashboard is on screen, Live button removed; v16 2026-11-22: Live on by default, no time limit; v15 2026-11-22: Live button - Shelly watts every 5 s, YoLink latest report every 15 s, auto-off after 30 min; v14 2026-11-22: live tiles - latest reading every 15 s, refresh when the app comes back to the screen, 'Latest reading' time; v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
 // graph of every sensor over time (temps on the left axis, watts on the right), 24 h / 7 d / 30 d / 1 y, legend with colour,
 // show/hide checkbox and editable names. Data: monitor_sites / monitor_sensors / monitor_series() (db/025). Until a house has
 // readings the dashboard shows clearly-labelled SAMPLE data so the layout can be judged.
@@ -82,6 +82,7 @@ h3.ch{margin:0;font-size:18px}
 .kv{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--line);font-size:14.5px}.kv span{color:var(--muted)}.kv b{font-weight:600;text-align:right;overflow-wrap:anywhere}
 .tog{display:flex;gap:10px;align-items:center;margin-top:8px;font-weight:600;font-size:15px;color:var(--ink)}.tog input{width:22px;height:22px;accent-color:var(--brand);flex:none}
 .spd{display:grid;grid-template-columns:minmax(0,1fr) 78px 60px auto;gap:6px;align-items:center;margin-top:6px}.spd input{padding:8px;font-size:15px}.spd span{font-size:13px;text-align:right;color:var(--muted)}.spd .mini{margin:0;padding:6px 9px;min-height:38px}.spd.heat{margin-top:2px}.spd.heat .hl{text-align:left;font-size:12.5px;color:var(--muted)}
+.bn{display:grid;grid-template-columns:62px minmax(0,1fr) 52px 44px;gap:6px;align-items:center;font-size:12.5px;padding:3px 0;border-bottom:1px solid var(--line,rgba(127,127,127,.15))}.bn.h{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border:0}.bn.t{font-weight:700;border:0}.bn span:nth-child(n+3){text-align:right}.bn .bar{position:relative;height:16px;border-radius:4px;background:rgba(127,127,127,.12);overflow:hidden}.bn .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--brand);opacity:.35}.bn .bar b{position:relative;padding-left:5px;font-weight:600;font-size:11.5px;line-height:16px}.bn.aux .bar i{background:var(--hot)}
 .spdh{display:grid;grid-template-columns:minmax(0,1fr) 78px 60px auto;gap:6px;font-size:11.5px;color:var(--muted);margin-top:8px;text-transform:uppercase;letter-spacing:.04em}
 .capbox{border:1px solid var(--brand);border-radius:10px;padding:12px;margin-top:10px;background:color-mix(in srgb,var(--brand) 10%,transparent)}.capbox b.w{display:block;font-family:var(--display);font-size:30px}
 .livedot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok,#30a46c);margin-right:6px;vertical-align:middle;animation:lp 1.2s ease-in-out infinite}@keyframes lp{50%{opacity:.25}}
@@ -147,7 +148,7 @@ const dIn = (t) => { const d = new Date(t); return new Date(d - d.getTimezoneOff
 export function mountHvacMon(root, { sb }) {
   root.innerHTML = `<style>${CSS}</style><a class="back" href="#/tools">← Tools</a><div id="body"></div><div id="modal"></div>`;
   const body = root.getElementById('body'), modal = root.getElementById('modal');
-  const S = { sites: [], site: null, sensors: [], all: [], systems: [], units: [], events: [], cust: null, custs: null, range: lsGet('hm_range', '24h'), unit: lsGet('hm_unit', 'F'), hidden: new Set(JSON.parse(lsGet('hm_hidden', '[]'))), shut: new Set(JSON.parse(lsGet('hm_shut', '[]'))), perfRange: lsGet('hm_prange', '30d'), rh: {}, series: null, sample: false };
+  const S = { sites: [], site: null, sensors: [], all: [], systems: [], units: [], events: [], cust: null, custs: null, range: lsGet('hm_range', '24h'), unit: lsGet('hm_unit', 'F'), hidden: new Set(JSON.parse(lsGet('hm_hidden', '[]'))), shut: new Set(JSON.parse(lsGet('hm_shut', '[]'))), perfRange: lsGet('hm_prange', '30d'), binRange: lsGet('hm_brange', '30d'), rh: {}, series: null, sample: false };
   let dead = false, timer = null;
   const cv = (c) => S.unit === 'F' ? c * 9 / 5 + 32 : c;   // stored C -> shown unit
   const tU = () => '°' + S.unit;
@@ -466,9 +467,10 @@ export function mountHvacMon(root, { sb }) {
       <div class="card"><div class="zbar" id="zb"></div><div class="chartbox" id="cb"></div><div class="legend" id="lg"></div></div>
       <div id="tiles"></div>
       <div class="card${S.shut.has('perf') ? ' shut' : ''}" id="perf" data-card="perf"></div>
+      <div class="card${S.shut.has('bins') ? ' shut' : ''}" id="bins" data-card="bins"></div>
       <div class="card${S.shut.has('eq') ? ' shut' : ''}" id="eq" data-card="eq"></div>
       <div class="card${S.shut.has('evs') ? ' shut' : ''}" id="evs" data-card="evs"></div>`;
-    wireZoom(root.getElementById('cb')); drawChart(); zoomBar(); drawLegend(); drawTiles(); drawEquipment(); drawEvents(); drawPerf(); stamp();
+    wireZoom(root.getElementById('cb')); drawChart(); zoomBar(); drawLegend(); drawTiles(); drawEquipment(); drawEvents(); drawPerf(); drawBins(); stamp();
   }
   const last = (id) => { const a = (S.series && S.series[id]) || []; return a.length ? a[a.length - 1] : null; };
   // tiles show the newest single reading the server saved (last_value), not the chart's averaged bucket
@@ -589,6 +591,62 @@ export function mountHvacMon(root, { sb }) {
     if (error) { cb.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
     const ser = {}; (data || []).forEach(r => (ser[r.sensor_id] = ser[r.sensor_id] || []).push([Date.parse(r.t), Number(r.v)]));
     cb.innerHTML = renderPerf(analyze(ser, R.b));
+  }
+  // ---------- bin hours: time in each 1 °C outdoor band from 18 °C down to the coldest reading; energy, COP and aux heat per band ----------
+  async function drawBins() {
+    const el = root.getElementById('bins'); if (!el || !S.site) return;
+    const br = S.binRange || '30d';
+    const head = `<div class="head">${colh('bins', 'Bin hours', 'h3', 'ch')}<div class="chips">${PERF_R.map(r => `<button class="chip${r.k === br ? ' on' : ''}" data-brange="${r.k}">${r.l}</button>`).join('')}</div></div>`;
+    if (S.shut.has('bins')) { el.innerHTML = head + '<div class="cb"></div>'; return; }
+    const out = S.sensors.find(s => s.kind === 'outdoor');
+    if (!out) { el.innerHTML = head + '<div class="cb"><div class="muted small">Needs an outdoor air temperature sensor.</div></div>'; return; }
+    el.innerHTML = head + '<div class="cb"><div class="muted small">Counting…</div></div>';
+    const R = PERF_R.find(r => r.k === br) || PERF_R[1]; const to = Date.now(), from = to - R.ms, site = S.site;
+    let ser = {};
+    if (S.sample) ser = sampleSeries(from, to, R.b);
+    else { const { data, error } = await seriesAll(from, to, R.b); if (S.site !== site) return; if (error) { el.querySelector('.cb').innerHTML = `<div class="err">${esc(error.message)}</div>`; return; } (data || []).forEach(r => (ser[r.sensor_id] = ser[r.sensor_id] || []).push([Date.parse(r.t), Number(r.v)])); }
+    if (S.site !== site) return;
+    el.querySelector('.cb').innerHTML = renderBins(binData(ser, R.b, out));
+  }
+  function binData(ser, b, out) {
+    const hb = b / 3600, wm = S.all.filter(s => s.unit === 'W').map(s => new Map(ser[s.id] || []));
+    const der = derive(ser), cu = capUnits(), au = auxUnits();
+    const qm = cu.map(u => new Map((der[u.id] && der[u.id].btu) || [])), am = au.map(u => new Map((der[u.id] && der[u.id].aux) || []));
+    const bins = new Map(); let warm = 0, min = null;
+    for (const [t, c] of ser[out.id] || []) {
+      if (c == null || isNaN(c)) continue;
+      if (c >= 18) { warm += hb; continue; }
+      const k = Math.floor(c); min = min == null ? k : Math.min(min, k);
+      const g = bins.get(k) || { k, h: 0, wh: 0, wn: 0, q: 0, qw: 0, aux: 0 };
+      g.h += hb;
+      let w = null; for (const m of wm) { const v = m.get(t); if (v != null && !isNaN(v)) w = (w || 0) + v; }
+      if (w != null) { g.wh += w * hb; g.wn += hb; }
+      if (qm.length && w != null && w > 50) { let q = 0, any = false; for (const m of qm) { const v = m.get(t); if (v != null) { q += v; any = true; } } if (any && q > 0) { g.q += q * hb; g.qw += w * hb; } }
+      if (am.some(m => (m.get(t) || 0) > 300)) g.aux += hb;
+      bins.set(k, g);
+    }
+    const rows = []; if (min != null) for (let k = 17; k >= min; k--) rows.push(bins.get(k) || { k, h: 0, wh: 0, wn: 0, q: 0, qw: 0, aux: 0 });
+    const sys = S.systems.map(sy => ({ n: S.units.filter(u => u.system_id === sy.id && u.role === 'indoor').length, m: cu.filter(u => u.system_id === sy.id).length }));
+    return { rows, warm, hasW: wm.length > 0, hasQ: cu.length > 0, hasAux: au.length > 0, partial: sys.some(x => x.m && x.m < x.n) };
+  }
+  function renderBins(d) {
+    if (!d.rows.length) return `<div class="muted small">${d.warm ? `All ${d.warm.toFixed(1)} h in this range were at or above 18 °C - no heating bins yet.` : 'No outdoor readings in this range yet.'}</div>`;
+    const hr = (h) => h >= 100 ? Math.round(h) + ' h' : h.toFixed(1) + ' h';
+    const tot = d.rows.reduce((a, g) => ({ h: a.h + g.h, wh: a.wh + g.wh, q: a.q + g.q, qw: a.qw + g.qw, aux: a.aux + g.aux }), { h: 0, wh: 0, q: 0, qw: 0, aux: 0 });
+    const max = Math.max(...d.rows.map(g => g.h)) || 1;
+    const lab = (k) => `${k}° to ${k + 1}°` + (S.unit === 'F' ? `<div class="muted" style="font-size:10.5px">${Math.round(k * 1.8 + 32)}-${Math.round((k + 1) * 1.8 + 32)}°F</div>` : '');
+    const cop = (g) => g.qw > 0 ? (g.q / (g.qw * 3.412)).toFixed(1) : '–';
+    const c4 = d.hasQ ? 'COP' : d.hasAux ? 'Aux h' : 'kW';
+    const v4 = (g) => d.hasQ ? cop(g) : d.hasAux ? (g.aux ? g.aux.toFixed(1) : '–') : (g.wn ? (g.wh / g.wn / 1000).toFixed(2) : '–');
+    const row = (g) => `<div class="bn${g.aux > g.h / 2 ? ' aux' : ''}"><span>${lab(g.k)}</span><span class="bar"><i style="width:${(100 * g.h / max).toFixed(1)}%"></i><b>${g.h ? hr(g.h) : '0'}</b></span><span>${g.wh ? (g.wh / 1000).toFixed(g.wh >= 10000 ? 0 : 1) : '–'}</span><span>${v4(g)}</span></div>`;
+    const auxNote = d.hasQ && d.hasAux && tot.aux ? `<div class="small" style="margin-top:6px">Aux heat ran ${hr(tot.aux)} in total (red bars = aux on most of that band).</div>` : '';
+    return `<div class="muted small">Outdoor temperature in 1 °C bands, 18 °C down to the coldest reading. ${hr(d.warm)} at or above 18 °C not counted.</div>
+      <div class="bn h"><span>Outdoor</span><span>Hours</span><span>kWh</span><span>${c4}</span></div>
+      ${d.rows.map(row).join('')}
+      <div class="bn t"><span>Total</span><span>${hr(tot.h)}</span><span>${tot.wh ? (tot.wh / 1000).toFixed(tot.wh >= 10000 ? 0 : 1) : '–'}</span><span>${d.hasQ ? cop(tot) : d.hasAux ? (tot.aux ? tot.aux.toFixed(1) : '–') : (tot.h && tot.wh ? (tot.wh / tot.h / 1000).toFixed(2) : '–')}</span></div>
+      ${auxNote}
+      ${!d.hasW ? '<div class="hint">No power sensors yet, so kWh is blank.</div>' : ''}
+      ${d.hasQ ? `<div class="hint">kWh = all measured power (outdoor unit, blower${d.hasAux ? ', aux heat' : ''}). COP = heat delivered ÷ power, only where airflow and supply/return are measured${d.partial ? ' - not every indoor unit is measured, so COP reads low' : ''}.</div>` : '<div class="hint">COP shows once capacity monitoring is set up on an indoor unit.</div>'}`;
   }
   function analyze(ser, b) {
     const need = [];
@@ -1089,7 +1147,8 @@ export function mountHvacMon(root, { sb }) {
     const zp = e.target.closest('[data-zpan]'); if (zp && S.zoom) { const sp = S.zoom.to - S.zoom.from, d = +zp.dataset.zpan * sp / 2; return setZoom(S.zoom.from + d, S.zoom.to + d); }
     if (e.target.closest('[data-zreset]')) { S.zoom = null; S.yz = null; zoomBar(); await load(); drawChart(); drawTiles(); return; }
     const u = e.target.closest('[data-unit]'); if (u) { S.yz = null; S.unit = u.dataset.unit; lsSet('hm_unit', S.unit); body.querySelectorAll('[data-unit]').forEach(b => b.classList.toggle('on', b === u)); drawChart(); drawTiles(); return; }
-    const col = e.target.closest('[data-col]'); if (col) { const k = col.dataset.col; if (S.shut.has(k)) S.shut.delete(k); else S.shut.add(k); lsSet('hm_shut', JSON.stringify([...S.shut])); col.classList.toggle('shut', S.shut.has(k)); const card = col.closest('[data-card]'); if (card) card.classList.toggle('shut', S.shut.has(k)); if (k === 'perf' && !S.shut.has(k)) drawPerf(); return; }
+    const col = e.target.closest('[data-col]'); if (col) { const k = col.dataset.col; if (S.shut.has(k)) S.shut.delete(k); else S.shut.add(k); lsSet('hm_shut', JSON.stringify([...S.shut])); col.classList.toggle('shut', S.shut.has(k)); const card = col.closest('[data-card]'); if (card) card.classList.toggle('shut', S.shut.has(k)); if (k === 'perf' && !S.shut.has(k)) drawPerf(); if (k === 'bins' && !S.shut.has(k)) drawBins(); return; }
+    const brg = e.target.closest('[data-brange]'); if (brg) { S.binRange = brg.dataset.brange; lsSet('hm_brange', S.binRange); return drawBins(); }
     const prg = e.target.closest('[data-prange]'); if (prg) { S.perfRange = prg.dataset.prange; lsSet('hm_prange', S.perfRange); return drawPerf(); }
     if (recentDrag(e)) return;
     const lr = e.target.closest('.lg'); if (lr && !e.target.closest('input,button')) return sensorInfo(lr.dataset.row);
