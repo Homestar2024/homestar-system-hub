@@ -1,4 +1,4 @@
-// Homestar HQ - HVAC Monitoring (v17 2026-11-22: always live while a dashboard is on screen, Live button removed; v16 2026-11-22: Live on by default, no time limit; v15 2026-11-22: Live button - Shelly watts every 5 s, YoLink latest report every 15 s, auto-off after 30 min; v14 2026-11-22: live tiles - latest reading every 15 s, refresh when the app comes back to the screen, 'Latest reading' time; v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
+// Homestar HQ - HVAC Monitoring (v18 2026-11-22: zoom the graph - pinch or double-tap (ctrl/trackpad-pinch + double-click on desktop), arrows to slide, Reset; zoomed data loads at up to 1-minute detail; v17 2026-11-22: always live while a dashboard is on screen, Live button removed; v16 2026-11-22: Live on by default, no time limit; v15 2026-11-22: Live button - Shelly watts every 5 s, YoLink latest report every 15 s, auto-off after 30 min; v14 2026-11-22: live tiles - latest reading every 15 s, refresh when the app comes back to the screen, 'Latest reading' time; v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
 // graph of every sensor over time (temps on the left axis, watts on the right), 24 h / 7 d / 30 d / 1 y, legend with colour,
 // show/hide checkbox and editable names. Data: monitor_sites / monitor_sensors / monitor_series() (db/025). Until a house has
 // readings the dashboard shows clearly-labelled SAMPLE data so the layout can be judged.
@@ -28,7 +28,8 @@ a.back{color:var(--brand);text-decoration:none;font-weight:600;display:inline-bl
 .lgg{display:flex;flex-direction:column;gap:6px}
 .tile{background:var(--sunk);border-radius:10px;padding:9px 11px;border-left:4px solid var(--c,var(--line));min-width:0}
 .tile b{display:block;font-family:var(--display);font-size:22px}.tile span{font-size:12.5px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chartbox{position:relative;margin-top:12px;touch-action:pan-y}
+.chartbox{position:relative;margin-top:12px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.zbar{display:flex;align-items:center;gap:6px;margin-top:8px;min-height:30px}.zbar .zt{flex:1;text-align:center;font-size:13px;font-weight:700}.zbar .chip{min-height:32px;padding:5px 11px}
 svg{display:block;width:100%;height:auto;user-select:none}
 .ax{font-size:11px;fill:var(--muted)}
 .grid line{stroke:var(--line);stroke-width:1}
@@ -228,11 +229,11 @@ export function mountHvacMon(root, { sb }) {
 
   // ---------- dashboard ----------
   async function openSite(id) {
-    S.site = S.sites.find(x => x.id === id); if (!S.site) return list();
+    S.site = S.sites.find(x => x.id === id); if (!S.site) return list(); S.zoom = null;
     body.innerHTML = '<div class="muted">Loading…</div>'; S.cust = null;
     const ok = await reloadMeta(); if (!ok) return;
     await load(); dash(); if (!S.sample) setLive(true);
-    clearInterval(timer); let n = 0; timer = setInterval(async () => { if (!S.site || dead || document.hidden) return; n++; if (n % 4 === 0) { await load(); drawChart(); } await refreshLatest(); }, 15000);
+    clearInterval(timer); let n = 0; timer = setInterval(async () => { if (!S.site || dead || document.hidden) return; n++; if (n % 4 === 0) { await load(); drawChart(); zoomBar(); } await refreshLatest(); }, 15000);
   }
   async function reloadMeta() {
     const id = S.site.id;
@@ -249,12 +250,51 @@ export function mountHvacMon(root, { sb }) {
     return true;
   }
   async function load() {
-    const R = RANGES.find(r => r.k === S.range) || RANGES[0]; const to = Date.now(), from = to - R.ms;
-    const { data, error } = await seriesAll(from, to, R.bucket);
+    const R = RANGES.find(r => r.k === S.range) || RANGES[0]; let to = Date.now(), from = to - R.ms, bucket = R.bucket;
+    if (S.zoom) { if (S.zoom.now) { const sp = S.zoom.to - S.zoom.from; S.zoom.to = to; S.zoom.from = to - sp; } from = S.zoom.from; to = S.zoom.to; bucket = bucketFor(to - from); }
+    const { data, error } = await seriesAll(from, to, bucket);
     const ser = {}; (data || []).forEach(r => (ser[r.sensor_id] = ser[r.sensor_id] || []).push([Date.parse(r.t), Number(r.v)]));
     S.sample = !error && !(data || []).length; S.err = error ? error.message : '';
-    S.series = S.sample ? sampleSeries(from, to, R.bucket) : ser; S.from = from; S.to = to; S.bucket = R.bucket;
+    S.series = S.sample ? sampleSeries(from, to, bucket) : ser; S.from = from; S.to = to; S.bucket = bucket;
     S.derived = derive(S.series);
+  }
+  // ---- zoom: a window inside the chosen range, data at up to 1-minute detail
+  const bucketFor = (ms) => [60, 120, 300, 600, 1800, 3600, 7200, 21600, 86400].find(b => ms / 1000 / b <= 450) || 86400;
+  let zoomSeq = 0;
+  async function setZoom(from, to) {
+    const now = Date.now(), R = RANGES.find(r => r.k === S.range) || RANGES[0];
+    let sp = Math.max(10 * 6e4, Math.min(to - from, R.ms)); const c = (from + to) / 2; from = c - sp / 2; to = c + sp / 2;
+    if (to > now) { from -= to - now; to = now; } const min = now - 400 * 864e5; if (from < min) { to += min - from; from = min; }
+    S.zoom = sp >= R.ms && to >= now - 6e4 ? null : { from, to, now: to >= now - 2 * 6e4 };
+    S.from = from; S.to = to; drawChart(); zoomBar();
+    const q = ++zoomSeq; await load(); if (q !== zoomSeq || dead) return; drawChart(); drawTiles(); zoomBar();
+  }
+  function zoomBar() {
+    const zb = root.getElementById('zb'); if (!zb) return;
+    if (!S.zoom) { zb.innerHTML = '<span class="muted small" style="flex:1;text-align:center">Pinch or double-tap the graph to zoom</span>'; return; }
+    const f = (t) => new Date(t).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const same = new Date(S.zoom.from).toDateString() === new Date(S.zoom.to).toDateString();
+    zb.innerHTML = `<button class="chip" data-zpan="-1" aria-label="Earlier">◀</button><span class="zt">${esc(f(S.zoom.from))} – ${esc(same ? new Date(S.zoom.to).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' }) : f(S.zoom.to))}</span><button class="chip" data-zpan="1" aria-label="Later" ${S.zoom.now ? 'disabled style="opacity:.4"' : ''}>▶</button><button class="chip" data-zreset>Reset</button>`;
+  }
+  function wireZoom(box) {
+    const pts = new Map(); let pinch = null, lastTap = 0, lastX = 0, raf = 0;
+    const tAt = (cx) => { const svg = box.querySelector('svg'); if (!svg) return null; const r = svg.getBoundingClientRect(), W = +svg.viewBox.baseVal.width, L = 44, Rr = 50; const px = (cx - r.left) * W / r.width; return S.from + Math.min(1, Math.max(0, (px - L) / (W - L - Rr))) * (S.to - S.from); };
+    const zoomAt = (t, k) => { const a = S.from + (t - S.from) / k, b = t + (S.to - t) / k; setZoom(a, b); };
+    box.addEventListener('pointerdown', (e) => {
+      pts.set(e.pointerId, e.clientX);
+      if (pts.size === 2) { const [x1, x2] = [...pts.values()]; pinch = { d: Math.abs(x1 - x2) || 1, from: S.from, to: S.to, t: tAt((x1 + x2) / 2) }; box.dataset.pinch = '1'; const tip = box.querySelector('#tip'); if (tip) tip.hidden = true; return; }
+      if (e.pointerType !== 'mouse') { const now = Date.now(); if (now - lastTap < 320 && Math.abs(e.clientX - lastX) < 40) { lastTap = 0; const t = tAt(e.clientX); if (t != null) zoomAt(t, 3); } else { lastTap = now; lastX = e.clientX; } }
+    });
+    box.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, e.clientX); if (!pinch || pts.size < 2) return;
+      const [x1, x2] = [...pts.values()]; const k = Math.max(0.2, Math.min(20, (Math.abs(x1 - x2) || 1) / pinch.d));
+      S.from = pinch.t - (pinch.t - pinch.from) / k; S.to = pinch.t + (pinch.to - pinch.t) / k;
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; drawChart(); });
+    });
+    const up = (e) => { pts.delete(e.pointerId); if (pinch && pts.size < 2) { pinch = null; delete box.dataset.pinch; lastTap = 0; setZoom(S.from, S.to); } };
+    box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
+    box.addEventListener('dblclick', (e) => { const t = tAt(e.clientX); if (t != null) zoomAt(t, 3); });
+    box.addEventListener('wheel', (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); const t = tAt(e.clientX); if (t != null) zoomAt(t, e.deltaY < 0 ? 1.5 : 1 / 1.5); }, { passive: false });
   }
   // every row of monitor_series for a window (the API returns 1000 rows per call)
   async function seriesAll(from, to, bucket) {
@@ -291,12 +331,12 @@ export function mountHvacMon(root, { sb }) {
       ${S.sample ? '<div class="sample"><b>Sample data</b> - sensors not connected yet.</div>' : '<div class="muted small" id="stamp" style="margin-top:6px"></div>'}
       <div class="bar"><div class="chips">${RANGES.map(r => `<button class="chip${r.k === S.range ? ' on' : ''}" data-range="${r.k}">${r.label}</button>`).join('')}</div>
         <div class="chips"><button class="chip${S.unit === 'F' ? ' on' : ''}" data-unit="F">°F</button><button class="chip${S.unit === 'C' ? ' on' : ''}" data-unit="C">°C</button><button class="chip" data-export>⬇ Export</button></div></div>
-      <div class="card"><div class="chartbox" id="cb"></div><div class="legend" id="lg"></div></div>
+      <div class="card"><div class="zbar" id="zb"></div><div class="chartbox" id="cb"></div><div class="legend" id="lg"></div></div>
       <div id="tiles"></div>
       <div class="card${S.shut.has('perf') ? ' shut' : ''}" id="perf" data-card="perf"></div>
       <div class="card${S.shut.has('eq') ? ' shut' : ''}" id="eq" data-card="eq"></div>
       <div class="card${S.shut.has('evs') ? ' shut' : ''}" id="evs" data-card="evs"></div>`;
-    drawChart(); drawLegend(); drawTiles(); drawEquipment(); drawEvents(); drawPerf(); stamp();
+    wireZoom(root.getElementById('cb')); drawChart(); zoomBar(); drawLegend(); drawTiles(); drawEquipment(); drawEvents(); drawPerf(); stamp();
   }
   const last = (id) => { const a = (S.series && S.series[id]) || []; return a.length ? a[a.length - 1] : null; };
   // tiles show the newest single reading the server saved (last_value), not the chart's averaged bucket
@@ -549,19 +589,19 @@ export function mountHvacMon(root, { sb }) {
     let [tl, th] = rng(temps, cv); const ts = niceStep(th - tl, 5); tl = Math.floor(tl / ts) * ts; th = Math.ceil(th / ts) * ts;
     let [pl, ph] = rng(pw, v => v); pl = Math.min(0, pl); const ps = niceStep(ph - pl, 5); ph = Math.ceil(ph / ps) * ps || 1;
     const x = (t) => L + (t - S.from) / (S.to - S.from) * (W - L - Rr), yT = (v) => T + (1 - (v - tl) / (th - tl || 1)) * (H - T - B), yP = (v) => T + (1 - (v - pl) / (ph - pl || 1)) * (H - T - B);
-    const R = S.range; const fmtX = (t) => { const d = new Date(t); return R === '24h' ? d.toLocaleTimeString('en-CA', { hour: 'numeric' }) : R === '1y' ? d.toLocaleDateString('en-CA', { month: 'short' }) : d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }); };
+    const span = S.to - S.from; const fmtX = (t) => { const d = new Date(t); return span <= 6 * 36e5 ? d.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' }) : span <= 2 * 864e5 ? d.toLocaleTimeString('en-CA', { hour: 'numeric' }) : span > 120 * 864e5 ? d.toLocaleDateString('en-CA', { month: 'short' }) : d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }); };
     const nx = W < 500 ? 4 : 7; let grid = '', axes = '';
     for (let v = tl; v <= th + 1e-9; v += ts) { grid += `<line x1="${L}" x2="${W - Rr}" y1="${yT(v)}" y2="${yT(v)}"/>`; axes += `<text class="ax" x="${L - 6}" y="${yT(v) + 4}" text-anchor="end">${Math.round(v * 10) / 10}°</text>`; }
     if (pw.length) for (let v = pl; v <= ph + 1e-9; v += ps) axes += `<text class="ax" x="${W - Rr + 6}" y="${yP(v) + 4}">${v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v)}</text>`;
     for (let i = 0; i <= nx; i++) { const t = S.from + i * (S.to - S.from) / nx; axes += `<text class="ax" x="${x(t)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === nx ? 'end' : 'middle'}">${fmtX(t)}</text>`; }
     const lines = vis.map(s => { const f = isTemp(s) ? (v) => yT(cv(v)) : yP; const d = S.series[s.id].map((p, i) => (i ? 'L' : 'M') + x(p[0]).toFixed(1) + ' ' + f(p[1]).toFixed(1)).join(''); return `<path d="${d}" fill="none" stroke="${esc(s.color)}" stroke-width="${isTemp(s) ? 2 : 1.6}" stroke-linejoin="round" ${isTemp(s) ? '' : 'stroke-dasharray="5 3" opacity=".85"'}/>`; }).join('');
-    const evs = eventsInRange();
+    const evs = eventsInRange().filter(ev => Date.parse(ev.ts) <= S.to);
     const marks = evs.map(ev => { const px = Math.min(W - Rr, x(Date.parse(ev.ts))).toFixed(1); const c = EVC[ev.kind] || EVC.note; return `<line x1="${px}" x2="${px}" y1="${T}" y2="${H - B}" stroke="${c}" stroke-width="1.5" stroke-dasharray="3 3"/><path d="M${px - 6} ${T - 9}h12l-6 8z" fill="${c}"/>`; }).join('');
-    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sensor graph"><text class="ax" x="${L - 6}" y="11" text-anchor="end" font-weight="700">${tU()}</text>${pw.length ? `<text class="ax" x="${W - Rr + 6}" y="11" font-weight="700">Watts</text>` : ''}<g class="grid">${grid}</g>${axes}${lines}${marks}<line id="cx" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/></svg><div class="tip" id="tip" hidden></div>`;
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sensor graph"><text class="ax" x="${L - 6}" y="11" text-anchor="end" font-weight="700">${tU()}</text>${pw.length ? `<text class="ax" x="${W - Rr + 6}" y="11" font-weight="700">Watts</text>` : ''}<clipPath id="hmclip"><rect x="${L}" y="${T - 12}" width="${W - L - Rr}" height="${H - T - B + 12}"/></clipPath><g class="grid">${grid}</g>${axes}<g clip-path="url(#hmclip)">${lines}${marks}</g><line id="cx" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/></svg><div class="tip" id="tip" hidden></div>`;
     const svg = box.querySelector('svg'), cx = box.querySelector('#cx'), tip = box.querySelector('#tip');
     const near = (arr, t) => { let lo = 0, hi = arr.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (arr[m][0] < t) lo = m; else hi = m; } return Math.abs(arr[lo][0] - t) < Math.abs(arr[hi][0] - t) ? arr[lo] : arr[hi]; };
     const move = (ev) => {
-      const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) * W / r.width; if (px < L || px > W - Rr || (!vis.length && !evs.length)) return hide();
+      if (box.dataset.pinch) return hide(); const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) * W / r.width; if (px < L || px > W - Rr || (!vis.length && !evs.length)) return hide();
       const t = S.from + (px - L) / (W - L - Rr) * (S.to - S.from); const win = 10 / (W - L - Rr) * (S.to - S.from);
       cx.setAttribute('x1', px); cx.setAttribute('x2', px); cx.setAttribute('visibility', 'visible');
       const nearEv = evs.filter(e2 => Math.abs(Date.parse(e2.ts) - t) <= win);
@@ -870,7 +910,9 @@ export function mountHvacMon(root, { sb }) {
     if (e.target.closest('[data-addsite]')) return siteForm(null);
     if (e.target.closest('[data-editsite]')) return siteForm(S.site);
     if (e.target.closest('[data-list]')) return list();
-    const r = e.target.closest('[data-range]'); if (r) { S.range = r.dataset.range; lsSet('hm_range', S.range); body.querySelectorAll('[data-range]').forEach(b => b.classList.toggle('on', b === r)); await load(); drawChart(); drawTiles(); drawEvents(); return; }
+    const r = e.target.closest('[data-range]'); if (r) { S.zoom = null; S.range = r.dataset.range; lsSet('hm_range', S.range); body.querySelectorAll('[data-range]').forEach(b => b.classList.toggle('on', b === r)); await load(); drawChart(); zoomBar(); drawTiles(); drawEvents(); return; }
+    const zp = e.target.closest('[data-zpan]'); if (zp && S.zoom) { const sp = S.zoom.to - S.zoom.from, d = +zp.dataset.zpan * sp / 2; return setZoom(S.zoom.from + d, S.zoom.to + d); }
+    if (e.target.closest('[data-zreset]')) { S.zoom = null; zoomBar(); await load(); drawChart(); drawTiles(); return; }
     const u = e.target.closest('[data-unit]'); if (u) { S.unit = u.dataset.unit; lsSet('hm_unit', S.unit); body.querySelectorAll('[data-unit]').forEach(b => b.classList.toggle('on', b === u)); drawChart(); drawTiles(); return; }
     const col = e.target.closest('[data-col]'); if (col) { const k = col.dataset.col; if (S.shut.has(k)) S.shut.delete(k); else S.shut.add(k); lsSet('hm_shut', JSON.stringify([...S.shut])); col.classList.toggle('shut', S.shut.has(k)); const card = col.closest('[data-card]'); if (card) card.classList.toggle('shut', S.shut.has(k)); if (k === 'perf' && !S.shut.has(k)) drawPerf(); return; }
     const prg = e.target.closest('[data-prange]'); if (prg) { S.perfRange = prg.dataset.prange; lsSet('hm_prange', S.perfRange); return drawPerf(); }

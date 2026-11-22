@@ -145,7 +145,7 @@ export function mountTools(host, db, extra) {
   if (tool === 'hvac') {   // v0.38 HVAC Monitoring (hvacmon.js)
     let off = null, gone = false;
     root.innerHTML = '<div class="muted" style="padding:12px">Loading HVAC Monitoring…</div>';
-    import('./hvacmon.js?v=17').then(m => { if (!gone) off = m.mountHvacMon(root, extra || {}); }).catch(e => { root.textContent = "Couldn't load HVAC Monitoring (" + e.message + '). Reload the page.'; });
+    import('./hvacmon.js?v=18').then(m => { if (!gone) off = m.mountHvacMon(root, extra || {}); }).catch(e => { root.textContent = "Couldn't load HVAC Monitoring (" + e.message + '). Reload the page.'; });
     return () => { gone = true; if (off) off(); else root.innerHTML = ''; };
   }
   if (tool !== 'pricing') {
