@@ -645,8 +645,8 @@ export function mountHvacMon(root, { sb }) {
     const rows = S.sensors.map(s => { const a = (ser[s.id] || []).map(p => p[1]); if (!a.length) return `<tr><td><i style="background:${esc(s.color)}"></i>${esc(s.label)}</td><td colspan="4">No readings</td></tr>`;
       const mn = Math.min(...a), mx = Math.max(...a), av = a.reduce((x, y) => x + y, 0) / a.length;
       if (isTemp(s)) return `<tr><td><i style="background:${esc(s.color)}"></i>${esc(s.label)}</td><td>${f1(cv(mn))}${tU()}</td><td>${f1(cv(av))}${tU()}</td><td>${f1(cv(mx))}${tU()}</td><td>${S.rh[s.id] && ser[S.rh[s.id].id] ? 'RH avg ' + f1(ser[S.rh[s.id].id].reduce((x, p) => x + p[1], 0) / ser[S.rh[s.id].id].length, 0) + '%' : ''}</td></tr>`;
-      const on = a.filter(v => v > 100).length; const kwh = a.reduce((x, v) => x + v, 0) * step / 3600 / 1000;
-      return `<tr><td><i style="background:${esc(s.color)}"></i>${esc(s.label)}</td><td>${f1(mn, 0)} W</td><td>${f1(av, 0)} W</td><td>${f1(mx, 0)} W</td><td>${f1(kwh, 1)} kWh · running ${f1(100 * on / a.length, 0)}% of the time</td></tr>`; }).join('');
+      const on = a.filter(v => v > (s.kind === 'fan_power' ? 3 : 100)).length; const kwh = a.reduce((x, v) => x + v, 0) * step / 3600 / 1000;
+      return `<tr><td><i style="background:${esc(s.color)}"></i>${esc(s.label)}</td><td>${f1(mn, 0)} W</td><td>${f1(av, 0)} W</td><td>${f1(mx, 0)} W</td><td>≈ ${f1(kwh, 1)} kWh · running ${f1(100 * on / a.length, 0)}% of the time</td></tr>`; }).join('');
     const der = derive(ser);
     const cap = capUnits().map(u => { const c = der[u.id].cfm.filter(p => p[1] > 0), b = der[u.id].btu.filter(p => Math.abs(p[1]) > 500); const h = b.filter(p => p[1] > 0), k = b.filter(p => p[1] < 0); const avg = (x) => x.length ? x.reduce((m, p) => m + p[1], 0) / x.length : null;
       return `<tr><td>${esc(unitName(u))}</td><td>${f1(avg(c), 0)} CFM</td><td>${h.length ? f1(avg(h), 0) + ' BTU/h' : '–'}</td><td>${h.length ? f1(Math.max(...h.map(p => p[1])), 0) + ' BTU/h' : '–'}</td><td>${k.length ? f1(Math.abs(avg(k)), 0) + ' BTU/h cooling avg' : ''}</td></tr>`; }).join('');
