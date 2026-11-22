@@ -1,4 +1,4 @@
-// Homestar HQ - HVAC Monitoring (v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
+// Homestar HQ - HVAC Monitoring (v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
 // graph of every sensor over time (temps on the left axis, watts on the right), 24 h / 7 d / 30 d / 1 y, legend with colour,
 // show/hide checkbox and editable names. Data: monitor_sites / monitor_sensors / monitor_series() (db/025). Until a house has
 // readings the dashboard shows clearly-labelled SAMPLE data so the layout can be judged.
@@ -467,6 +467,7 @@ export function mountHvacMon(root, { sb }) {
       ${a.copH.length ? kv('Average COP', `≥40°F ${band(40, 200)} · 25–40°F ${band(25, 40)} · <25°F ${band(-100, 25)}`) : ''}
       </div>${a.partial ? '<div class="hint">Not every indoor unit is measured, so heat delivered and heat loss are low and COP is understated (the outdoor unit powers all heads).</div>' : ''}`;
   }
+  async function fnErr(error, data) { if (data && data.error) return data.error; try { const j = await error.context.json(); if (j && j.error) return j.error; } catch (x) {} return (error && error.message) || 'no reading'; }
   function toast(t) { const d = document.createElement('div'); d.className = 'err'; d.textContent = t; body.prepend(d); setTimeout(() => d.remove(), 6000); }
   // ---- press-and-hold drag for any list or grid: items `sel` inside groups `gsel`; moves within and between groups
   function bindDrag(el, sel, gsel, onDone) {
@@ -563,7 +564,7 @@ export function mountHvacMon(root, { sb }) {
       if (isBackdrop(e)) return closeModal();
       if (e.target.closest('[data-findyl]')) { const box = modal.querySelector('[data-ylres]'); box.innerHTML = '<span class="muted small">Asking YoLink…</span>';
         const { data, error } = await sb.functions.invoke('hvac-poll', { body: { devices: true } });
-        if (error || (data && data.error)) { box.innerHTML = `<div class="err">${esc((data && data.error) || error.message)}</div>`; return; }
+        if (error || (data && data.error)) { box.innerHTML = `<div class="err">${esc(await fnErr(error, data))}</div>`; return; }
         if (!data.configured || !data.configured.yolink) { box.innerHTML = '<div class="muted small">The YoLink key isn\'t set up in Supabase yet.</div>'; return; }
         ylList = (data.devices || []).filter(d => /THSensor|Temperature/i.test(d.type + ' ' + d.model) || true);
         box.innerHTML = ylList.map((d, i) => `<button data-yli="${i}">${esc(d.name)}<span>${esc(d.type)}${d.model ? ' · ' + esc(d.model) : ''}</span></button>`).join('') || '<div class="muted small">No devices on this YoLink account.</div>'; return; }
@@ -662,7 +663,7 @@ export function mountHvacMon(root, { sb }) {
           box.innerHTML = `<div class="linked">${esc(sp.name)}: ${sp.watts} W (±${sp.sd}) from ${use.length} readings. Save to keep it.</div>`; drawSpeeds(); return; }
         const { data, error } = await sb.functions.invoke('hvac-poll', { body: { live: fan } });
         if (!capTimer) return;
-        if (error || !data || data.error) { paint(null, (data && data.error) || (error && error.message) || 'no reading'); return; }
+        if (error || !data || data.error) { paint(null, await fnErr(error, data)); return; }
         if (typeof data.watts === 'number') samples.push(data.watts); paint(data.watts);
       };
       clearInterval(capTimer); capTimer = setInterval(tick, 5000); tick();
