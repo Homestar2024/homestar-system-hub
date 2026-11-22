@@ -1,4 +1,4 @@
-// Homestar HQ - HVAC Monitoring (v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
+// Homestar HQ - HVAC Monitoring (v14 2026-11-22: live tiles - latest reading every 15 s, refresh when the app comes back to the screen, 'Latest reading' time; v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
 // graph of every sensor over time (temps on the left axis, watts on the right), 24 h / 7 d / 30 d / 1 y, legend with colour,
 // show/hide checkbox and editable names. Data: monitor_sites / monitor_sensors / monitor_series() (db/025). Until a house has
 // readings the dashboard shows clearly-labelled SAMPLE data so the layout can be judged.
@@ -230,7 +230,7 @@ export function mountHvacMon(root, { sb }) {
     body.innerHTML = '<div class="muted">Loading…</div>'; S.cust = null;
     const ok = await reloadMeta(); if (!ok) return;
     await load(); dash();
-    clearInterval(timer); timer = setInterval(async () => { if (S.site && !dead) { await load(); drawChart(); drawTiles(); } }, 60000);
+    clearInterval(timer); let n = 0; timer = setInterval(async () => { if (!S.site || dead || document.hidden) return; n++; if (n % 4 === 0) { await load(); drawChart(); } await refreshLatest(); }, 15000);
   }
   async function reloadMeta() {
     const id = S.site.id;
@@ -286,7 +286,7 @@ export function mountHvacMon(root, { sb }) {
     body.innerHTML = `<div class="head"><div><h2>${esc(nameOf(s))}</h2><div class="muted small">${esc(s.address)}</div>${contact ? `<div class="small" style="margin-top:2px">${contact}</div>` : ''}</div>
         <div class="chips"><button class="chip" data-editsite>Edit client</button><button class="chip" data-list>All houses</button></div></div>
       ${S.err ? `<div class="err">${esc(S.err)}</div>` : ''}
-      ${S.sample ? '<div class="sample"><b>Sample data</b> - sensors not connected yet.</div>' : ''}
+      ${S.sample ? '<div class="sample"><b>Sample data</b> - sensors not connected yet.</div>' : '<div class="muted small" id="stamp" style="margin-top:6px"></div>'}
       <div class="bar"><div class="chips">${RANGES.map(r => `<button class="chip${r.k === S.range ? ' on' : ''}" data-range="${r.k}">${r.label}</button>`).join('')}</div>
         <div class="chips"><button class="chip${S.unit === 'F' ? ' on' : ''}" data-unit="F">°F</button><button class="chip${S.unit === 'C' ? ' on' : ''}" data-unit="C">°C</button><button class="chip" data-export>⬇ Export</button></div></div>
       <div class="card"><div class="chartbox" id="cb"></div><div class="legend" id="lg"></div></div>
@@ -294,9 +294,18 @@ export function mountHvacMon(root, { sb }) {
       <div class="card${S.shut.has('perf') ? ' shut' : ''}" id="perf" data-card="perf"></div>
       <div class="card${S.shut.has('eq') ? ' shut' : ''}" id="eq" data-card="eq"></div>
       <div class="card${S.shut.has('evs') ? ' shut' : ''}" id="evs" data-card="evs"></div>`;
-    drawChart(); drawLegend(); drawTiles(); drawEquipment(); drawEvents(); drawPerf();
+    drawChart(); drawLegend(); drawTiles(); drawEquipment(); drawEvents(); drawPerf(); stamp();
   }
   const last = (id) => { const a = (S.series && S.series[id]) || []; return a.length ? a[a.length - 1] : null; };
+  // tiles show the newest single reading the server saved (last_value), not the chart's averaged bucket
+  const latest = (id) => { const s = S.all.find(x => x.id === id); if (!S.sample && s && s.last_ts && s.last_value != null) { const t = Date.parse(s.last_ts); const b = last(id); return b && b[0] > t ? b : [t, Number(s.last_value)]; } return last(id); };
+  async function refreshLatest() {
+    if (!S.site || S.sample) return;
+    const { data } = await sb.from('monitor_sensors').select('id,last_ts,last_value').eq('site_id', S.site.id).eq('active', true);
+    if (dead || !data) return; data.forEach(r => { const s = S.all.find(x => x.id === r.id); if (s) { s.last_ts = r.last_ts; s.last_value = r.last_value; } });
+    drawTiles(); stamp();
+  }
+  function stamp() { const el = root.getElementById('stamp'); if (!el) return; const ts = S.all.map(s => s.last_ts ? Date.parse(s.last_ts) : 0); const m = Math.max(0, ...ts); el.textContent = m ? 'Latest reading ' + new Date(m).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' }) : ''; }
   const colh = (key, label, tag = 'div', cls = 'tgh') => `<${tag} class="${cls} colh${S.shut.has(key) ? ' shut' : ''}" data-col="${key}">${label}</${tag}>`;
   const fmtVal = (s, v) => v == null ? '–' : isTemp(s) ? cv(v).toFixed(1) + tU() : Math.round(v) + ' ' + esc(s.unit);
   // ---- tiles: one layout for everyone (monitor_sites.tile_layout = {equipment:[keys], ambient:[keys]}); keys = sensor id or dt:<unit id>
@@ -319,8 +328,8 @@ export function mountHvacMon(root, { sb }) {
           return `<div class="tile" data-tile="${it.key}" style="--c:var(--hot)"><b>${kw == null ? '–' : kw < 0.05 ? 'Off' : kw.toFixed(1) + ' kW'}</b>${pct != null ? `<em${pct < 80 ? ' style="color:var(--hot)"' : ''}>${pct}% of ${rated} kW</em>` : ''}<span>Aux heat · ${nm}</span></div>`; }
         if (it.cap === 'hp') return `<div class="tile" data-tile="${it.key}" style="--c:var(--brand)"><b>${v == null ? '–' : Math.round(Math.abs(v)).toLocaleString('en-CA') + ' BTU/h'}</b><span>Heat pump only · ${nm}</span></div>`;
         return it.cap === 'cfm' ? `<div class="tile" data-tile="${it.key}" style="--c:var(--brand)"><b>${v == null ? '–' : Math.round(v) + ' CFM'}</b><span>Airflow · ${nm}</span></div>` : `<div class="tile" data-tile="${it.key}" style="--c:var(--brand)"><b>${v == null ? '–' : Math.round(Math.abs(v)).toLocaleString('en-CA') + ' BTU/h'}</b><span>${v == null || Math.abs(v) < 1 ? 'Sensible' : v > 0 ? 'Sensible heating' : 'Sensible cooling'} · ${nm}</span></div>`; }
-      if (it.dt) { const [sup, ret] = it.dt; const a = last(sup.id), b = last(ret.id); const d = a && b ? a[1] - b[1] : null; const u = unitById(sup.unit_id); return `<div class="tile" data-tile="${it.key}" style="--c:var(--brand)"><b>${d == null ? '–' : (S.unit === 'F' ? d * 9 / 5 : d).toFixed(1) + tU()}</b><span>ΔT${u ? ' · ' + esc(unitName(u)) : ''}</span></div>`; }
-      const s = it.s, l = last(s.id), h = S.rh[s.id] && last(S.rh[s.id].id);
+      if (it.dt) { const [sup, ret] = it.dt; const a = latest(sup.id), b = latest(ret.id); const d = a && b ? a[1] - b[1] : null; const u = unitById(sup.unit_id); return `<div class="tile" data-tile="${it.key}" style="--c:var(--brand)"><b>${d == null ? '–' : (S.unit === 'F' ? d * 9 / 5 : d).toFixed(1) + tU()}</b><span>ΔT${u ? ' · ' + esc(unitName(u)) : ''}</span></div>`; }
+      const s = it.s, l = latest(s.id), h = S.rh[s.id] && latest(S.rh[s.id].id);
       return `<div class="tile" data-tile="${it.key}" style="--c:${esc(s.color)}"><b>${fmtVal(s, l && l[1])}</b>${S.rh[s.id] ? `<em>${h ? Math.round(h[1]) + '% RH' : '– RH'}</em>` : ''}<span>${esc(s.label)}</span></div>`;
     };
     const by = tileItems();
@@ -496,7 +505,7 @@ export function mountHvacMon(root, { sb }) {
   // ---- sensor details (tap a sensor in the list or its tile)
   function sensorInfo(id) {
     const s = S.sensors.find(x => x.id === id); if (!s) return;
-    const l = last(s.id), h = S.rh[s.id] && last(S.rh[s.id].id), u = unitById(s.unit_id);
+    const l = latest(s.id), h = S.rh[s.id] && latest(S.rh[s.id].id), u = unitById(s.unit_id);
     const row = (k, v) => v ? `<div class="kv"><span>${k}</span><b>${v}</b></div>` : '';
     sheet(`<span class="sw" style="background:${esc(s.color)};display:inline-block;vertical-align:middle;margin-right:8px"></span>${esc(s.label)}`, `
       <div class="big">${fmtVal(s, l && l[1])}${S.rh[s.id] ? ` <small>${h ? Math.round(h[1]) + '% RH' : ''}</small>` : ''}</div>
@@ -864,6 +873,9 @@ export function mountHvacMon(root, { sb }) {
   };
   const onResize = () => { if (S.site && root.getElementById('cb')) drawChart(); };
   window.addEventListener('resize', onResize);
+  // phones pause timers in the background: catch up the moment HQ is back on screen
+  const onVis = async () => { if (!document.hidden && S.site && !dead) { await refreshLatest(); await load(); drawChart(); drawTiles(); } };
+  document.addEventListener('visibilitychange', onVis); window.addEventListener('focus', onVis);
   list();
-  return () => { dead = true; clearInterval(timer); window.removeEventListener('resize', onResize); root.innerHTML = ''; };
+  return () => { dead = true; clearInterval(timer); window.removeEventListener('resize', onResize); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('focus', onVis); root.innerHTML = ''; };
 }
