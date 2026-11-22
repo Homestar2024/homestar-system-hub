@@ -425,7 +425,7 @@ export function mountHvacMon(root, { sb }) {
     return { need, coverage, rated, od, hours, heatH, copH, days, ua, b0, tiRef, r2, lossAt, bp, partial: sys.some(x => x.mon.length && x.mon.length < x.heads.length) };
   }
   function scatter({ dots, lines, ylab, xlab, ymin0 = true }) {
-    const W = 640, H = 300, L = 54, R = 14, T = 14, B = 34;
+    const W = 420, H = 250, L = 44, R = 10, T = 16, B = 32;
     const xs = dots.map(d => d.x).concat(lines.flatMap(l => l.pts.map(p => p[0]))), ys = dots.map(d => d.y).concat(lines.flatMap(l => l.pts.map(p => p[1])));
     if (!xs.length) return '';
     let x0 = Math.min(...xs), x1 = Math.max(...xs); if (x1 - x0 < 10) { x0 -= 5; x1 += 5; } let y0 = ymin0 ? 0 : Math.min(...ys), y1 = Math.max(...ys) * 1.08 || 1;
@@ -463,7 +463,7 @@ export function mountHvacMon(root, { sb }) {
       ${kv('Balance point', a.bp != null ? `${showT(a.bp).toFixed(0)}${tu} - below this the heat pump can't keep up` : a.ua != null ? (rp.length < 2 ? 'Add rated capacity at 2+ outdoor temps (outdoor unit)' : 'Heat pump covers the load across the rated range') : '')}
       ${kv('Load at design temp', atD != null ? `${fmt(atD)} BTU/h at ${showT(dTemp).toFixed(0)}${tu}${f280 ? ` · F280 ${fmt(f280)} (${atD > f280 ? '+' : ''}${Math.round(100 * (atD - f280) / f280)}%)` : ''}` : (a.ua != null ? 'Add the design temp (Edit client)' : ''))}
       ${kv('Sizing', verdict)}
-      ${kv('Output near 47°F', max47 != null ? `${fmt(max47)} BTU/h peak hour${r47 ? ` · rated max ${fmt(r47.max)} (${Math.round(100 * max47 / r47.max)}%)` : ''}` : '')}
+      ${kv('Peak hour near 47°F', max47 != null ? `${fmt(max47)} BTU/h${r47 ? ` <span class="muted">(rated max ${fmt(r47.max)})</span>` : ''}` : '')}
       ${a.copH.length ? kv('Average COP', `≥40°F ${band(40, 200)} · 25–40°F ${band(25, 40)} · <25°F ${band(-100, 25)}`) : ''}
       </div>${a.partial ? '<div class="hint">Not every indoor unit is measured, so heat delivered and heat loss are low and COP is understated (the outdoor unit powers all heads).</div>' : ''}`;
   }
