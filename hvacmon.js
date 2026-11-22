@@ -1,4 +1,4 @@
-// Homestar HQ - HVAC Monitoring (v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
+// Homestar HQ - HVAC Monitoring (v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
 // graph of every sensor over time (temps on the left axis, watts on the right), 24 h / 7 d / 30 d / 1 y, legend with colour,
 // show/hide checkbox and editable names. Data: monitor_sites / monitor_sensors / monitor_series() (db/025). Until a house has
 // readings the dashboard shows clearly-labelled SAMPLE data so the layout can be judged.
@@ -79,6 +79,10 @@ h3.ch{margin:0;font-size:18px}
 .lg{cursor:pointer}
 .lg .chev{font-size:20px;flex:none}
 .kv{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--line);font-size:14.5px}.kv span{color:var(--muted)}.kv b{font-weight:600;text-align:right;overflow-wrap:anywhere}
+.tog{display:flex;gap:10px;align-items:center;margin-top:8px;font-weight:600;font-size:15px;color:var(--ink)}.tog input{width:22px;height:22px;accent-color:var(--brand);flex:none}
+.spd{display:grid;grid-template-columns:minmax(0,1fr) 78px 60px auto;gap:6px;align-items:center;margin-top:6px}.spd input{padding:8px;font-size:15px}.spd span{font-size:13px;text-align:right;color:var(--muted)}.spd .mini{margin:0;padding:6px 9px;min-height:38px}
+.spdh{display:grid;grid-template-columns:minmax(0,1fr) 78px 60px auto;gap:6px;font-size:11.5px;color:var(--muted);margin-top:8px;text-transform:uppercase;letter-spacing:.04em}
+.capbox{border:1px solid var(--brand);border-radius:10px;padding:12px;margin-top:10px;background:color-mix(in srgb,var(--brand) 10%,transparent)}.capbox b.w{display:block;font-family:var(--display);font-size:30px}
 .big{font-family:var(--display);font-size:34px;font-weight:700;margin:4px 0 10px}.big small{font-size:18px;color:var(--muted)}
 `;
 const RANGES = [{ k: '24h', label: '24 h', ms: 864e5, bucket: 300 }, { k: '7d', label: '7 days', ms: 7 * 864e5, bucket: 1800 }, { k: '30d', label: '30 days', ms: 30 * 864e5, bucket: 7200 }, { k: '1y', label: '1 year', ms: 365 * 864e5, bucket: 86400 }];
@@ -100,6 +104,20 @@ const PALETTE = ['#e5484d', '#3e63dd', '#30a46c', '#f5a524', '#8e4ec6', '#12a594
 const localInput = (t) => { const d = new Date(t); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); };
 const fmtDT = (t) => new Date(t).toLocaleString('en-CA', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
+const SPEED_NAMES = { 1: ['Fan'], 2: ['Low', 'High'], 3: ['Low', 'Medium', 'High'], 4: ['Quiet', 'Low', 'Medium', 'High'], 5: ['Quiet', 'Low', 'Medium', 'High', 'Powerful'] };
+const capPts = (u) => (u.fan_speeds || []).filter(p => +p.rated_cfm > 0 && +p.watts > 0).map(p => ({ w: +p.watts, c: +p.rated_cfm })).sort((a, b) => a.w - b.w);
+// fan law: CFM ~ RPM and W ~ RPM^3, so CFM ~ W^(1/3). Between two captured speeds interpolate CFM on the cube root of watts; beyond the ends scale from the nearest speed.
+function cfmAt(pts, w) {
+  if (w == null || !pts.length) return null; if (w < Math.max(2, pts[0].w * 0.3)) return 0;
+  const x = Math.cbrt(w), a = pts[0], z = pts[pts.length - 1];
+  if (w <= a.w) return a.c * x / Math.cbrt(a.w); if (w >= z.w) return z.c * x / Math.cbrt(z.w);
+  for (let i = 1; i < pts.length; i++) if (w <= pts[i].w) { const p = pts[i - 1], q = pts[i], xp = Math.cbrt(p.w), xq = Math.cbrt(q.w); return p.c + (q.c - p.c) * (x - xp) / (xq - xp); }
+  return null;
+}
+const holdAt = (arr, t, maxMs = 2 * 36e5) => { if (!arr || !arr.length || arr[0][0] > t) return null; let lo = 0, hi = arr.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (arr[m][0] <= t) lo = m; else hi = m - 1; } return t - arr[lo][0] <= maxMs ? arr[lo][1] : null; };
+const csvCell = (v) => { const t = v == null ? '' : String(v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+const dIn = (t) => { const d = new Date(t); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+
 export function mountHvacMon(root, { sb }) {
   root.innerHTML = `<style>${CSS}</style><a class="back" href="#/tools">← Tools</a><div id="body"></div><div id="modal"></div>`;
   const body = root.getElementById('body'), modal = root.getElementById('modal');
@@ -111,7 +129,8 @@ export function mountHvacMon(root, { sb }) {
   const sysOf = (id) => S.systems.find(x => x.id === id);
   const unitById = (id) => S.units.find(x => x.id === id);
   const unitName = (u) => { if (!u) return ''; const sy = sysOf(u.system_id); return (u.role === 'outdoor' ? 'Outdoor unit' : (u.location || 'Indoor unit')) + (S.systems.length > 1 && sy ? ' · ' + (sy.name || SYSTYPE[sy.type]) : ''); };
-  const closeModal = () => { modal.innerHTML = ''; modal.onclick = null; modal.onchange = null; modal.oninput = null; };
+  let capTimer = null;
+  const closeModal = () => { clearInterval(capTimer); capTimer = null; modal.innerHTML = ''; modal.onclick = null; modal.onchange = null; modal.oninput = null; };
   const sheet = (title, inner) => { modal.innerHTML = `<div class="modal"><div class="sheet"><h3>${title}</h3>${inner}<div class="err" data-err></div></div></div>`; };
   const errOut = (t) => { const e = modal.querySelector('[data-err]'); if (e) e.textContent = t; };
   const isBackdrop = (e) => e.target === modal.firstElementChild || e.target.closest('[data-x]');
@@ -227,10 +246,32 @@ export function mountHvacMon(root, { sb }) {
   }
   async function load() {
     const R = RANGES.find(r => r.k === S.range) || RANGES[0]; const to = Date.now(), from = to - R.ms;
-    const { data, error } = await sb.rpc('monitor_series', { p_site: S.site.id, p_from: new Date(from).toISOString(), p_to: new Date(to).toISOString(), p_bucket: R.bucket });
+    const { data, error } = await seriesAll(from, to, R.bucket);
     const ser = {}; (data || []).forEach(r => (ser[r.sensor_id] = ser[r.sensor_id] || []).push([Date.parse(r.t), Number(r.v)]));
     S.sample = !error && !(data || []).length; S.err = error ? error.message : '';
-    S.series = S.sample ? sampleSeries(from, to, R.bucket) : ser; S.from = from; S.to = to;
+    S.series = S.sample ? sampleSeries(from, to, R.bucket) : ser; S.from = from; S.to = to; S.bucket = R.bucket;
+    S.derived = derive(S.series);
+  }
+  // every row of monitor_series for a window (the API returns 1000 rows per call)
+  async function seriesAll(from, to, bucket) {
+    const rows = [];
+    for (let off = 0; off < 2e6; off += 1000) {
+      const { data, error } = await sb.rpc('monitor_series', { p_site: S.site.id, p_from: new Date(from).toISOString(), p_to: new Date(to).toISOString(), p_bucket: bucket }).range(off, off + 999);
+      if (error) return { error }; rows.push(...data); if (data.length < 1000) break;
+    }
+    return { data: rows };
+  }
+  // ---- capacity: indoor units with monitoring on, a fan-power sensor, captured speeds and supply + return sensors
+  function capUnits() { return S.units.filter(u => u.role === 'indoor' && u.cap_enabled && u.fan_sensor && capPts(u).length && S.sensors.some(s => s.kind === 'supply' && s.unit_id === u.id) && S.sensors.some(s => s.kind === 'return' && s.unit_id === u.id)); }
+  function derive(ser) {
+    const out = {};
+    for (const u of capUnits()) {
+      const sup = S.sensors.find(s => s.kind === 'supply' && s.unit_id === u.id), ret = S.sensors.find(s => s.kind === 'return' && s.unit_id === u.id), pts = capPts(u);
+      const cfm = [], btu = [];
+      for (const [t, w] of (ser[u.fan_sensor] || [])) { const c = cfmAt(pts, w); cfm.push([t, c]); const a = holdAt(ser[sup.id], t), b = holdAt(ser[ret.id], t); if (c != null && a != null && b != null) btu.push([t, 1.08 * c * (a - b) * 1.8]); }
+      out[u.id] = { cfm, btu };
+    }
+    return out;
   }
   function dash() {
     const s = S.site;
@@ -240,7 +281,7 @@ export function mountHvacMon(root, { sb }) {
       ${S.err ? `<div class="err">${esc(S.err)}</div>` : ''}
       ${S.sample ? '<div class="sample"><b>Sample data</b> - sensors not connected yet.</div>' : ''}
       <div class="bar"><div class="chips">${RANGES.map(r => `<button class="chip${r.k === S.range ? ' on' : ''}" data-range="${r.k}">${r.label}</button>`).join('')}</div>
-        <div class="chips"><button class="chip${S.unit === 'F' ? ' on' : ''}" data-unit="F">°F</button><button class="chip${S.unit === 'C' ? ' on' : ''}" data-unit="C">°C</button></div></div>
+        <div class="chips"><button class="chip${S.unit === 'F' ? ' on' : ''}" data-unit="F">°F</button><button class="chip${S.unit === 'C' ? ' on' : ''}" data-unit="C">°C</button><button class="chip" data-export>⬇ Export</button></div></div>
       <div class="card"><div class="chartbox" id="cb"></div><div class="legend" id="lg"></div></div>
       <div id="tiles"></div>
       <div class="card${S.shut.has('eq') ? ' shut' : ''}" id="eq" data-card="eq"></div>
@@ -254,15 +295,18 @@ export function mountHvacMon(root, { sb }) {
   function tileItems() {
     const items = S.sensors.map(s => ({ key: s.id, s, grp: grpOf(s) }));
     const seen = new Set();
-    S.sensors.filter(s => s.kind === 'supply').forEach(sup => { const ret = S.sensors.find(r => r.kind === 'return' && (r.unit_id || null) === (sup.unit_id || null)); const k = 'dt:' + (sup.unit_id || 'house'); if (ret && !seen.has(k)) { seen.add(k); items.push({ key: k, dt: [sup, ret], grp: 'equipment' }); } });
+    S.sensors.filter(s => s.kind === 'supply').forEach(sup => { const ret = S.sensors.find(r => r.kind === 'return' && (r.unit_id || null) === (sup.unit_id || null)); const k = 'dt:' + (sup.unit_id || 'house'); if (ret && !seen.has(k)) { seen.add(k); items.push({ key: k, dt: [sup, ret], der: 1, grp: 'equipment' }); } });
+    capUnits().forEach(u => { items.push({ key: 'cfm:' + u.id, cap: 'cfm', u, der: 1, grp: 'equipment' }); items.push({ key: 'btu:' + u.id, cap: 'btu', u, der: 1, grp: 'equipment' }); });
     const lay = S.site.tile_layout || {};
-    items.forEach(it => { if (it.dt) for (const g of Object.keys(GRP)) if ((lay[g] || []).includes(it.key)) it.grp = g; });
-    const out = {}; for (const g of Object.keys(GRP)) { const order = lay[g] || []; const mine = items.filter(it => it.grp === g); const rank = (it) => { const i = order.indexOf(it.key); return i < 0 ? 1e6 + (it.dt ? -1 : items.indexOf(it)) : i; }; out[g] = mine.sort((a, b) => rank(a) - rank(b)); }
+    items.forEach(it => { if (it.der) for (const g of Object.keys(GRP)) if ((lay[g] || []).includes(it.key)) it.grp = g; });
+    const out = {}; for (const g of Object.keys(GRP)) { const order = lay[g] || []; const mine = items.filter(it => it.grp === g); const rank = (it) => { const i = order.indexOf(it.key); return i < 0 ? 1e6 + (it.der ? -1 : items.indexOf(it)) : i; }; out[g] = mine.sort((a, b) => rank(a) - rank(b)); }
     return out;
   }
   function drawTiles() {
     const el = root.getElementById('tiles'); if (!el || !S.site) return;
     const tile = (it) => {
+      if (it.cap) { const a = ((S.derived[it.u.id] || {})[it.cap] || []); const v = a.length ? a[a.length - 1][1] : null; const nm = esc(unitName(it.u));
+        return it.cap === 'cfm' ? `<div class="tile" data-tile="${it.key}" style="--c:var(--brand)"><b>${v == null ? '–' : Math.round(v) + ' CFM'}</b><span>Airflow · ${nm}</span></div>` : `<div class="tile" data-tile="${it.key}" style="--c:var(--brand)"><b>${v == null ? '–' : Math.round(Math.abs(v)).toLocaleString('en-CA') + ' BTU/h'}</b><span>${v == null || Math.abs(v) < 1 ? 'Sensible' : v > 0 ? 'Sensible heating' : 'Sensible cooling'} · ${nm}</span></div>`; }
       if (it.dt) { const [sup, ret] = it.dt; const a = last(sup.id), b = last(ret.id); const d = a && b ? a[1] - b[1] : null; const u = unitById(sup.unit_id); return `<div class="tile" data-tile="${it.key}" style="--c:var(--brand)"><b>${d == null ? '–' : (S.unit === 'F' ? d * 9 / 5 : d).toFixed(1) + tU()}</b><span>ΔT${u ? ' · ' + esc(unitName(u)) : ''}</span></div>`; }
       const s = it.s, l = last(s.id), h = S.rh[s.id] && last(S.rh[s.id].id);
       return `<div class="tile" data-tile="${it.key}" style="--c:${esc(s.color)}"><b>${fmtVal(s, l && l[1])}</b>${S.rh[s.id] ? `<em>${h ? Math.round(h[1]) + '% RH' : '– RH'}</em>` : ''}<span>${esc(s.label)}</span></div>`;
@@ -346,15 +390,15 @@ export function mountHvacMon(root, { sb }) {
       ${row('Attached to', u ? esc(unitName(u)) + (u.model ? ' · ' + esc(u.model) : '') : 'Not attached')}
       ${row('Group', GRP[grpOf(s)])}
       ${row('Sensor', esc([s.provider === 'yolink' ? 'YoLink' : s.provider === 'shelly' ? 'Shelly' : s.provider, s.model].filter(Boolean).join(' ')))}
-      ${row('Status', s.external_id ? 'Connected · ' + esc(s.external_id) : 'Not connected yet')}
-      ${row('Last reading', l && !S.sample ? esc(fmtDT(l[0])) : '')}
+      ${row('Status', !s.external_id ? 'Not connected yet' : !s.last_ts ? 'Connected · waiting for first reading' : (Date.now() - Date.parse(s.last_ts) > (s.provider === 'shelly' ? 15 * 6e4 : 2 * 36e5) ? '<span style="color:var(--hot)">No data since ' + esc(fmtDT(s.last_ts)) + '</span>' : 'Reporting'))}
+      ${row('Last report', s.last_ts ? esc(fmtDT(s.last_ts)) : '')}
       <div class="acts"><button class="btn" data-x>Close</button><button class="btn pri" data-edit>✎ Edit</button></div>`);
     modal.onclick = (e) => { if (isBackdrop(e)) return closeModal(); if (e.target.closest('[data-edit]')) { closeModal(); sensorForm(id); } };
   }
   function niceStep(span, n) { const raw = span / n; const p = Math.pow(10, Math.floor(Math.log10(raw))); const f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
-  function drawChart() {
-    const box = root.getElementById('cb'); if (!box) return;
-    const W = Math.max(320, box.clientWidth || 600), H = W < 500 ? 310 : 390, L = 44, Rr = 50, T = 26, B = 30;
+  function drawChart(boxArg, width) {
+    const box = boxArg || root.getElementById('cb'); if (!box) return;
+    const W = width || Math.max(320, box.clientWidth || 600), H = W < 500 ? 310 : 390, L = 44, Rr = 50, T = 26, B = 30;
     const vis = S.sensors.filter(s => !S.hidden.has(s.id) && (S.series[s.id] || []).length);
     const temps = vis.filter(isTemp), pw = vis.filter(s => !isTemp(s));
     const rng = (arr, f) => { let lo = Infinity, hi = -Infinity; arr.forEach(s => S.series[s.id].forEach(p => { const v = f(p[1]); if (v < lo) lo = v; if (v > hi) hi = v; })); return lo === Infinity ? [0, 1] : lo === hi ? [lo - 1, hi + 1] : [lo, hi]; };
@@ -394,21 +438,32 @@ export function mountHvacMon(root, { sb }) {
       <label class="f">Attached to<select data-f="unit_id">${unitOptions(v.unit_id)}</select></label>
       <div class="two"><label class="f">Group<select data-f="grp">${Object.entries(GRP).map(([k, t]) => `<option value="${k}" ${k === grpOf(v) ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label class="f">Line colour<input type="color" data-f="color" value="${esc(v.color)}"></label></div>
       <div class="two"><label class="f">Brand<select data-f="provider"><option value="yolink" ${v.provider === 'yolink' ? 'selected' : ''}>YoLink</option><option value="shelly" ${v.provider === 'shelly' ? 'selected' : ''}>Shelly</option><option value="other" ${!['yolink', 'shelly'].includes(v.provider) ? 'selected' : ''}>Other</option></select></label><label class="f">Sensor model<input data-f="model" value="${esc(v.model)}" placeholder="YS8004-UC"></label></div>
-      <label class="f">Device ID (filled in when connected)<input data-f="external_id" value="${esc(v.external_id)}" placeholder="optional"></label>
+      <label class="f">Device ID<input data-f="external_id" value="${esc(v.external_id)}" placeholder="Not connected yet" autocapitalize="off"></label>
+      <div data-yl ${v.provider === 'yolink' ? '' : 'hidden'}><button class="mini" data-findyl>Find my YoLink sensors</button><div class="res" data-ylres></div></div>
+      <label class="f" data-shch ${v.provider === 'shelly' ? '' : 'hidden'}>Shelly channel<select data-f="channel"><option value="em1:0" ${v.channel !== 'em1:1' ? 'selected' : ''}>Channel 1 (em1:0)</option><option value="em1:1" ${v.channel === 'em1:1' ? 'selected' : ''}>Channel 2 (em1:1)</option></select></label>
       ${s && s.model === 'YS8003-UC' && S.rh[s.id] ? '<div class="muted small" style="margin-top:6px">Includes its humidity reading.</div>' : ''}
       <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn pri" data-save>Save</button>${s ? '<button class="btn del" data-rm>Remove sensor</button>' : ''}</div>`);
-    modal.onchange = (e) => { const k = e.target.closest('[data-f="kind"]'); if (k) { const g = modal.querySelector('[data-f="grp"]'); g.value = ['room', 'outdoor'].includes(k.value) ? 'ambient' : 'equipment'; } };
+    let ylList = [];
+    modal.onchange = (e) => { const k = e.target.closest('[data-f="kind"]'); if (k) { const g = modal.querySelector('[data-f="grp"]'); g.value = ['room', 'outdoor'].includes(k.value) ? 'ambient' : 'equipment'; }
+      const p = e.target.closest('[data-f="provider"]'); if (p) { modal.querySelector('[data-yl]').hidden = p.value !== 'yolink'; modal.querySelector('[data-shch]').hidden = p.value !== 'shelly'; } };
     modal.onclick = async (e) => {
       if (isBackdrop(e)) return closeModal();
+      if (e.target.closest('[data-findyl]')) { const box = modal.querySelector('[data-ylres]'); box.innerHTML = '<span class="muted small">Asking YoLink…</span>';
+        const { data, error } = await sb.functions.invoke('hvac-poll', { body: { devices: true } });
+        if (error || (data && data.error)) { box.innerHTML = `<div class="err">${esc((data && data.error) || error.message)}</div>`; return; }
+        if (!data.configured || !data.configured.yolink) { box.innerHTML = '<div class="muted small">The YoLink key isn\'t set up in Supabase yet.</div>'; return; }
+        ylList = (data.devices || []).filter(d => /THSensor|Temperature/i.test(d.type + ' ' + d.model) || true);
+        box.innerHTML = ylList.map((d, i) => `<button data-yli="${i}">${esc(d.name)}<span>${esc(d.type)}${d.model ? ' · ' + esc(d.model) : ''}</span></button>`).join('') || '<div class="muted small">No devices on this YoLink account.</div>'; return; }
+      const yi = e.target.closest('[data-yli]'); if (yi) { const d = ylList[+yi.dataset.yli]; modal.querySelector('[data-f="external_id"]').value = d.deviceId; const m = modal.querySelector('[data-f="model"]'); if (!m.value && d.model) m.value = d.model; const lb = modal.querySelector('[data-f="label"]'); if (!lb.value) lb.value = d.name; modal.querySelector('[data-ylres]').innerHTML = `<div class="linked">Linked to ${esc(d.name)}</div>`; return; }
       if (e.target.closest('[data-rm]')) { if (!confirm('Remove "' + s.label + '"? Its past readings stay stored.')) return; const ids = [s.id].concat(S.rh[s.id] ? [S.rh[s.id].id] : []); const { error } = await sb.from('monitor_sensors').update({ active: false }).in('id', ids); if (error) return errOut(error.message); closeModal(); await reloadMeta(); return dash(); }
       if (!e.target.closest('[data-save]')) return;
-      const row = vals(); row.unit_id = row.unit_id || null; row.unit = UNIT_OF(row.kind);
+      const row = vals(); row.unit_id = row.unit_id || null; row.unit = UNIT_OF(row.kind); if (row.provider !== 'shelly') row.channel = 'temperature';
       if (!row.label) return errOut('Give it a name.');
       if (s) { const { error } = await sb.from('monitor_sensors').update(row).eq('id', s.id); if (error) return errOut(error.message);
-        if (S.rh[s.id]) await sb.from('monitor_sensors').update({ label: row.label + ' RH', color: row.color, unit_id: row.unit_id }).eq('id', S.rh[s.id].id); }
-      else { row.site_id = S.site.id; row.sort = S.sensors.length + 1; row.channel = row.provider === 'shelly' ? 'em1:0' : 'temperature';
+        if (S.rh[s.id]) await sb.from('monitor_sensors').update({ label: row.label + ' RH', color: row.color, unit_id: row.unit_id, provider: row.provider, external_id: row.external_id }).eq('id', S.rh[s.id].id); }
+      else { row.site_id = S.site.id; row.sort = S.sensors.length + 1;
         const { data, error } = await sb.from('monitor_sensors').insert(row).select().single(); if (error) return errOut(error.message);
-        if (row.model.toUpperCase() === 'YS8003-UC' && row.kind === 'room') await sb.from('monitor_sensors').insert({ site_id: S.site.id, kind: 'humidity', label: row.label + ' RH', color: row.color, unit: '%', provider: row.provider, model: row.model, channel: 'humidity', sort: row.sort, grp: 'ambient', pair_id: data.id, unit_id: row.unit_id }); }
+        if (row.model.toUpperCase() === 'YS8003-UC' && row.kind === 'room') await sb.from('monitor_sensors').insert({ site_id: S.site.id, kind: 'humidity', label: row.label + ' RH', color: row.color, unit: '%', provider: row.provider, model: row.model, channel: 'humidity', sort: row.sort, grp: 'ambient', pair_id: data.id, unit_id: row.unit_id, external_id: row.external_id }); }
       closeModal(); await reloadMeta(); if (S.sample) await load(); dash();
     };
   }
@@ -452,14 +507,50 @@ export function mountHvacMon(root, { sb }) {
       <label class="f">Serial number<input data-f="serial" value="${esc(v.serial)}" autocapitalize="characters"></label>
       <label class="f">Installed<input data-f="installed" value="${esc(v.installed)}" placeholder="e.g. 2024-05-14"></label>
       <label class="f">Notes<textarea data-f="notes">${esc(v.notes)}</textarea></label>
+      ${u && u.role === 'indoor' ? `<div class="tgh">Capacity monitoring</div>
+        <label class="tog"><input type="checkbox" data-cap ${u.cap_enabled ? 'checked' : ''}>Airflow &amp; capacity</label>
+        <div data-capbody ${u.cap_enabled ? '' : 'hidden'}>
+          <label class="f">Fan power sensor<select data-fan><option value="">Pick the head's fan channel…</option>${S.all.filter(x => x.kind === 'fan_power').map(x => `<option value="${x.id}" ${x.id === u.fan_sensor ? 'selected' : ''}>${esc(x.label)}${x.external_id ? '' : ' (not connected)'}</option>`).join('')}</select></label>
+          ${S.all.some(x => x.kind === 'fan_power') ? '' : '<div class="muted small">Add a sensor measuring Fan power (W) first.</div>'}
+          <label class="f">Fan speeds<select data-nsp>${[1, 2, 3, 4, 5, 6, 7].map(n => `<option ${n === ((u.fan_speeds || []).length || 4) ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+          <div data-speeds></div><div data-capbox></div>
+        </div>` : ''}
       ${u ? `<div class="tgh">Nameplate photos</div><div class="ph" data-ph></div><label class="mini" style="display:inline-block">📷 Add photo<input type="file" accept="image/*" data-photo hidden></label>` : '<div class="muted small" style="margin-top:8px">Save first, then add nameplate photos.</div>'}
       <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn pri" data-save>Save</button>${u ? '<button class="btn del" data-rm>Delete unit</button>' : ''}</div>`);
     const photos = u ? [...(u.photos || [])] : [];
+    const names = (n) => SPEED_NAMES[n] || Array.from({ length: n }, (_, i) => 'Speed ' + (i + 1));
+    let speeds = u && u.fan_speeds && u.fan_speeds.length ? JSON.parse(JSON.stringify(u.fan_speeds)) : names(4).map(n => ({ name: n, rated_cfm: '', watts: null }));
+    const drawSpeeds = () => { const el = modal.querySelector('[data-speeds]'); if (!el) return;
+      el.innerHTML = `<div class="spdh"><span>Speed</span><span>Rated CFM</span><span>Watts</span><span></span></div>` + speeds.map((p, i) => `<div class="spd"><input data-sn="${i}" value="${esc(p.name)}"><input data-sc="${i}" type="number" inputmode="numeric" value="${esc(p.rated_cfm)}" placeholder="CFM"><span>${p.watts ? (+p.watts).toFixed(1) : '–'}</span><button class="mini" data-capt="${i}">${p.watts ? 'Redo' : 'Capture'}</button></div>`).join(''); };
+    drawSpeeds();
+    modal.oninput = (e) => { const a = e.target.closest('[data-sn]'); if (a) speeds[+a.dataset.sn].name = a.value; const b = e.target.closest('[data-sc]'); if (b) speeds[+b.dataset.sc].rated_cfm = b.value === '' ? '' : +b.value; };
+    async function capture(i) {
+      const fan = modal.querySelector('[data-fan]').value; const box = modal.querySelector('[data-capbox]');
+      if (!fan) return errOut('Pick the fan power sensor first.'); errOut('');
+      const sp = speeds[i]; const samples = []; const t0 = Date.now(); const DUR = 120000;
+      const paint = (w, msg) => { const n = samples.length, avg = n ? samples.reduce((x, y) => x + y, 0) / n : null; const left = Math.max(0, Math.ceil((DUR - (Date.now() - t0)) / 1000));
+        box.innerHTML = `<div class="capbox"><div class="muted small">${esc(sp.name)} fan · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left</div><b class="w">${w == null ? '–' : w.toFixed(1) + ' W'}</b><div class="small">${n ? 'Average ' + avg.toFixed(1) + ' W · ' + n + ' readings' : 'Starting…'}${msg ? ' · ' + esc(msg) : ''}</div><div class="acts"><button class="btn" data-capstop>Cancel</button></div></div>`; };
+      paint(null);
+      const tick = async () => {
+        if (Date.now() - t0 >= DUR) { clearInterval(capTimer); capTimer = null;
+          if (samples.length < 6) { box.innerHTML = '<div class="err">Not enough readings - check the Shelly is online and try again.</div>'; return; }
+          const use = samples.slice(2); const avg = use.reduce((x, y) => x + y, 0) / use.length; const sd = Math.sqrt(use.reduce((x, y) => x + (y - avg) ** 2, 0) / use.length);
+          Object.assign(sp, { watts: Math.round(avg * 10) / 10, sd: Math.round(sd * 10) / 10, samples: use.length, captured_at: new Date().toISOString() });
+          box.innerHTML = `<div class="linked">${esc(sp.name)}: ${sp.watts} W (±${sp.sd}) from ${use.length} readings. Save to keep it.</div>`; drawSpeeds(); return; }
+        const { data, error } = await sb.functions.invoke('hvac-poll', { body: { live: fan } });
+        if (!capTimer) return;
+        if (error || !data || data.error) { paint(null, (data && data.error) || (error && error.message) || 'no reading'); return; }
+        if (typeof data.watts === 'number') samples.push(data.watts); paint(data.watts);
+      };
+      clearInterval(capTimer); capTimer = setInterval(tick, 5000); tick();
+    }
     const drawPh = async () => { const el = modal.querySelector('[data-ph]'); if (!el) return; el.innerHTML = photos.length ? '<span class="muted small">Loading…</span>' : '<span class="muted small">None yet.</span>'; if (!photos.length) return;
       const urls = await Promise.all(photos.map(k => sb.storage.from('images').createSignedUrl(k, 3600).then(r => (r.data && r.data.signedUrl) || '')));
       el.innerHTML = photos.map((k, i) => `<div class="p"><img src="${esc(urls[i])}" data-open="${esc(urls[i])}" alt="Nameplate photo ${i + 1}"><button data-delph="${i}" aria-label="Remove photo">×</button></div>`).join(''); };
     drawPh();
     modal.onchange = async (e) => {
+      const cb = e.target.closest('[data-cap]'); if (cb) { modal.querySelector('[data-capbody]').hidden = !cb.checked; return; }
+      const ns = e.target.closest('[data-nsp]'); if (ns) { const n = +ns.value, nm = names(n); speeds = Array.from({ length: n }, (_, i) => speeds[i] || { name: nm[i], rated_cfm: '', watts: null }); if (n === speeds.length) speeds.forEach((p, i) => { if (!p.watts && !p.rated_cfm) p.name = nm[i]; }); drawSpeeds(); return; }
       const f = e.target.closest('[data-fill]'); if (f && f.value !== '') { const q = onFile[+f.value]; const set = (k, x) => { const i = modal.querySelector(`[data-f="${k}"]`); if (i && x) i.value = x; }; set('make', q.make); set('model', q.model); set('serial', q.serial); set('capacity', q.size); set('installed', q.installed); return; }
       const p = e.target.closest('[data-photo]'); if (p && p.files && p.files[0]) {
         errOut(''); const file = p.files[0]; p.value = '';
@@ -472,15 +563,109 @@ export function mountHvacMon(root, { sb }) {
     modal.onclick = async (e) => {
       if (isBackdrop(e)) return closeModal();
       const o = e.target.closest('[data-open]'); if (o) { window.open(o.dataset.open, '_blank'); return; }
+      const ct = e.target.closest('[data-capt]'); if (ct) return capture(+ct.dataset.capt);
+      if (e.target.closest('[data-capstop]')) { clearInterval(capTimer); capTimer = null; modal.querySelector('[data-capbox]').innerHTML = ''; return; }
       const d = e.target.closest('[data-delph]'); if (d) { if (!confirm('Remove this photo?')) return; photos.splice(+d.dataset.delph, 1); const r = await sb.from('monitor_units').update({ photos }).eq('id', u.id); if (r.error) return errOut(r.error.message); u.photos = [...photos]; return drawPh(); }
       if (e.target.closest('[data-rm]')) { if (!confirm('Delete this unit? Sensors on it stay, unattached.')) return; const { error } = await sb.from('monitor_units').delete().eq('id', u.id); if (error) return errOut(error.message); closeModal(); await reloadMeta(); drawEquipment(); return drawLegend(); }
       if (!e.target.closest('[data-save]')) return;
       const row = vals();
+      const capEl = modal.querySelector('[data-cap]');
+      if (u && capEl) { row.cap_enabled = capEl.checked; row.fan_sensor = modal.querySelector('[data-fan]').value || null; row.fan_speeds = speeds.map(p => ({ ...p, name: (p.name || '').trim() || 'Speed', rated_cfm: p.rated_cfm === '' ? null : +p.rated_cfm }));
+        if (row.cap_enabled && row.fan_sensor) { const f = S.all.find(x => x.id === row.fan_sensor); if (f && f.unit_id !== u.id) await sb.from('monitor_sensors').update({ unit_id: u.id }).eq('id', f.id); } }
       if (u) { const { error } = await sb.from('monitor_units').update(row).eq('id', u.id); if (error) return errOut(error.message); }
       else { row.system_id = sy.id; row.sort = S.units.filter(x => x.system_id === sy.id).length + 1; const { error } = await sb.from('monitor_units').insert(row); if (error) return errOut(error.message); }
-      closeModal(); await reloadMeta(); drawEquipment(); drawLegend(); drawTiles(); drawEvents();
+      closeModal(); await reloadMeta(); S.derived = derive(S.series); drawEquipment(); drawLegend(); drawTiles(); drawEvents();
     };
   }
+
+  // ---------- export + report ----------
+  function exportForm() {
+    sheet('Export', `
+      <div class="two"><label class="f">From<input type="date" data-from value="${dIn(S.from)}"></label><label class="f">To<input type="date" data-to value="${dIn(S.to)}"></label></div>
+      <label class="f">Interval<select data-step><option value="60">Every minute</option><option value="300">5 minutes</option><option value="900">15 minutes</option><option value="3600" ${S.range === '1y' ? 'selected' : ''}>Hourly</option><option value="86400">Daily</option></select></label>
+      <div class="acts"><button class="btn pri" data-csv>⬇ Spreadsheet</button><button class="btn" data-rep>🖨 Report</button><button class="btn" data-x>Close</button></div>
+      <div class="muted small" data-msg></div>`);
+    const win = () => { const f = new Date(modal.querySelector('[data-from]').value + 'T00:00'), t = new Date(modal.querySelector('[data-to]').value + 'T00:00'); t.setDate(t.getDate() + 1); return [f.getTime(), Math.min(t.getTime(), Date.now() + 6e4), +modal.querySelector('[data-step]').value]; };
+    const msg = (t) => { modal.querySelector('[data-msg]').textContent = t; };
+    modal.onclick = async (e) => {
+      if (isBackdrop(e)) return closeModal();
+      const csv = e.target.closest('[data-csv]'), rep = e.target.closest('[data-rep]'); if (!csv && !rep) return;
+      const [from, to, step] = win(); if (!(to > from)) return msg('Pick a To date after the From date.');
+      if (csv && (to - from) / 1000 / step > 120000) return msg('That is too many rows - pick a longer interval.');
+      const w = rep ? window.open('', '_blank') : null; if (rep && w) w.document.write('<p style="font-family:sans-serif">Building report…</p>');
+      msg('Getting readings…');
+      try {
+        const st = rep ? Math.max(step, Math.ceil((to - from) / 1000 / 1500 / 60) * 60) : step;   // a report graph needs ~1500 points at most
+        const { data, error } = await seriesAll(from, to, st); if (error) throw error;
+        if (!data.length) { if (w) w.close(); return msg('No readings in that range yet.'); }
+        const ser = {}; data.forEach(r => (ser[r.sensor_id] = ser[r.sensor_id] || []).push([Date.parse(r.t), Number(r.v)]));
+        if (csv) { download(buildCsv(ser, from, to, step), from, to); msg('Downloaded.'); }
+        else { report(w, ser, from, to, st); msg('Report opened - use Print / Save as PDF.'); }
+      } catch (x) { if (w) w.close(); msg('Export failed: ' + (x.message || x)); }
+    };
+  }
+  function columns(ser, step) {
+    const cols = []; const dec = (v, n) => v == null ? '' : (Math.round(v * 10 ** n) / 10 ** n).toFixed(n);
+    for (const s of S.sensors) {
+      const a = ser[s.id] || [], map = new Map(a);
+      if (isTemp(s)) cols.push({ h: s.label + ' (' + tU() + ')', f: t => dec(holdAt(a, t) == null ? null : cv(holdAt(a, t)), 1) });
+      else cols.push({ h: s.label + ' (' + s.unit + ')', f: t => { const v = map.get(t); return v == null ? '' : dec(v, 1); } });
+      if (S.rh[s.id]) { const h = ser[S.rh[s.id].id] || []; cols.push({ h: s.label + ' RH (%)', f: t => dec(holdAt(h, t), 0) }); }
+    }
+    const done = new Set();
+    for (const sup of S.sensors.filter(x => x.kind === 'supply')) { const ret = S.sensors.find(r => r.kind === 'return' && (r.unit_id || null) === (sup.unit_id || null)); const k = sup.unit_id || 'h'; if (!ret || done.has(k)) continue; done.add(k); const u = unitById(sup.unit_id);
+      cols.push({ h: 'ΔT ' + (u ? unitName(u) + ' ' : '') + '(' + tU() + ')', f: t => { const a = holdAt(ser[sup.id], t), b = holdAt(ser[ret.id], t); return a == null || b == null ? '' : dec((a - b) * (S.unit === 'F' ? 1.8 : 1), 1); } }); }
+    const der = derive(ser);
+    for (const u of capUnits()) { const m1 = new Map(der[u.id].cfm), m2 = new Map(der[u.id].btu); const nm = unitName(u);
+      cols.push({ h: 'Airflow ' + nm + ' (CFM)', f: t => dec(m1.get(t), 0) }); cols.push({ h: 'Sensible ' + nm + ' (BTU/h, + heating / - cooling)', f: t => dec(m2.get(t), 0) }); }
+    cols.push({ h: 'Events', f: t => S.events.filter(ev => { const x = Date.parse(ev.ts); return x >= t && x < t + step * 1000; }).map(ev => ev.title || (EVK[ev.kind] || EVK.note)[1]).join('; ') });
+    return cols;
+  }
+  function buildCsv(ser, from, to, step) {
+    const cols = columns(ser, step); const lines = [['Time'].concat(cols.map(c => c.h)).map(csvCell).join(',')];
+    for (let t = Math.floor(from / 1000 / step) * step * 1000; t < to; t += step * 1000) {
+      const d = new Date(t); const ts = dIn(t) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      const vals2 = cols.map(c => c.f(t)); if (vals2.slice(0, -1).every(v => v === '')) continue;
+      lines.push([ts].concat(vals2).map(csvCell).join(','));
+    }
+    return lines.join('\r\n');
+  }
+  function download(text, from, to) {
+    const name = `${nameOf(S.site)} HVAC data ${dIn(from)} to ${dIn(to - 1)}.csv`.replace(/[\\/:*?"<>|]+/g, '-');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + text], { type: 'text/csv;charset=utf-8' })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  }
+  function report(w, ser, from, to, step) {
+    if (!w) { msgFallback(); return; }
+    // graph: draw with the report's data into a detached box, then restore the dashboard state
+    const keep = { series: S.series, from: S.from, to: S.to, range: S.range }; const span = to - from;
+    S.series = ser; S.from = from; S.to = to; S.range = span <= 2 * 864e5 ? '24h' : span > 120 * 864e5 ? '1y' : '30d';
+    const box = document.createElement('div'); drawChart(box, 900); const svg = box.innerHTML.replace(/<div class="tip"[\s\S]*$/, '');
+    Object.assign(S, keep);
+    const f1 = (v, n = 1) => v == null || isNaN(v) ? '–' : (Math.round(v * 10 ** n) / 10 ** n).toLocaleString('en-CA', { minimumFractionDigits: n, maximumFractionDigits: n });
+    const rows = S.sensors.map(s => { const a = (ser[s.id] || []).map(p => p[1]); if (!a.length) return `<tr><td><i style="background:${esc(s.color)}"></i>${esc(s.label)}</td><td colspan="4">No readings</td></tr>`;
+      const mn = Math.min(...a), mx = Math.max(...a), av = a.reduce((x, y) => x + y, 0) / a.length;
+      if (isTemp(s)) return `<tr><td><i style="background:${esc(s.color)}"></i>${esc(s.label)}</td><td>${f1(cv(mn))}${tU()}</td><td>${f1(cv(av))}${tU()}</td><td>${f1(cv(mx))}${tU()}</td><td>${S.rh[s.id] && ser[S.rh[s.id].id] ? 'RH avg ' + f1(ser[S.rh[s.id].id].reduce((x, p) => x + p[1], 0) / ser[S.rh[s.id].id].length, 0) + '%' : ''}</td></tr>`;
+      const on = a.filter(v => v > 100).length; const kwh = a.reduce((x, v) => x + v, 0) * step / 3600 / 1000;
+      return `<tr><td><i style="background:${esc(s.color)}"></i>${esc(s.label)}</td><td>${f1(mn, 0)} W</td><td>${f1(av, 0)} W</td><td>${f1(mx, 0)} W</td><td>${f1(kwh, 1)} kWh · running ${f1(100 * on / a.length, 0)}% of the time</td></tr>`; }).join('');
+    const der = derive(ser);
+    const cap = capUnits().map(u => { const c = der[u.id].cfm.filter(p => p[1] > 0), b = der[u.id].btu.filter(p => Math.abs(p[1]) > 500); const h = b.filter(p => p[1] > 0), k = b.filter(p => p[1] < 0); const avg = (x) => x.length ? x.reduce((m, p) => m + p[1], 0) / x.length : null;
+      return `<tr><td>${esc(unitName(u))}</td><td>${f1(avg(c), 0)} CFM</td><td>${h.length ? f1(avg(h), 0) + ' BTU/h' : '–'}</td><td>${h.length ? f1(Math.max(...h.map(p => p[1])), 0) + ' BTU/h' : '–'}</td><td>${k.length ? f1(Math.abs(avg(k)), 0) + ' BTU/h cooling avg' : ''}</td></tr>`; }).join('');
+    const evs = S.events.filter(ev => { const t = Date.parse(ev.ts); return t >= from && t < to; }).sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
+    const eq = S.systems.map(sy => `<div><b>${esc(sy.name || SYSTYPE[sy.type])}</b> (${esc(SYSTYPE[sy.type] || sy.type)}): ${S.units.filter(u => u.system_id === sy.id).map(u => esc((u.role === 'outdoor' ? 'Outdoor' : u.location || 'Indoor') + (u.model ? ' ' + u.model : '') + (u.serial ? ' S/N ' + u.serial : ''))).join(' · ')}</div>`).join('');
+    const d = (t) => new Date(t).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
+    w.document.open(); w.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(nameOf(S.site))} - HVAC report</title><style>
+      :root{--muted:#666;--line:#ddd;--brand:#3e63dd}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;margin:24px;max-width:980px}h1{margin:0;font-size:24px}h2{font-size:16px;margin:22px 0 6px;border-bottom:2px solid #111;padding-bottom:3px}
+      .sub{color:#555;font-size:13px}.ax{font-size:11px;fill:#666}.grid line{stroke:#e3e3e3}svg{width:100%;height:auto}table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:6px 6px;border-bottom:1px solid #ddd;vertical-align:top}th{font-size:11px;text-transform:uppercase;color:#555}
+      td i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.btn{font:inherit;padding:8px 14px;border-radius:8px;border:1px solid #111;background:#111;color:#fff;cursor:pointer}@media print{.btn{display:none}body{margin:10mm}}
+      </style></head><body><div class="top"><div><h1>HVAC performance report</h1><div class="sub">Homestar HVAC Solutions · ${esc(d(from))} to ${esc(d(to - 1))}</div></div><button class="btn" onclick="print()">Print / Save PDF</button></div>
+      <h2>${esc(nameOf(S.site))}</h2><div class="sub">${esc(S.site.address || '')}</div><div style="font-size:13px;margin-top:6px">${eq}</div>
+      <h2>Readings</h2>${svg}
+      <table><tr><th>Sensor</th><th>Min</th><th>Average</th><th>Max</th><th></th></tr>${rows}</table>
+      ${cap ? `<h2>Airflow &amp; capacity (sensible)</h2><table><tr><th>Indoor unit</th><th>Avg airflow running</th><th>Avg heating</th><th>Peak heating</th><th></th></tr>${cap}</table><div class="sub" style="margin-top:6px">Airflow from fan watts mapped to rated CFM per fan speed (fan law). Sensible capacity = 1.08 × CFM × ΔT.</div>` : ''}
+      ${evs.length ? `<h2>Events</h2><table>${evs.map(ev => `<tr><td style="width:170px">${esc(fmtDT(ev.ts))}</td><td><b>${esc(ev.title || (EVK[ev.kind] || EVK.note)[1])}</b>${ev.note ? '<br>' + esc(ev.note) : ''}</td></tr>`).join('')}</table>` : ''}
+      <div class="sub" style="margin-top:18px">Generated ${esc(fmtDT(Date.now()))} · readings averaged every ${step >= 3600 ? step / 3600 + ' h' : step / 60 + ' min'} for this report.</div></body></html>`); w.document.close();
+  }
+  function msgFallback() { const m = modal.querySelector('[data-msg]'); if (m) m.textContent = 'Your browser blocked the report window - allow pop-ups for HQ and try again.'; }
   async function shrink(file) {
     if (!/^image\//.test(file.type)) throw new Error('Not an image');
     const bmp = await createImageBitmap(file); const k = Math.min(1, 1800 / Math.max(bmp.width, bmp.height));
@@ -521,10 +706,11 @@ export function mountHvacMon(root, { sb }) {
     const col = e.target.closest('[data-col]'); if (col) { const k = col.dataset.col; if (S.shut.has(k)) S.shut.delete(k); else S.shut.add(k); lsSet('hm_shut', JSON.stringify([...S.shut])); col.classList.toggle('shut', S.shut.has(k)); const card = col.closest('[data-card]'); if (card) card.classList.toggle('shut', S.shut.has(k)); return; }
     if (recentDrag(e)) return;
     const lr = e.target.closest('.lg'); if (lr && !e.target.closest('input,button')) return sensorInfo(lr.dataset.row);
-    const tl = e.target.closest('[data-tile]'); if (tl && !tl.dataset.tile.startsWith('dt:')) return sensorInfo(tl.dataset.tile);
+    const tl = e.target.closest('[data-tile]'); if (tl && !tl.dataset.tile.includes(':')) return sensorInfo(tl.dataset.tile);
     const eu = e.target.closest('[data-eunit]'); if (eu) return unitForm(eu.dataset.eunit);
     const ed = e.target.closest('[data-editsensor]'); if (ed) return sensorForm(ed.dataset.editsensor);
     if (e.target.closest('[data-addsensor]')) return sensorForm(null);
+    if (e.target.closest('[data-export]')) return exportForm();
     if (e.target.closest('[data-addsys]')) return systemForm(null);
     const es = e.target.closest('[data-editsys]'); if (es) return systemForm(es.dataset.editsys);
     const au = e.target.closest('[data-addunit]'); if (au) return unitForm(null, au.dataset.addunit);
