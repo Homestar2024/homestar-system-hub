@@ -1,4 +1,4 @@
-// Homestar HQ - HVAC Monitoring (v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
+// Homestar HQ - HVAC Monitoring (v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
 // graph of every sensor over time (temps on the left axis, watts on the right), 24 h / 7 d / 30 d / 1 y, legend with colour,
 // show/hide checkbox and editable names. Data: monitor_sites / monitor_sensors / monitor_series() (db/025). Until a house has
 // readings the dashboard shows clearly-labelled SAMPLE data so the layout can be judged.
@@ -86,7 +86,7 @@ h3.ch{margin:0;font-size:18px}
 .big{font-family:var(--display);font-size:34px;font-weight:700;margin:4px 0 10px}.big small{font-size:18px;color:var(--muted)}
 `;
 const RANGES = [{ k: '24h', label: '24 h', ms: 864e5, bucket: 300 }, { k: '7d', label: '7 days', ms: 7 * 864e5, bucket: 1800 }, { k: '30d', label: '30 days', ms: 30 * 864e5, bucket: 7200 }, { k: '1y', label: '1 year', ms: 365 * 864e5, bucket: 86400 }];
-const KIND = { supply: 'Supply air', return: 'Return air', outdoor: 'Outdoor', room: 'Room', power: 'Power (W)', fan_power: 'Fan power (W)', humidity: 'Humidity (%)', other: 'Other' };
+const KIND = { supply: 'Supply air', return: 'Return air', outdoor: 'Outdoor', room: 'Room', power: 'Power (W)', fan_power: 'Fan power (W)', aux_power: 'Aux heat power (W)', humidity: 'Humidity (%)', other: 'Other' };
 const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const isTemp = (s) => s.unit === 'C';
 const GRP = { equipment: 'Equipment', ambient: 'Ambient' };
@@ -99,11 +99,12 @@ const STYLE = { wall: 'Wall head', ducted: 'Ducted (concealed)', cassette: 'Cass
 const INDOOR_DEFAULT = { central_ducted: 'air_handler', single_zone: 'wall', multi_zone: 'wall', ducted_mini: 'ducted', air_to_water: 'hydronic', other: 'other' };
 const EVK = { service: ['🛠️', 'Service visit'], filter: ['🧽', 'Filter change'], setting: ['🎛️', 'Setting change'], repair: ['🔧', 'Repair'], install: ['📦', 'Install'], note: ['📝', 'Note'] };
 const EVC = { service: '#3e63dd', filter: '#30a46c', setting: '#f5a524', repair: '#e5484d', install: '#8e4ec6', note: '#8b8d98' };
-const UNIT_OF = (kind) => kind === 'power' || kind === 'fan_power' ? 'W' : kind === 'humidity' ? '%' : 'C';
+const UNIT_OF = (kind) => ['power', 'fan_power', 'aux_power'].includes(kind) ? 'W' : kind === 'humidity' ? '%' : 'C';
 const PALETTE = ['#e5484d', '#3e63dd', '#30a46c', '#f5a524', '#8e4ec6', '#12a594', '#d6409f', '#0090ff', '#ff8b3e', '#a18072'];
 const localInput = (t) => { const d = new Date(t); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); };
 const fmtDT = (t) => new Date(t).toLocaleString('en-CA', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
+const AUX_KW = Array.from({ length: 39 }, (_, i) => 1 + i * 0.5);
 const SPEED_NAMES = { 1: ['Fan'], 2: ['Low', 'High'], 3: ['Low', 'Medium', 'High'], 4: ['Quiet', 'Low', 'Medium', 'High'], 5: ['Quiet', 'Low', 'Medium', 'High', 'Powerful'] };
 const capPts = (u) => (u.fan_speeds || []).filter(p => +p.rated_cfm > 0 && +p.watts > 0).map(p => ({ w: +p.watts, c: +p.rated_cfm })).sort((a, b) => a.w - b.w);
 // fan law: CFM ~ RPM and W ~ RPM^3, so CFM ~ W^(1/3). Between two captured speeds interpolate CFM on the cube root of watts; beyond the ends scale from the nearest speed.
@@ -262,6 +263,7 @@ export function mountHvacMon(root, { sb }) {
     return { data: rows };
   }
   // ---- capacity: indoor units with monitoring on, a fan-power sensor, captured speeds and supply + return sensors
+  function auxUnits() { return S.units.filter(u => u.role === 'indoor' && u.aux_enabled && u.aux_sensor); }
   function capUnits() { return S.units.filter(u => u.role === 'indoor' && u.cap_enabled && u.fan_sensor && capPts(u).length && S.sensors.some(s => s.kind === 'supply' && s.unit_id === u.id) && S.sensors.some(s => s.kind === 'return' && s.unit_id === u.id)); }
   function derive(ser) {
     const out = {};
@@ -270,6 +272,10 @@ export function mountHvacMon(root, { sb }) {
       const cfm = [], btu = [];
       for (const [t, w] of (ser[u.fan_sensor] || [])) { const c = cfmAt(pts, w); cfm.push([t, c]); const a = holdAt(ser[sup.id], t), b = holdAt(ser[ret.id], t); if (c != null && a != null && b != null) btu.push([t, 1.08 * c * (a - b) * 1.8]); }
       out[u.id] = { cfm, btu };
+    }
+    for (const u of auxUnits()) {
+      const aux = (ser[u.aux_sensor] || []).map(p => [p[0], p[1]]); const o = out[u.id] || (out[u.id] = {}); o.aux = aux;
+      if (o.btu) { const am = new Map(aux); o.hp = o.btu.map(([t, v]) => [t, v - (am.get(t) || 0) * 3.412]); }
     }
     return out;
   }
@@ -297,6 +303,7 @@ export function mountHvacMon(root, { sb }) {
     const seen = new Set();
     S.sensors.filter(s => s.kind === 'supply').forEach(sup => { const ret = S.sensors.find(r => r.kind === 'return' && (r.unit_id || null) === (sup.unit_id || null)); const k = 'dt:' + (sup.unit_id || 'house'); if (ret && !seen.has(k)) { seen.add(k); items.push({ key: k, dt: [sup, ret], der: 1, grp: 'equipment' }); } });
     capUnits().forEach(u => { items.push({ key: 'cfm:' + u.id, cap: 'cfm', u, der: 1, grp: 'equipment' }); items.push({ key: 'btu:' + u.id, cap: 'btu', u, der: 1, grp: 'equipment' }); });
+    auxUnits().forEach(u => { items.push({ key: 'aux:' + u.id, cap: 'aux', u, der: 1, grp: 'equipment' }); if (capUnits().includes(u)) items.push({ key: 'hp:' + u.id, cap: 'hp', u, der: 1, grp: 'equipment' }); });
     const lay = S.site.tile_layout || {};
     items.forEach(it => { if (it.der) for (const g of Object.keys(GRP)) if ((lay[g] || []).includes(it.key)) it.grp = g; });
     const out = {}; for (const g of Object.keys(GRP)) { const order = lay[g] || []; const mine = items.filter(it => it.grp === g); const rank = (it) => { const i = order.indexOf(it.key); return i < 0 ? 1e6 + (it.der ? -1 : items.indexOf(it)) : i; }; out[g] = mine.sort((a, b) => rank(a) - rank(b)); }
@@ -306,6 +313,9 @@ export function mountHvacMon(root, { sb }) {
     const el = root.getElementById('tiles'); if (!el || !S.site) return;
     const tile = (it) => {
       if (it.cap) { const a = ((S.derived[it.u.id] || {})[it.cap] || []); const v = a.length ? a[a.length - 1][1] : null; const nm = esc(unitName(it.u));
+        if (it.cap === 'aux') { const kw = v == null ? null : v / 1000, rated = +it.u.aux_kw || 0, pct = kw > 0.3 && rated ? Math.round(100 * kw / rated) : null;
+          return `<div class="tile" data-tile="${it.key}" style="--c:var(--hot)"><b>${kw == null ? '–' : kw < 0.05 ? 'Off' : kw.toFixed(1) + ' kW'}</b>${pct != null ? `<em${pct < 80 ? ' style="color:var(--hot)"' : ''}>${pct}% of ${rated} kW</em>` : ''}<span>Aux heat · ${nm}</span></div>`; }
+        if (it.cap === 'hp') return `<div class="tile" data-tile="${it.key}" style="--c:var(--brand)"><b>${v == null ? '–' : Math.round(Math.abs(v)).toLocaleString('en-CA') + ' BTU/h'}</b><span>Heat pump only · ${nm}</span></div>`;
         return it.cap === 'cfm' ? `<div class="tile" data-tile="${it.key}" style="--c:var(--brand)"><b>${v == null ? '–' : Math.round(v) + ' CFM'}</b><span>Airflow · ${nm}</span></div>` : `<div class="tile" data-tile="${it.key}" style="--c:var(--brand)"><b>${v == null ? '–' : Math.round(Math.abs(v)).toLocaleString('en-CA') + ' BTU/h'}</b><span>${v == null || Math.abs(v) < 1 ? 'Sensible' : v > 0 ? 'Sensible heating' : 'Sensible cooling'} · ${nm}</span></div>`; }
       if (it.dt) { const [sup, ret] = it.dt; const a = last(sup.id), b = last(ret.id); const d = a && b ? a[1] - b[1] : null; const u = unitById(sup.unit_id); return `<div class="tile" data-tile="${it.key}" style="--c:var(--brand)"><b>${d == null ? '–' : (S.unit === 'F' ? d * 9 / 5 : d).toFixed(1) + tU()}</b><span>ΔT${u ? ' · ' + esc(unitName(u)) : ''}</span></div>`; }
       const s = it.s, l = last(s.id), h = S.rh[s.id] && last(S.rh[s.id].id);
@@ -340,7 +350,7 @@ export function mountHvacMon(root, { sb }) {
   }
   function drawEquipment() {
     const el = root.getElementById('eq'); if (!el) return;
-    const unitBtn = (u) => { const sub = [STYLE[u.style] && u.role !== 'outdoor' ? STYLE[u.style] : '', u.capacity].filter(Boolean).join(' · ');
+    const unitBtn = (u) => { const sub = [STYLE[u.style] && u.role !== 'outdoor' ? STYLE[u.style] : '', u.capacity, u.aux_enabled ? 'Aux ' + (+u.aux_kw || '?') + ' kW' : ''].filter(Boolean).join(' · ');
       return `<button class="unit ${u.role === 'outdoor' ? 'out' : 'in'}" data-eunit="${u.id}"><span class="ui">${u.role === 'outdoor' ? '🌀' : '❄️'}</span><span class="ut"><b>${esc(u.role === 'outdoor' ? 'Outdoor unit' : (u.location || 'Indoor unit'))}</b>${sub || u.model ? `<span>${esc([u.model, sub].filter(Boolean).join(' · '))}</span>` : ''}</span><span class="chev muted">›</span></button>`; };
     el.innerHTML = `<div class="head">${colh('eq', 'Equipment', 'h3', 'ch')}<button class="chip" data-addsys>+ System</button></div><div class="cb">
       ${S.systems.map(sy => { const us = S.units.filter(u => u.system_id === sy.id); return `<div class="sys"><div class="sysh"><b>${esc(sy.name || SYSTYPE[sy.type] || 'System')}</b><span class="badge">${esc(SYSTYPE[sy.type] || sy.type)}</span><button class="ed" data-editsys="${sy.id}">✎</button></div>
@@ -507,11 +517,18 @@ export function mountHvacMon(root, { sb }) {
       <label class="f">Serial number<input data-f="serial" value="${esc(v.serial)}" autocapitalize="characters"></label>
       <label class="f">Installed<input data-f="installed" value="${esc(v.installed)}" placeholder="e.g. 2024-05-14"></label>
       <label class="f">Notes<textarea data-f="notes">${esc(v.notes)}</textarea></label>
+      ${u ? (() => { const wl = S.all.filter(x => x.unit === 'W'); const opt = (sel) => `<option value="">Not monitored</option>` + wl.map(x => `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${esc(x.label)}${x.provider === 'shelly' ? ' · ' + (x.channel === 'em1:1' ? 'ch 2' : 'ch 1') : ''}${x.external_id ? '' : ' (not connected)'}</option>`).join('');
+        const odSel = (S.all.find(x => x.kind === 'power' && x.unit_id === u.id) || {}).id;
+        return `<div class="tgh">Power monitoring</div>${u.role === 'outdoor' ? `<label class="f">Outdoor unit power<select data-pw="power">${opt(odSel)}</select></label>` : `
+          <label class="f">Fan / blower power<select data-fan>${opt(u.fan_sensor)}</select></label>
+          <label class="tog"><input type="checkbox" data-aux ${u.aux_enabled ? 'checked' : ''}>Auxiliary heat (electric strips)</label>
+          <div data-auxbody ${u.aux_enabled ? '' : 'hidden'}><div class="two"><label class="f">Rated size<select data-auxkw><option value="">kW…</option>${AUX_KW.map(k => `<option value="${k}" ${+u.aux_kw === k ? 'selected' : ''}>${k} kW</option>`).join('')}</select></label>
+          <label class="f">Aux heat power<select data-auxs>${opt(u.aux_sensor)}</select></label></div></div>`}
+          ${wl.length ? '' : '<div class="muted small">Add the Shelly channels as sensors first (Power, Fan power or Aux heat power).</div>'}`; })() : ''}
       ${u && u.role === 'indoor' ? `<div class="tgh">Capacity monitoring</div>
         <label class="tog"><input type="checkbox" data-cap ${u.cap_enabled ? 'checked' : ''}>Airflow &amp; capacity</label>
         <div data-capbody ${u.cap_enabled ? '' : 'hidden'}>
-          <label class="f">Fan power sensor<select data-fan><option value="">Pick the head's fan channel…</option>${S.all.filter(x => x.kind === 'fan_power').map(x => `<option value="${x.id}" ${x.id === u.fan_sensor ? 'selected' : ''}>${esc(x.label)}${x.external_id ? '' : ' (not connected)'}</option>`).join('')}</select></label>
-          ${S.all.some(x => x.kind === 'fan_power') ? '' : '<div class="muted small">Add a sensor measuring Fan power (W) first.</div>'}
+          <div class="muted small">Uses the fan / blower power channel above.</div>
           <label class="f">Fan speeds<select data-nsp>${[1, 2, 3, 4, 5, 6, 7].map(n => `<option ${n === ((u.fan_speeds || []).length || 4) ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
           <div data-speeds></div><div data-capbox></div>
         </div>` : ''}
@@ -550,6 +567,7 @@ export function mountHvacMon(root, { sb }) {
     drawPh();
     modal.onchange = async (e) => {
       const cb = e.target.closest('[data-cap]'); if (cb) { modal.querySelector('[data-capbody]').hidden = !cb.checked; return; }
+      const ax = e.target.closest('[data-aux]'); if (ax) { modal.querySelector('[data-auxbody]').hidden = !ax.checked; return; }
       const ns = e.target.closest('[data-nsp]'); if (ns) { const n = +ns.value, nm = names(n); speeds = Array.from({ length: n }, (_, i) => speeds[i] || { name: nm[i], rated_cfm: '', watts: null }); if (n === speeds.length) speeds.forEach((p, i) => { if (!p.watts && !p.rated_cfm) p.name = nm[i]; }); drawSpeeds(); return; }
       const f = e.target.closest('[data-fill]'); if (f && f.value !== '') { const q = onFile[+f.value]; const set = (k, x) => { const i = modal.querySelector(`[data-f="${k}"]`); if (i && x) i.value = x; }; set('make', q.make); set('model', q.model); set('serial', q.serial); set('capacity', q.size); set('installed', q.installed); return; }
       const p = e.target.closest('[data-photo]'); if (p && p.files && p.files[0]) {
@@ -569,9 +587,17 @@ export function mountHvacMon(root, { sb }) {
       if (e.target.closest('[data-rm]')) { if (!confirm('Delete this unit? Sensors on it stay, unattached.')) return; const { error } = await sb.from('monitor_units').delete().eq('id', u.id); if (error) return errOut(error.message); closeModal(); await reloadMeta(); drawEquipment(); return drawLegend(); }
       if (!e.target.closest('[data-save]')) return;
       const row = vals();
-      const capEl = modal.querySelector('[data-cap]');
-      if (u && capEl) { row.cap_enabled = capEl.checked; row.fan_sensor = modal.querySelector('[data-fan]').value || null; row.fan_speeds = speeds.map(p => ({ ...p, name: (p.name || '').trim() || 'Speed', rated_cfm: p.rated_cfm === '' ? null : +p.rated_cfm }));
-        if (row.cap_enabled && row.fan_sensor) { const f = S.all.find(x => x.id === row.fan_sensor); if (f && f.unit_id !== u.id) await sb.from('monitor_sensors').update({ unit_id: u.id }).eq('id', f.id); } }
+      const capEl = modal.querySelector('[data-cap]'), fanEl = modal.querySelector('[data-fan]'), auxEl = modal.querySelector('[data-aux]'), pwEl = modal.querySelector('[data-pw]');
+      const mapSensor = async (id, kind) => { const f = id && S.all.find(x => x.id === id); if (f && (f.unit_id !== u.id || f.kind !== kind)) { const r = await sb.from('monitor_sensors').update({ unit_id: u.id, kind, unit: 'W', grp: 'equipment' }).eq('id', f.id); if (r.error) throw r.error; } };
+      try {
+        if (u && fanEl) { row.fan_sensor = fanEl.value || null; await mapSensor(row.fan_sensor, 'fan_power'); }
+        if (u && capEl) { row.cap_enabled = capEl.checked; row.fan_speeds = speeds.map(p => ({ ...p, name: (p.name || '').trim() || 'Speed', rated_cfm: p.rated_cfm === '' ? null : +p.rated_cfm })); }
+        if (u && auxEl) { row.aux_enabled = auxEl.checked; row.aux_kw = modal.querySelector('[data-auxkw]').value ? +modal.querySelector('[data-auxkw]').value : null; row.aux_sensor = modal.querySelector('[data-auxs]').value || null;
+          if (row.aux_enabled && !row.aux_kw) return errOut('Pick the aux heat size (kW).');
+          if (row.aux_enabled && row.aux_sensor && row.aux_sensor === row.fan_sensor) return errOut('Fan and aux heat need different power channels.');
+          if (row.aux_enabled) await mapSensor(row.aux_sensor, 'aux_power'); }
+        if (u && pwEl && pwEl.value) await mapSensor(pwEl.value, 'power');
+      } catch (x) { return errOut(x.message || String(x)); }
       if (u) { const { error } = await sb.from('monitor_units').update(row).eq('id', u.id); if (error) return errOut(error.message); }
       else { row.system_id = sy.id; row.sort = S.units.filter(x => x.system_id === sy.id).length + 1; const { error } = await sb.from('monitor_units').insert(row); if (error) return errOut(error.message); }
       closeModal(); await reloadMeta(); S.derived = derive(S.series); drawEquipment(); drawLegend(); drawTiles(); drawEvents();
@@ -617,7 +643,8 @@ export function mountHvacMon(root, { sb }) {
       cols.push({ h: 'ΔT ' + (u ? unitName(u) + ' ' : '') + '(' + tU() + ')', f: t => { const a = holdAt(ser[sup.id], t), b = holdAt(ser[ret.id], t); return a == null || b == null ? '' : dec((a - b) * (S.unit === 'F' ? 1.8 : 1), 1); } }); }
     const der = derive(ser);
     for (const u of capUnits()) { const m1 = new Map(der[u.id].cfm), m2 = new Map(der[u.id].btu); const nm = unitName(u);
-      cols.push({ h: 'Airflow ' + nm + ' (CFM)', f: t => dec(m1.get(t), 0) }); cols.push({ h: 'Sensible ' + nm + ' (BTU/h, + heating / - cooling)', f: t => dec(m2.get(t), 0) }); }
+      cols.push({ h: 'Airflow ' + nm + ' (CFM)', f: t => dec(m1.get(t), 0) }); cols.push({ h: 'Sensible ' + nm + ' (BTU/h, + heating / - cooling)', f: t => dec(m2.get(t), 0) });
+      if (der[u.id].hp) { const m3 = new Map(der[u.id].hp); cols.push({ h: 'Heat pump only ' + nm + ' (BTU/h)', f: t => dec(m3.get(t), 0) }); } }
     cols.push({ h: 'Events', f: t => S.events.filter(ev => { const x = Date.parse(ev.ts); return x >= t && x < t + step * 1000; }).map(ev => ev.title || (EVK[ev.kind] || EVK.note)[1]).join('; ') });
     return cols;
   }
@@ -662,6 +689,8 @@ export function mountHvacMon(root, { sb }) {
       <h2>Readings</h2>${svg}
       <table><tr><th>Sensor</th><th>Min</th><th>Average</th><th>Max</th><th></th></tr>${rows}</table>
       ${cap ? `<h2>Airflow &amp; capacity (sensible)</h2><table><tr><th>Indoor unit</th><th>Avg airflow running</th><th>Avg heating</th><th>Peak heating</th><th></th></tr>${cap}</table><div class="sub" style="margin-top:6px">Airflow from fan watts mapped to rated CFM per fan speed (fan law). Sensible capacity = 1.08 × CFM × ΔT.</div>` : ''}
+      ${auxUnits().length ? `<h2>Auxiliary heat</h2><table><tr><th>Indoor unit</th><th>Rated</th><th>Energy</th><th>Running</th><th>Avg when on</th></tr>${auxUnits().map(u => { const a = (der[u.id] && der[u.id].aux || []).map(p => p[1]); const on = a.filter(v => v > 300); const kwh = a.reduce((x, v) => x + v, 0) * step / 3600 / 1000; const avgOn = on.length ? on.reduce((x, v) => x + v, 0) / on.length / 1000 : null;
+        return `<tr><td>${esc(unitName(u))}</td><td>${f1(+u.aux_kw, 1)} kW</td><td>≈ ${f1(kwh, 1)} kWh</td><td>${a.length ? f1(100 * on.length / a.length, 0) : '–'}% of the time</td><td>${avgOn == null ? '–' : f1(avgOn, 1) + ' kW' + (u.aux_kw && avgOn < 0.8 * u.aux_kw ? ' (below rating - check elements)' : '')}</td></tr>`; }).join('')}</table>` : ''}
       ${evs.length ? `<h2>Events</h2><table>${evs.map(ev => `<tr><td style="width:170px">${esc(fmtDT(ev.ts))}</td><td><b>${esc(ev.title || (EVK[ev.kind] || EVK.note)[1])}</b>${ev.note ? '<br>' + esc(ev.note) : ''}</td></tr>`).join('')}</table>` : ''}
       <div class="sub" style="margin-top:18px">Generated ${esc(fmtDT(Date.now()))} · readings averaged every ${step >= 3600 ? step / 3600 + ' h' : step / 60 + ' min'} for this report.</div></body></html>`); w.document.close();
   }
