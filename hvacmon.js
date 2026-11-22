@@ -1,4 +1,4 @@
-// Homestar HQ - HVAC Monitoring (v20 2026-11-22: zoom anchor fix; v19 2026-11-22: round clock-time x labels up to 2 days; v18 2026-11-22: zoom the graph - pinch or double-tap (ctrl/trackpad-pinch + double-click on desktop), arrows to slide, Reset; zoomed data loads at up to 1-minute detail; v17 2026-11-22: always live while a dashboard is on screen, Live button removed; v16 2026-11-22: Live on by default, no time limit; v15 2026-11-22: Live button - Shelly watts every 5 s, YoLink latest report every 15 s, auto-off after 30 min; v14 2026-11-22: live tiles - latest reading every 15 s, refresh when the app comes back to the screen, 'Latest reading' time; v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
+// Homestar HQ - HVAC Monitoring (v21 2026-11-22: one-finger slide along the timeline, pinch zoom follows the fingers, double-tap removed (desktop double-click kept), zoomed loads pad half a window each side; v20 2026-11-22: zoom anchor fix; v19 2026-11-22: round clock-time x labels up to 2 days; v18 2026-11-22: zoom the graph - pinch or double-tap (ctrl/trackpad-pinch + double-click on desktop), arrows to slide, Reset; zoomed data loads at up to 1-minute detail; v17 2026-11-22: always live while a dashboard is on screen, Live button removed; v16 2026-11-22: Live on by default, no time limit; v15 2026-11-22: Live button - Shelly watts every 5 s, YoLink latest report every 15 s, auto-off after 30 min; v14 2026-11-22: live tiles - latest reading every 15 s, refresh when the app comes back to the screen, 'Latest reading' time; v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
 // graph of every sensor over time (temps on the left axis, watts on the right), 24 h / 7 d / 30 d / 1 y, legend with colour,
 // show/hide checkbox and editable names. Data: monitor_sites / monitor_sensors / monitor_series() (db/025). Until a house has
 // readings the dashboard shows clearly-labelled SAMPLE data so the layout can be judged.
@@ -252,7 +252,8 @@ export function mountHvacMon(root, { sb }) {
   async function load() {
     const R = RANGES.find(r => r.k === S.range) || RANGES[0]; let to = Date.now(), from = to - R.ms, bucket = R.bucket;
     if (S.zoom) { if (S.zoom.now) { const sp = S.zoom.to - S.zoom.from; S.zoom.to = to; S.zoom.from = to - sp; } from = S.zoom.from; to = S.zoom.to; bucket = bucketFor(to - from); }
-    const { data, error } = await seriesAll(from, to, bucket);
+    const pad = S.zoom ? (to - from) / 2 : 0;
+    const { data, error } = await seriesAll(from - pad, Math.min(Date.now(), to + pad), bucket);
     const ser = {}; (data || []).forEach(r => (ser[r.sensor_id] = ser[r.sensor_id] || []).push([Date.parse(r.t), Number(r.v)]));
     S.sample = !error && !(data || []).length; S.err = error ? error.message : '';
     S.series = S.sample ? sampleSeries(from, to, bucket) : ser; S.from = from; S.to = to; S.bucket = bucket;
@@ -271,30 +272,41 @@ export function mountHvacMon(root, { sb }) {
   }
   function zoomBar() {
     const zb = root.getElementById('zb'); if (!zb) return;
-    if (!S.zoom) { zb.innerHTML = '<span class="muted small" style="flex:1;text-align:center">Pinch or double-tap the graph to zoom</span>'; return; }
+    if (!S.zoom) { zb.innerHTML = '<span class="muted small" style="flex:1;text-align:center">Pinch to zoom · slide a finger to move along the timeline</span>'; return; }
     const f = (t) => new Date(t).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     const same = new Date(S.zoom.from).toDateString() === new Date(S.zoom.to).toDateString();
     zb.innerHTML = `<button class="chip" data-zpan="-1" aria-label="Earlier">◀</button><span class="zt">${esc(f(S.zoom.from))} – ${esc(same ? new Date(S.zoom.to).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' }) : f(S.zoom.to))}</span><button class="chip" data-zpan="1" aria-label="Later" ${S.zoom.now ? 'disabled style="opacity:.4"' : ''}>▶</button><button class="chip" data-zreset>Reset</button>`;
   }
   function wireZoom(box) {
-    const pts = new Map(); let pinch = null, lastTap = 0, lastX = 0, raf = 0;
-    const tAt = (cx) => { const svg = box.querySelector('svg'); if (!svg) return null; const r = svg.getBoundingClientRect(), W = +svg.viewBox.baseVal.width, L = 44, Rr = 50; const px = (cx - r.left) * W / r.width; return S.from + Math.min(1, Math.max(0, (px - L) / (W - L - Rr))) * (S.to - S.from); };
+    // touch: pinch to zoom, one finger slides left/right along the timeline, a tap shows the readout; desktop: drag, double-click, ctrl/trackpad pinch
+    const pts = new Map(); let pinch = null, drag = null, raf = 0;
+    const geo = () => { const svg = box.querySelector('svg'); if (!svg) return null; const r = svg.getBoundingClientRect(), W = +svg.viewBox.baseVal.width, L = 44, Rr = 50; return { x0: r.left + L * r.width / W, w: (W - L - Rr) * r.width / W }; };
+    const frac = (cx) => { const g = geo(); return g ? Math.min(1, Math.max(0, (cx - g.x0) / g.w)) : 0.5; };
+    const tAt = (cx) => S.from + frac(cx) * (S.to - S.from);
     const zoomAt = (t, k) => { const a = t - (t - S.from) / k, b = t + (S.to - t) / k; setZoom(a, b); };
+    const redraw = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; drawChart(); }); };
+    const busy = (on) => { if (on) { box.dataset.pinch = '1'; const tip = box.querySelector('#tip'); if (tip) tip.hidden = true; } else delete box.dataset.pinch; };
     box.addEventListener('pointerdown', (e) => {
       pts.set(e.pointerId, e.clientX);
-      if (pts.size === 2) { const [x1, x2] = [...pts.values()]; pinch = { d: Math.abs(x1 - x2) || 1, from: S.from, to: S.to, t: tAt((x1 + x2) / 2) }; box.dataset.pinch = '1'; const tip = box.querySelector('#tip'); if (tip) tip.hidden = true; return; }
-      if (e.pointerType !== 'mouse') { const now = Date.now(); if (now - lastTap < 320 && Math.abs(e.clientX - lastX) < 40) { lastTap = 0; const t = tAt(e.clientX); if (t != null) zoomAt(t, 3); } else { lastTap = now; lastX = e.clientX; } }
+      if (pts.size === 2) { drag = null; const [x1, x2] = [...pts.values()]; pinch = { d: Math.abs(x1 - x2) || 1, span: S.to - S.from, t: tAt((x1 + x2) / 2) }; busy(true); return; }
+      if (pts.size === 1) { drag = { x: e.clientX, from: S.from, to: S.to, moved: false }; if (e.pointerType === 'mouse') try { box.setPointerCapture(e.pointerId); } catch (x) {} }
     });
     box.addEventListener('pointermove', (e) => {
-      if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, e.clientX); if (!pinch || pts.size < 2) return;
-      const [x1, x2] = [...pts.values()]; const k = Math.max(0.2, Math.min(20, (Math.abs(x1 - x2) || 1) / pinch.d));
-      S.from = pinch.t - (pinch.t - pinch.from) / k; S.to = pinch.t + (pinch.to - pinch.t) / k;
-      if (!raf) raf = requestAnimationFrame(() => { raf = 0; drawChart(); });
+      if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, e.clientX);
+      if (pinch && pts.size >= 2) { const [x1, x2] = [...pts.values()]; const k = Math.max(0.05, Math.min(50, (Math.abs(x1 - x2) || 1) / pinch.d)); const sp = pinch.span / k, f = frac((x1 + x2) / 2); S.from = pinch.t - f * sp; S.to = S.from + sp; return redraw(); }
+      if (!drag) return; const dx = e.clientX - drag.x; if (!drag.moved && Math.abs(dx) < 8) return;
+      if (!drag.moved) { drag.moved = true; busy(true); }
+      const g = geo(); if (!g) return; let dt = -dx / g.w * (drag.to - drag.from); const now = Date.now(); if (drag.to + dt > now) dt = now - drag.to;
+      S.from = drag.from + dt; S.to = drag.to + dt; redraw();
     });
-    const up = (e) => { pts.delete(e.pointerId); if (pinch && pts.size < 2) { pinch = null; delete box.dataset.pinch; lastTap = 0; setZoom(S.from, S.to); } };
+    const up = (e) => {
+      pts.delete(e.pointerId);
+      if (pinch && pts.size < 2) { pinch = null; busy(false); drag = null; setZoom(S.from, S.to); return; }
+      if (drag && pts.size === 0) { const moved = drag.moved; drag = null; busy(false); if (moved) setZoom(S.from, S.to); }
+    };
     box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
-    box.addEventListener('dblclick', (e) => { const t = tAt(e.clientX); if (t != null) zoomAt(t, 3); });
-    box.addEventListener('wheel', (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); const t = tAt(e.clientX); if (t != null) zoomAt(t, e.deltaY < 0 ? 1.5 : 1 / 1.5); }, { passive: false });
+    box.addEventListener('dblclick', (e) => zoomAt(tAt(e.clientX), 3));
+    box.addEventListener('wheel', (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); zoomAt(tAt(e.clientX), e.deltaY < 0 ? 1.5 : 1 / 1.5); }, { passive: false });
   }
   // every row of monitor_series for a window (the API returns 1000 rows per call)
   async function seriesAll(from, to, bucket) {
