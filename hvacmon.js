@@ -1,4 +1,4 @@
-// Homestar HQ - HVAC Monitoring (v22 2026-11-22: gesture freeze fix - pointers captured on the chart box (svg is rebuilt each frame), stale fingers cleared, background reloads paused mid-gesture and late loads dropped, empty zoomed window no longer flips to sample data; v21 2026-11-22: one-finger slide along the timeline, pinch zoom follows the fingers, double-tap removed (desktop double-click kept), zoomed loads pad half a window each side; v20 2026-11-22: zoom anchor fix; v19 2026-11-22: round clock-time x labels up to 2 days; v18 2026-11-22: zoom the graph - pinch or double-tap (ctrl/trackpad-pinch + double-click on desktop), arrows to slide, Reset; zoomed data loads at up to 1-minute detail; v17 2026-11-22: always live while a dashboard is on screen, Live button removed; v16 2026-11-22: Live on by default, no time limit; v15 2026-11-22: Live button - Shelly watts every 5 s, YoLink latest report every 15 s, auto-off after 30 min; v14 2026-11-22: live tiles - latest reading every 15 s, refresh when the app comes back to the screen, 'Latest reading' time; v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
+// Homestar HQ - HVAC Monitoring (v23 2026-11-22: °F and W axes side by side on the left, live value of every line on the right in its colour; 1 finger = white scrub line with readings (no pop-up box), 2 fingers = pinch zoom + slide timeline; v22 2026-11-22: gesture freeze fix - pointers captured on the chart box (svg is rebuilt each frame), stale fingers cleared, background reloads paused mid-gesture and late loads dropped, empty zoomed window no longer flips to sample data; v21 2026-11-22: one-finger slide along the timeline, pinch zoom follows the fingers, double-tap removed (desktop double-click kept), zoomed loads pad half a window each side; v20 2026-11-22: zoom anchor fix; v19 2026-11-22: round clock-time x labels up to 2 days; v18 2026-11-22: zoom the graph - pinch or double-tap (ctrl/trackpad-pinch + double-click on desktop), arrows to slide, Reset; zoomed data loads at up to 1-minute detail; v17 2026-11-22: always live while a dashboard is on screen, Live button removed; v16 2026-11-22: Live on by default, no time limit; v15 2026-11-22: Live button - Shelly watts every 5 s, YoLink latest report every 15 s, auto-off after 30 min; v14 2026-11-22: live tiles - latest reading every 15 s, refresh when the app comes back to the screen, 'Latest reading' time; v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
 // graph of every sensor over time (temps on the left axis, watts on the right), 24 h / 7 d / 30 d / 1 y, legend with colour,
 // show/hide checkbox and editable names. Data: monitor_sites / monitor_sensors / monitor_series() (db/025). Until a house has
 // readings the dashboard shows clearly-labelled SAMPLE data so the layout can be judged.
@@ -28,7 +28,7 @@ a.back{color:var(--brand);text-decoration:none;font-weight:600;display:inline-bl
 .lgg{display:flex;flex-direction:column;gap:6px}
 .tile{background:var(--sunk);border-radius:10px;padding:9px 11px;border-left:4px solid var(--c,var(--line));min-width:0}
 .tile b{display:block;font-family:var(--display);font-size:22px}.tile span{font-size:12.5px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chartbox{position:relative;margin-top:12px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.chartbox{position:relative;margin-top:12px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .zbar{display:flex;align-items:center;gap:6px;margin-top:8px;min-height:30px}.zbar .zt{flex:1;text-align:center;font-size:13px;font-weight:700}.zbar .chip{min-height:32px;padding:5px 11px}
 svg{display:block;width:100%;height:auto;user-select:none}
 .ax{font-size:11px;fill:var(--muted)}
@@ -274,42 +274,48 @@ export function mountHvacMon(root, { sb }) {
   }
   function zoomBar() {
     const zb = root.getElementById('zb'); if (!zb) return;
-    if (!S.zoom) { zb.innerHTML = '<span class="muted small" style="flex:1;text-align:center">Pinch to zoom · slide a finger to move along the timeline</span>'; return; }
+    if (!S.zoom) { zb.innerHTML = '<span class="muted small" style="flex:1;text-align:center">Pinch to zoom · 2 fingers slide the timeline · hold 1 finger for readings</span>'; return; }
     const f = (t) => new Date(t).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     const same = new Date(S.zoom.from).toDateString() === new Date(S.zoom.to).toDateString();
     zb.innerHTML = `<button class="chip" data-zpan="-1" aria-label="Earlier">◀</button><span class="zt">${esc(f(S.zoom.from))} – ${esc(same ? new Date(S.zoom.to).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' }) : f(S.zoom.to))}</span><button class="chip" data-zpan="1" aria-label="Later" ${S.zoom.now ? 'disabled style="opacity:.4"' : ''}>▶</button><button class="chip" data-zreset>Reset</button>`;
   }
   function wireZoom(box) {
-    // touch: pinch to zoom, one finger slides left/right along the timeline, a tap shows the readout; desktop: drag, double-click, ctrl/trackpad pinch
+    // touch: 2 fingers pinch = zoom, 2 fingers slide = move along the timeline; 1 finger press/hold = white scrub line with every reading, slide to move it
+    // mouse: hover = scrub line, drag = move along the timeline, double-click / ctrl+wheel (trackpad pinch) = zoom
     const pts = new Map(); let pinch = null, drag = null, raf = 0;
-    const geo = () => { const svg = box.querySelector('svg'); if (!svg) return null; const r = svg.getBoundingClientRect(), W = +svg.viewBox.baseVal.width, L = 44, Rr = 50; return { x0: r.left + L * r.width / W, w: (W - L - Rr) * r.width / W }; };
+    const geo = () => { const svg = box.querySelector('svg'), g = box._g; if (!svg || !g) return null; const r = svg.getBoundingClientRect(), k = r.width / g.W; return { x0: r.left + g.L * k, x1: r.left + (g.W - g.Rr) * k, w: (g.W - g.L - g.Rr) * k }; };
     const frac = (cx) => { const g = geo(); return g ? Math.min(1, Math.max(0, (cx - g.x0) / g.w)) : 0.5; };
     const tAt = (cx) => S.from + frac(cx) * (S.to - S.from);
     const zoomAt = (t, k) => { const a = t - (t - S.from) / k, b = t + (S.to - t) / k; setZoom(a, b); };
     const redraw = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; drawChart(); }); };
-    const busy = (on) => { S.gesture = on; if (on) { box.dataset.pinch = '1'; const tip = box.querySelector('#tip'); if (tip) tip.hidden = true; } else delete box.dataset.pinch; };
-    const reset = () => { pts.clear(); pinch = null; drag = null; if (S.gesture) { busy(false); setZoom(S.from, S.to); } };
+    const scrub = (cx) => { box._scrub = cx == null ? null : tAt(cx); if (box._ov) box._ov(box._scrub); };
+    const busy = (on) => { S.gesture = on; if (on) box.dataset.pinch = '1'; else delete box.dataset.pinch; };
+    const reset = () => { pts.clear(); drag = null; scrub(null); if (pinch) { pinch = null; busy(false); setZoom(S.from, S.to); } };
     box.addEventListener('pointerdown', (e) => {
       if (e.isPrimary || pts.size >= 2) { pts.clear(); pinch = null; drag = null; }   // a finger whose 'up' got lost never sticks around
       pts.set(e.pointerId, e.clientX); try { box.setPointerCapture(e.pointerId); } catch (x) {}
-      if (pts.size === 2) { drag = null; const [x1, x2] = [...pts.values()]; pinch = { d: Math.abs(x1 - x2) || 1, span: S.to - S.from, t: tAt((x1 + x2) / 2) }; busy(true); return; }
-      if (pts.size === 1) drag = { x: e.clientX, from: S.from, to: S.to, moved: false };
+      if (pts.size === 2) { scrub(null); drag = null; const [x1, x2] = [...pts.values()]; pinch = { d: Math.abs(x1 - x2) || 1, span: S.to - S.from, t: tAt((x1 + x2) / 2) }; busy(true); return; }
+      if (e.pointerType === 'mouse') drag = { x: e.clientX, from: S.from, to: S.to, moved: false };
+      else scrub(e.clientX);
     });
     box.addEventListener('pointermove', (e) => {
-      if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, e.clientX);
-      if (pinch && pts.size >= 2) { const [x1, x2] = [...pts.values()]; const k = Math.max(0.05, Math.min(50, (Math.abs(x1 - x2) || 1) / pinch.d)); const sp = pinch.span / k, f = frac((x1 + x2) / 2); S.from = pinch.t - f * sp; S.to = S.from + sp; return redraw(); }
-      if (!drag) return; const dx = e.clientX - drag.x; if (!drag.moved && Math.abs(dx) < 8) return;
-      if (!drag.moved) { drag.moved = true; busy(true); }
-      const g = geo(); if (!g) return; let dt = -dx / g.w * (drag.to - drag.from); const now = Date.now(); if (drag.to + dt > now) dt = now - drag.to;
-      S.from = drag.from + dt; S.to = drag.to + dt; redraw();
+      if (!pts.has(e.pointerId)) { if (e.pointerType === 'mouse' && !pts.size) { const g = geo(); scrub(g && e.clientX >= g.x0 && e.clientX <= g.x1 ? e.clientX : null); } return; }
+      pts.set(e.pointerId, e.clientX);
+      if (pinch && pts.size >= 2) { const [x1, x2] = [...pts.values()]; const k = Math.max(0.05, Math.min(50, (Math.abs(x1 - x2) || 1) / pinch.d)); const sp = pinch.span / k, f = frac((x1 + x2) / 2); S.from = pinch.t - f * sp; S.to = S.from + sp; const now = Date.now(); if (S.to > now) { S.from -= S.to - now; S.to = now; } return redraw(); }
+      if (drag) { const dx = e.clientX - drag.x; if (!drag.moved && Math.abs(dx) < 6) return; if (!drag.moved) { drag.moved = true; busy(true); scrub(null); }
+        const g = geo(); if (!g) return; let dt = -dx / g.w * (drag.to - drag.from); const now = Date.now(); if (drag.to + dt > now) dt = now - drag.to; S.from = drag.from + dt; S.to = drag.to + dt; return redraw(); }
+      if (e.pointerType !== 'mouse') scrub(e.clientX);
     });
     const up = (e) => {
       pts.delete(e.pointerId);
-      if (pinch && pts.size < 2) { pinch = null; busy(false); drag = null; setZoom(S.from, S.to); return; }
-      if (drag && pts.size === 0) { const moved = drag.moved; drag = null; busy(false); if (moved) setZoom(S.from, S.to); }
+      if (pinch && pts.size < 2) { pinch = null; busy(false); pts.clear(); setZoom(S.from, S.to); return; }
+      if (drag && !pts.size) { const moved = drag.moved; drag = null; busy(false); if (moved) setZoom(S.from, S.to); return; }
+      if (!pts.size && e.pointerType !== 'mouse') scrub(null);
     };
     box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); box.addEventListener('lostpointercapture', (e) => { if (pts.has(e.pointerId)) up(e); });
-    // iPhone: stop Safari zooming the whole page when two fingers land on the graph
+    box.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && !pts.size) scrub(null); });
+    box.addEventListener('contextmenu', (e) => e.preventDefault());   // long-press must not open a menu
+    // iPhone: stop Safari zooming/scrolling the page while fingers work the graph
     box.addEventListener('touchmove', (e) => { if (e.touches.length > 1 || S.gesture) e.preventDefault(); }, { passive: false });
     ['gesturestart', 'gesturechange'].forEach(t => box.addEventListener(t, (e) => e.preventDefault()));
     window.addEventListener('blur', reset); document.addEventListener('visibilitychange', () => { if (document.hidden) reset(); });
@@ -416,6 +422,7 @@ export function mountHvacMon(root, { sb }) {
     const by = tileItems();
     el.innerHTML = Object.keys(GRP).map(g => `${colh('t-' + g, GRP[g])}<div class="tiles" data-grp="${g}">${by[g].map(tile).join('')}</div>`).join('');
     bindDrag(el, '.tile', '.tiles', saveTiles);
+    const cbx = root.getElementById('cb'); if (cbx && cbx._ov && cbx._scrub == null) cbx._ov(null);
   }
   async function saveTiles(moved, toGrp) {
     const lay = {}; root.querySelectorAll('#tiles .tiles').forEach(g => { lay[g.dataset.grp] = [...g.querySelectorAll('.tile')].map(t => t.dataset.tile); });
@@ -602,17 +609,19 @@ export function mountHvacMon(root, { sb }) {
   function niceStep(span, n) { const raw = span / n; const p = Math.pow(10, Math.floor(Math.log10(raw))); const f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
   function drawChart(boxArg, width) {
     const box = boxArg || root.getElementById('cb'); if (!box) return;
-    const W = width || Math.max(320, box.clientWidth || 600), H = W < 500 ? 310 : 390, L = 44, Rr = 50, T = 26, B = 30;
+    // left: °F column then Watts column side by side; right: each line's current value in its own colour (or the values under the scrub line)
+    const W = width || Math.max(320, box.clientWidth || 600), H = W < 500 ? 310 : 390, T = 26, B = 30;
     const vis = S.sensors.filter(s => !S.hidden.has(s.id) && (S.series[s.id] || []).length);
     const temps = vis.filter(isTemp), pw = vis.filter(s => !isTemp(s));
+    const LT = 30, L = pw.length ? 66 : 36, Rr = width ? 12 : 48;
     const rng = (arr, f) => { let lo = Infinity, hi = -Infinity; arr.forEach(s => S.series[s.id].forEach(p => { const v = f(p[1]); if (v < lo) lo = v; if (v > hi) hi = v; })); return lo === Infinity ? [0, 1] : lo === hi ? [lo - 1, hi + 1] : [lo, hi]; };
     let [tl, th] = rng(temps, cv); const ts = niceStep(th - tl, 5); tl = Math.floor(tl / ts) * ts; th = Math.ceil(th / ts) * ts;
-    let [pl, ph] = rng(pw, v => v); pl = Math.min(0, pl); const ps = niceStep(ph - pl, 5); ph = Math.ceil(ph / ps) * ps || 1;
+    let [pl, ph] = rng(pw, v => v); pl = Math.min(0, pl); const ps = niceStep(ph - pl, 5) || 1; ph = Math.ceil(ph / ps) * ps || 1;
     const x = (t) => L + (t - S.from) / (S.to - S.from) * (W - L - Rr), yT = (v) => T + (1 - (v - tl) / (th - tl || 1)) * (H - T - B), yP = (v) => T + (1 - (v - pl) / (ph - pl || 1)) * (H - T - B);
     const span = S.to - S.from; const fmtX = (t) => { const d = new Date(t); return span <= 6 * 36e5 ? d.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' }) : span <= 2 * 864e5 ? d.toLocaleTimeString('en-CA', { hour: 'numeric' }) : span > 120 * 864e5 ? d.toLocaleDateString('en-CA', { month: 'short' }) : d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }); };
     const nx = W < 500 ? 4 : 7; let grid = '', axes = '';
-    for (let v = tl; v <= th + 1e-9; v += ts) { grid += `<line x1="${L}" x2="${W - Rr}" y1="${yT(v)}" y2="${yT(v)}"/>`; axes += `<text class="ax" x="${L - 6}" y="${yT(v) + 4}" text-anchor="end">${Math.round(v * 10) / 10}°</text>`; }
-    if (pw.length) for (let v = pl; v <= ph + 1e-9; v += ps) axes += `<text class="ax" x="${W - Rr + 6}" y="${yP(v) + 4}">${v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v)}</text>`;
+    for (let v = tl; v <= th + 1e-9; v += ts) { grid += `<line x1="${L}" x2="${W - Rr}" y1="${yT(v)}" y2="${yT(v)}"/>`; axes += `<text class="ax" x="${LT}" y="${yT(v) + 4}" text-anchor="end">${Math.round(v * 10) / 10}°</text>`; }
+    if (pw.length) for (let v = pl; v <= ph + 1e-9; v += ps) axes += `<text class="ax" x="${L - 5}" y="${yP(v) + 4}" text-anchor="end">${v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v)}</text>`;
     if (span <= 2 * 864e5) { // round clock times (e.g. 8:15, 8:30) so labels never overlap when zoomed
       const st = [1, 2, 5, 10, 15, 30, 60, 120, 180, 360, 720].map(m => m * 6e4).find(v => span / v <= nx) || 864e5;
       const off = new Date(S.from).getTimezoneOffset() * 6e4; let t = Math.ceil((S.from - off) / st) * st + off;
@@ -622,19 +631,28 @@ export function mountHvacMon(root, { sb }) {
     const lines = vis.map(s => { const f = isTemp(s) ? (v) => yT(cv(v)) : yP; const d = S.series[s.id].map((p, i) => (i ? 'L' : 'M') + x(p[0]).toFixed(1) + ' ' + f(p[1]).toFixed(1)).join(''); return `<path d="${d}" fill="none" stroke="${esc(s.color)}" stroke-width="${isTemp(s) ? 2 : 1.6}" stroke-linejoin="round" ${isTemp(s) ? '' : 'stroke-dasharray="5 3" opacity=".85"'}/>`; }).join('');
     const evs = eventsInRange().filter(ev => Date.parse(ev.ts) <= S.to);
     const marks = evs.map(ev => { const px = Math.min(W - Rr, x(Date.parse(ev.ts))).toFixed(1); const c = EVC[ev.kind] || EVC.note; return `<line x1="${px}" x2="${px}" y1="${T}" y2="${H - B}" stroke="${c}" stroke-width="1.5" stroke-dasharray="3 3"/><path d="M${px - 6} ${T - 9}h12l-6 8z" fill="${c}"/>`; }).join('');
-    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sensor graph"><text class="ax" x="${L - 6}" y="11" text-anchor="end" font-weight="700">${tU()}</text>${pw.length ? `<text class="ax" x="${W - Rr + 6}" y="11" font-weight="700">Watts</text>` : ''}<clipPath id="hmclip"><rect x="${L}" y="${T - 12}" width="${W - L - Rr}" height="${H - T - B + 12}"/></clipPath><g class="grid">${grid}</g>${axes}<g clip-path="url(#hmclip)">${lines}${marks}</g><line id="cx" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/></svg><div class="tip" id="tip" hidden></div>`;
-    const svg = box.querySelector('svg'), cx = box.querySelector('#cx'), tip = box.querySelector('#tip');
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sensor graph"><text class="ax" x="${LT}" y="11" text-anchor="end" font-weight="700">${tU()}</text>${pw.length ? `<text class="ax" x="${L - 5}" y="11" text-anchor="end" font-weight="700">W</text>` : ''}<clipPath id="hmclip"><rect x="${L}" y="${T - 12}" width="${W - L - Rr}" height="${H - T - B + 12}"/></clipPath><g class="grid">${grid}</g>${axes}<g clip-path="url(#hmclip)">${lines}${marks}</g><g class="ov"></g></svg>`;
+    box._g = { W, L, Rr };
+    if (width) return;   // printed report: no live labels
+    const ov = box.querySelector('.ov');
     const near = (arr, t) => { let lo = 0, hi = arr.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (arr[m][0] < t) lo = m; else hi = m; } return Math.abs(arr[lo][0] - t) < Math.abs(arr[hi][0] - t) ? arr[lo] : arr[hi]; };
-    const move = (ev) => {
-      if (box.dataset.pinch) return hide(); const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) * W / r.width; if (px < L || px > W - Rr || (!vis.length && !evs.length)) return hide();
-      const t = S.from + (px - L) / (W - L - Rr) * (S.to - S.from); const win = 10 / (W - L - Rr) * (S.to - S.from);
-      cx.setAttribute('x1', px); cx.setAttribute('x2', px); cx.setAttribute('visibility', 'visible');
-      const nearEv = evs.filter(e2 => Math.abs(Date.parse(e2.ts) - t) <= win);
-      tip.hidden = false; tip.innerHTML = `<div class="muted" style="margin-bottom:4px">${new Date(t).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>` + nearEv.map(e2 => `<div style="margin-bottom:4px"><b>${(EVK[e2.kind] || EVK.note)[0]} ${esc(e2.title || (EVK[e2.kind] || EVK.note)[1])}</b></div>`).join('') + vis.map(s => { const p = near(S.series[s.id], t); return `<div class="r"><span><i style="background:${esc(s.color)}"></i>${esc(s.label)}</span><b>${isTemp(s) ? cv(p[1]).toFixed(1) + tU() : Math.round(p[1]) + ' W'}</b></div>`; }).join('');
-      const left = (px / W) * r.width; tip.style.left = (left > r.width / 2 ? left - tip.offsetWidth - 12 : left + 12) + 'px';
+    // t = null -> live values at the right edge; t = time -> white scrub line + the reading of every line at that minute
+    box._ov = (t) => {
+      const items = vis.map(s => { const p = t == null ? latest(s.id) : near(S.series[s.id], t); if (!p || p[1] == null || isNaN(p[1])) return null; const v = isTemp(s) ? cv(p[1]) : p[1]; return { s, y: Math.max(T, Math.min(H - B, isTemp(s) ? yT(v) : yP(v))), txt: isTemp(s) ? v.toFixed(1) + '°' : Math.round(v) + ' W' }; }).filter(Boolean).sort((a, b) => a.y - b.y);
+      const gap = 12; for (let k = 1; k < items.length; k++) if (items[k].y - items[k - 1].y < gap) items[k].y = items[k - 1].y + gap;   // no overlapping labels
+      const over = items.length ? items[items.length - 1].y - (H - B + 4) : 0; if (over > 0) items.forEach(it => { it.y -= over; });
+      let out = '';
+      if (t != null) {
+        const px = x(t), win = 10 / (W - L - Rr) * span; const ev = evs.find(e2 => Math.abs(Date.parse(e2.ts) - t) <= win);
+        const lab = new Date(t).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + (ev ? ' · ' + (ev.title || (EVK[ev.kind] || EVK.note)[1]) : '');
+        const lx = Math.max(L + 70, Math.min(W - Rr - 70, px));
+        out += `<line x1="${px}" x2="${px}" y1="${T - 4}" y2="${H - B}" style="stroke:var(--ink)" stroke-width="1.5"/><text x="${lx}" y="11" text-anchor="middle" style="font-size:11.5px;font-weight:700;fill:var(--ink)">${esc(lab)}</text>`;
+        out += vis.map(s => { const p = near(S.series[s.id], t); if (!p) return ''; const y = isTemp(s) ? yT(cv(p[1])) : yP(p[1]); return `<circle cx="${x(p[0])}" cy="${y}" r="3.2" fill="${esc(s.color)}" stroke="#fff" stroke-width="1"/>`; }).join('');
+      }
+      out += items.map(it => `<text x="${W - Rr + 4}" y="${it.y + 4}" style="font-size:10.5px;font-weight:700;fill:${esc(it.s.color)}">${esc(it.txt)}</text>`).join('');
+      ov.innerHTML = out;
     };
-    const hide = () => { cx.setAttribute('visibility', 'hidden'); tip.hidden = true; };
-    svg.addEventListener('pointermove', move); svg.addEventListener('pointerdown', move); svg.addEventListener('pointerleave', hide);
+    box._ov(box._scrub == null ? null : box._scrub);
   }
 
   // ---------- sensors ----------
