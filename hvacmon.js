@@ -1,4 +1,4 @@
-// Homestar HQ - HVAC Monitoring (v30 2026-11-22: vertical pinch removed; the °F/W scale stays fixed while zoomed or sliding (taken from the full-range view, never changes until Reset); v28 2026-11-22: finer °F grid (~5° per line, 1-2° zoomed), vertical scale fits the time on screen, 2-finger pinch up/down zooms the °F scale (watts follow), Reset clears both; v27 2026-11-22: equipment icons drawn like the real kit - outdoor heat pump, wall head, air handler, ducted, cassette, console, hydronic; v26 2026-11-22: watts scale lines up with the °F grid lines; v25 2026-11-22: short tag before each live number on the graph - S/A, R/A, ODT, PWR, rooms from their name; v24 2026-11-22: scrub shows no value where there is no reading; v23 2026-11-22: °F and W axes side by side on the left, live value of every line on the right in its colour; 1 finger = white scrub line with readings (no pop-up box), 2 fingers = pinch zoom + slide timeline; v22 2026-11-22: gesture freeze fix - pointers captured on the chart box (svg is rebuilt each frame), stale fingers cleared, background reloads paused mid-gesture and late loads dropped, empty zoomed window no longer flips to sample data; v21 2026-11-22: one-finger slide along the timeline, pinch zoom follows the fingers, double-tap removed (desktop double-click kept), zoomed loads pad half a window each side; v20 2026-11-22: zoom anchor fix; v19 2026-11-22: round clock-time x labels up to 2 days; v18 2026-11-22: zoom the graph - pinch or double-tap (ctrl/trackpad-pinch + double-click on desktop), arrows to slide, Reset; zoomed data loads at up to 1-minute detail; v17 2026-11-22: always live while a dashboard is on screen, Live button removed; v16 2026-11-22: Live on by default, no time limit; v15 2026-11-22: Live button - Shelly watts every 5 s, YoLink latest report every 15 s, auto-off after 30 min; v14 2026-11-22: live tiles - latest reading every 15 s, refresh when the app comes back to the screen, 'Latest reading' time; v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
+// Homestar HQ - HVAC Monitoring (v32 2026-11-22: blower motor type per indoor unit (PSC / ECM constant torque / ECM constant airflow); heat kit on the same feed as the blower - one clamp on the main feed, map each fan speed with heat off and with heat on, the app splits blower vs heat kit watts; v30 2026-11-22: vertical pinch removed; the °F/W scale stays fixed while zoomed or sliding (taken from the full-range view, never changes until Reset); v28 2026-11-22: finer °F grid (~5° per line, 1-2° zoomed), vertical scale fits the time on screen, 2-finger pinch up/down zooms the °F scale (watts follow), Reset clears both; v27 2026-11-22: equipment icons drawn like the real kit - outdoor heat pump, wall head, air handler, ducted, cassette, console, hydronic; v26 2026-11-22: watts scale lines up with the °F grid lines; v25 2026-11-22: short tag before each live number on the graph - S/A, R/A, ODT, PWR, rooms from their name; v24 2026-11-22: scrub shows no value where there is no reading; v23 2026-11-22: °F and W axes side by side on the left, live value of every line on the right in its colour; 1 finger = white scrub line with readings (no pop-up box), 2 fingers = pinch zoom + slide timeline; v22 2026-11-22: gesture freeze fix - pointers captured on the chart box (svg is rebuilt each frame), stale fingers cleared, background reloads paused mid-gesture and late loads dropped, empty zoomed window no longer flips to sample data; v21 2026-11-22: one-finger slide along the timeline, pinch zoom follows the fingers, double-tap removed (desktop double-click kept), zoomed loads pad half a window each side; v20 2026-11-22: zoom anchor fix; v19 2026-11-22: round clock-time x labels up to 2 days; v18 2026-11-22: zoom the graph - pinch or double-tap (ctrl/trackpad-pinch + double-click on desktop), arrows to slide, Reset; zoomed data loads at up to 1-minute detail; v17 2026-11-22: always live while a dashboard is on screen, Live button removed; v16 2026-11-22: Live on by default, no time limit; v15 2026-11-22: Live button - Shelly watts every 5 s, YoLink latest report every 15 s, auto-off after 30 min; v14 2026-11-22: live tiles - latest reading every 15 s, refresh when the app comes back to the screen, 'Latest reading' time; v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
 // graph of every sensor over time (temps on the left axis, watts on the right), 24 h / 7 d / 30 d / 1 y, legend with colour,
 // show/hide checkbox and editable names. Data: monitor_sites / monitor_sensors / monitor_series() (db/025). Until a house has
 // readings the dashboard shows clearly-labelled SAMPLE data so the layout can be judged.
@@ -81,7 +81,7 @@ h3.ch{margin:0;font-size:18px}
 .lg .chev{font-size:20px;flex:none}
 .kv{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--line);font-size:14.5px}.kv span{color:var(--muted)}.kv b{font-weight:600;text-align:right;overflow-wrap:anywhere}
 .tog{display:flex;gap:10px;align-items:center;margin-top:8px;font-weight:600;font-size:15px;color:var(--ink)}.tog input{width:22px;height:22px;accent-color:var(--brand);flex:none}
-.spd{display:grid;grid-template-columns:minmax(0,1fr) 78px 60px auto;gap:6px;align-items:center;margin-top:6px}.spd input{padding:8px;font-size:15px}.spd span{font-size:13px;text-align:right;color:var(--muted)}.spd .mini{margin:0;padding:6px 9px;min-height:38px}
+.spd{display:grid;grid-template-columns:minmax(0,1fr) 78px 60px auto;gap:6px;align-items:center;margin-top:6px}.spd input{padding:8px;font-size:15px}.spd span{font-size:13px;text-align:right;color:var(--muted)}.spd .mini{margin:0;padding:6px 9px;min-height:38px}.spd.heat{margin-top:2px}.spd.heat .hl{text-align:left;font-size:12.5px;color:var(--muted)}
 .spdh{display:grid;grid-template-columns:minmax(0,1fr) 78px 60px auto;gap:6px;font-size:11.5px;color:var(--muted);margin-top:8px;text-transform:uppercase;letter-spacing:.04em}
 .capbox{border:1px solid var(--brand);border-radius:10px;padding:12px;margin-top:10px;background:color-mix(in srgb,var(--brand) 10%,transparent)}.capbox b.w{display:block;font-family:var(--display);font-size:30px}
 .livedot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok,#30a46c);margin-right:6px;vertical-align:middle;animation:lp 1.2s ease-in-out infinite}@keyframes lp{50%{opacity:.25}}
@@ -129,6 +129,7 @@ const localInput = (t) => { const d = new Date(t); return new Date(d - d.getTime
 const fmtDT = (t) => new Date(t).toLocaleString('en-CA', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 const AUX_KW = Array.from({ length: 39 }, (_, i) => 1 + i * 0.5);
+const MOTOR = { '': 'Not set', psc: 'PSC (fixed speed taps)', ecm_torque: 'ECM - constant torque (X13)', ecm_airflow: 'ECM - constant airflow (variable speed)' };
 const SPEED_NAMES = { 1: ['Fan'], 2: ['Low', 'High'], 3: ['Low', 'Medium', 'High'], 4: ['Quiet', 'Low', 'Medium', 'High'], 5: ['Quiet', 'Low', 'Medium', 'High', 'Powerful'] };
 const capPts = (u) => (u.fan_speeds || []).filter(p => +p.rated_cfm > 0 && +p.watts > 0).map(p => ({ w: +p.watts, c: +p.rated_cfm })).sort((a, b) => a.w - b.w);
 // fan law: CFM ~ RPM and W ~ RPM^3, so CFM ~ W^(1/3). Between two captured speeds interpolate CFM on the cube root of watts; beyond the ends scale from the nearest speed.
@@ -362,18 +363,33 @@ export function mountHvacMon(root, { sb }) {
     return { data: rows };
   }
   // ---- capacity: indoor units with monitoring on, a fan-power sensor, captured speeds and supply + return sensors
-  function auxUnits() { return S.units.filter(u => u.role === 'indoor' && u.aux_enabled && u.aux_sensor); }
+  // one clamp on the main feed: blower + heat kit. Above the top fan speed by a margin = heat kit on; blower = fan-only watts of the speed whose heat-on total is closest.
+  function splitShared(u, ser) {
+    const sp = (u.fan_speeds || []).filter(p => +p.watts > 0), raw = ser[u.fan_sensor] || [];
+    if (!sp.length) return { fan: raw, aux: raw.map(p => [p[0], 0]) };
+    const maxF = Math.max(...sp.map(p => +p.watts)), thr = maxF + Math.max(1000, 300 * (+u.aux_kw || 0)), hs = sp.filter(p => +p.heat_w > 0);
+    const fan = [], aux = [];
+    for (const [t, w] of raw) {
+      if (w == null || w <= thr) { fan.push([t, w]); aux.push([t, 0]); continue; }
+      let b = sp.reduce((m, p) => +p.watts > +m.watts ? p : m, sp[0]);
+      if (hs.length) b = hs.reduce((m, p) => Math.abs(+p.heat_w - w) < Math.abs(+m.heat_w - w) ? p : m, hs[0]);
+      fan.push([t, +b.watts]); aux.push([t, Math.max(0, w - +b.watts)]);
+    }
+    return { fan, aux };
+  }
+  const fanSer = (u, ser) => u.aux_enabled && u.aux_shared ? splitShared(u, ser).fan : (ser[u.fan_sensor] || []);
+  function auxUnits() { return S.units.filter(u => u.role === 'indoor' && u.aux_enabled && (u.aux_shared ? u.fan_sensor : u.aux_sensor)); }
   function capUnits() { return S.units.filter(u => u.role === 'indoor' && u.cap_enabled && u.fan_sensor && capPts(u).length && S.sensors.some(s => s.kind === 'supply' && s.unit_id === u.id) && S.sensors.some(s => s.kind === 'return' && s.unit_id === u.id)); }
   function derive(ser) {
     const out = {};
     for (const u of capUnits()) {
       const sup = S.sensors.find(s => s.kind === 'supply' && s.unit_id === u.id), ret = S.sensors.find(s => s.kind === 'return' && s.unit_id === u.id), pts = capPts(u);
       const cfm = [], btu = [];
-      for (const [t, w] of (ser[u.fan_sensor] || [])) { const c = cfmAt(pts, w); cfm.push([t, c]); const a = holdAt(ser[sup.id], t), b = holdAt(ser[ret.id], t); if (c != null && a != null && b != null) btu.push([t, 1.08 * c * (a - b) * 1.8]); }
+      for (const [t, w] of fanSer(u, ser)) { const c = cfmAt(pts, w); cfm.push([t, c]); const a = holdAt(ser[sup.id], t), b = holdAt(ser[ret.id], t); if (c != null && a != null && b != null) btu.push([t, 1.08 * c * (a - b) * 1.8]); }
       out[u.id] = { cfm, btu };
     }
     for (const u of auxUnits()) {
-      const aux = (ser[u.aux_sensor] || []).map(p => [p[0], p[1]]); const o = out[u.id] || (out[u.id] = {}); o.aux = aux;
+      const aux = u.aux_shared ? splitShared(u, ser).aux : (ser[u.aux_sensor] || []).map(p => [p[0], p[1]]); const o = out[u.id] || (out[u.id] = {}); o.aux = aux;
       if (o.btu) { const am = new Map(aux); o.hp = o.btu.map(([t, v]) => [t, v - (am.get(t) || 0) * 3.412]); }
     }
     return out;
@@ -479,7 +495,7 @@ export function mountHvacMon(root, { sb }) {
   }
   function drawEquipment() {
     const el = root.getElementById('eq'); if (!el) return;
-    const unitBtn = (u) => { const sub = [STYLE[u.style] && u.role !== 'outdoor' ? STYLE[u.style] : '', u.capacity, u.aux_enabled ? 'Aux ' + (+u.aux_kw || '?') + ' kW' : ''].filter(Boolean).join(' · ');
+    const unitBtn = (u) => { const sub = [STYLE[u.style] && u.role !== 'outdoor' ? STYLE[u.style] : '', u.capacity, { psc: 'PSC', ecm_torque: 'ECM torque', ecm_airflow: 'ECM airflow' }[u.motor_type] || '', u.aux_enabled ? 'Aux ' + (+u.aux_kw || '?') + ' kW' + (u.aux_shared ? ' (1 clamp)' : '') : ''].filter(Boolean).join(' · ');
       return `<button class="unit ${u.role === 'outdoor' ? 'out' : 'in'}" data-eunit="${u.id}"><span class="ui">${eqIcon(u, sysOf(u.system_id))}</span><span class="ut"><b>${esc(u.role === 'outdoor' ? 'Outdoor unit' : (u.location || 'Indoor unit'))}</b>${sub || u.model ? `<span>${esc([u.model, sub].filter(Boolean).join(' · '))}</span>` : ''}</span><span class="chev muted">›</span></button>`; };
     el.innerHTML = `<div class="head">${colh('eq', 'Equipment', 'h3', 'ch')}<button class="chip" data-addsys>+ System</button></div><div class="cb">
       ${S.systems.map(sy => { const us = S.units.filter(u => u.system_id === sy.id); return `<div class="sys"><div class="sysh"><b>${esc(sy.name || SYSTYPE[sy.type] || 'System')}</b><span class="badge">${esc(SYSTYPE[sy.type] || sy.type)}</span><button class="ed" data-editsys="${sy.id}">✎</button></div>
@@ -524,7 +540,7 @@ export function mountHvacMon(root, { sb }) {
     const der = derive(ser);
     const odPower = S.sensors.filter(s => s.kind === 'power');
     const times = [...new Set(mon.flatMap(u => (der[u.id].btu || []).map(p => p[0])))].sort((x, y) => x - y);
-    const maps = mon.map(u => ({ btu: new Map(der[u.id].btu), fan: new Map(ser[u.fan_sensor] || []), aux: u.aux_enabled && u.aux_sensor ? new Map(ser[u.aux_sensor] || []) : null }));
+    const maps = mon.map(u => ({ btu: new Map(der[u.id].btu), fan: new Map(fanSer(u, ser)), aux: u.aux_enabled && (u.aux_shared || u.aux_sensor) && der[u.id].aux ? new Map(der[u.id].aux) : null }));
     const pw = odPower.map(s => new Map(ser[s.id] || []));
     const pts = [];
     for (const t of times) {
@@ -784,9 +800,12 @@ export function mountHvacMon(root, { sb }) {
         return `<div class="tgh">Power monitoring</div>${u.role === 'outdoor' ? `<label class="f">Outdoor unit power<select data-pw="power">${opt(odSel)}</select></label>
           <div class="tgh">Rated heating capacity</div><div class="muted small">From the engineering data: max (and rated) heating BTU/h at each outdoor temp. Two or more temps let it find the balance point.</div><div data-rated></div><button class="mini" data-addrated>+ Temperature</button>` : `
           <label class="f">Fan / blower power<select data-fan>${opt(u.fan_sensor)}</select></label>
+          <label class="f">Blower motor<select data-motor>${Object.entries(MOTOR).map(([k, t]) => `<option value="${k}" ${k === (u.motor_type || '') ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
           <label class="tog"><input type="checkbox" data-aux ${u.aux_enabled ? 'checked' : ''}>Auxiliary heat (electric strips)</label>
           <div data-auxbody ${u.aux_enabled ? '' : 'hidden'}><div class="two"><label class="f">Rated size<select data-auxkw><option value="">kW…</option>${AUX_KW.map(k => `<option value="${k}" ${+u.aux_kw === k ? 'selected' : ''}>${k} kW</option>`).join('')}</select></label>
-          <label class="f">Aux heat power<select data-auxs>${opt(u.aux_sensor)}</select></label></div></div>`}
+          <label class="f" data-auxsw ${u.aux_shared ? 'hidden' : ''}>Aux heat power<select data-auxs>${opt(u.aux_sensor)}</select></label></div>
+          <label class="tog"><input type="checkbox" data-auxsh ${u.aux_shared ? 'checked' : ''}>One clamp on the main feed (blower + heat kit)</label>
+          <div class="muted small" data-auxshn ${u.aux_shared ? '' : 'hidden'}>Uses the fan / blower channel above. Capture each fan speed with the heat off, then again with the heat on (Heat on column) so the app can split blower and heat kit.</div></div>`}
           ${wl.length ? '' : '<div class="muted small">Add the Shelly channels as sensors first (Power, Fan power or Aux heat power).</div>'}`; })() : ''}
       ${u && u.role === 'indoor' ? `<div class="tgh">Capacity monitoring</div>
         <label class="tog"><input type="checkbox" data-cap ${u.cap_enabled ? 'checked' : ''}>Airflow &amp; capacity</label>
@@ -803,22 +822,23 @@ export function mountHvacMon(root, { sb }) {
     const names = (n) => SPEED_NAMES[n] || Array.from({ length: n }, (_, i) => 'Speed ' + (i + 1));
     let speeds = u && u.fan_speeds && u.fan_speeds.length ? JSON.parse(JSON.stringify(u.fan_speeds)) : names(4).map(n => ({ name: n, rated_cfm: '', watts: null }));
     const drawSpeeds = () => { const el = modal.querySelector('[data-speeds]'); if (!el) return;
-      el.innerHTML = `<div class="spdh"><span>Speed</span><span>Rated CFM</span><span>Watts</span><span></span></div>` + speeds.map((p, i) => `<div class="spd"><input data-sn="${i}" value="${esc(p.name)}"><input data-sc="${i}" type="number" inputmode="numeric" value="${esc(p.rated_cfm)}" placeholder="CFM"><span>${p.watts ? (+p.watts).toFixed(1) : '–'}</span><button class="mini" data-capt="${i}">${p.watts ? 'Redo' : 'Capture'}</button></div>`).join(''); };
+      const sh = !!(modal.querySelector('[data-aux]') || {}).checked && !!(modal.querySelector('[data-auxsh]') || {}).checked;
+      el.innerHTML = `<div class="spdh"><span>Speed</span><span>Rated CFM</span><span>Watts</span><span></span></div>` + speeds.map((p, i) => `<div class="spd"><input data-sn="${i}" value="${esc(p.name)}"><input data-sc="${i}" type="number" inputmode="numeric" value="${esc(p.rated_cfm)}" placeholder="CFM"><span>${p.watts ? (+p.watts).toFixed(1) : '–'}</span><button class="mini" data-capt="${i}">${p.watts ? 'Redo' : 'Capture'}</button></div>` + (sh ? `<div class="spd heat"><span class="hl">${esc(p.name)} + heat on</span><span></span><span>${p.heat_w ? (+p.heat_w).toFixed(0) : '–'}</span><button class="mini" data-capth="${i}">${p.heat_w ? 'Redo' : 'Capture'}</button></div>` : '')).join(''); };
     drawSpeeds(); drawRated();
     modal.oninput = (e) => { const rt = e.target.closest('[data-rt]'); if (rt) { const [i, k] = rt.dataset.rt.split(':'); ratedRows[+i][k] = rt.value === '' ? '' : +rt.value; return; } const a = e.target.closest('[data-sn]'); if (a) speeds[+a.dataset.sn].name = a.value; const b = e.target.closest('[data-sc]'); if (b) speeds[+b.dataset.sc].rated_cfm = b.value === '' ? '' : +b.value; };
-    async function capture(i) {
+    async function capture(i, heat) {
       const fan = modal.querySelector('[data-fan]').value; const box = modal.querySelector('[data-capbox]');
       if (!fan) return errOut('Pick the fan power sensor first.'); errOut('');
       const sp = speeds[i]; const samples = []; const t0 = Date.now(); const DUR = 120000;
       const paint = (w, msg) => { const n = samples.length, avg = n ? samples.reduce((x, y) => x + y, 0) / n : null; const left = Math.max(0, Math.ceil((DUR - (Date.now() - t0)) / 1000));
-        box.innerHTML = `<div class="capbox"><div class="muted small">${esc(sp.name)} fan · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left</div><b class="w">${w == null ? '–' : w.toFixed(1) + ' W'}</b><div class="small">${n ? 'Average ' + avg.toFixed(1) + ' W · ' + n + ' readings' : 'Starting…'}${msg ? ' · ' + esc(msg) : ''}</div><div class="acts"><button class="btn" data-capstop>Cancel</button></div></div>`; };
+        box.innerHTML = `<div class="capbox"><div class="muted small">${esc(sp.name)} fan${heat ? ' + heat on' : ''} · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left</div><b class="w">${w == null ? '–' : w.toFixed(1) + ' W'}</b><div class="small">${n ? 'Average ' + avg.toFixed(1) + ' W · ' + n + ' readings' : 'Starting…'}${msg ? ' · ' + esc(msg) : ''}</div><div class="acts"><button class="btn" data-capstop>Cancel</button></div></div>`; };
       paint(null);
       const tick = async () => {
         if (Date.now() - t0 >= DUR) { clearInterval(capTimer); capTimer = null;
           if (samples.length < 6) { box.innerHTML = '<div class="err">Not enough readings - check the Shelly is online and try again.</div>'; return; }
           const use = samples.slice(2); const avg = use.reduce((x, y) => x + y, 0) / use.length; const sd = Math.sqrt(use.reduce((x, y) => x + (y - avg) ** 2, 0) / use.length);
-          Object.assign(sp, { watts: Math.round(avg * 10) / 10, sd: Math.round(sd * 10) / 10, samples: use.length, captured_at: new Date().toISOString() });
-          box.innerHTML = `<div class="linked">${esc(sp.name)}: ${sp.watts} W (±${sp.sd}) from ${use.length} readings. Save to keep it.</div>`; drawSpeeds(); return; }
+          if (heat) Object.assign(sp, { heat_w: Math.round(avg), heat_captured_at: new Date().toISOString() }); else Object.assign(sp, { watts: Math.round(avg * 10) / 10, sd: Math.round(sd * 10) / 10, samples: use.length, captured_at: new Date().toISOString() });
+          box.innerHTML = `<div class="linked">${esc(sp.name)}${heat ? ' + heat on' : ''}: ${heat ? sp.heat_w : sp.watts} W (±${sp.sd}) from ${use.length} readings. Save to keep it.</div>`; drawSpeeds(); return; }
         const { data, error } = await sb.functions.invoke('hvac-poll', { body: { live: fan } });
         if (!capTimer) return;
         if (error || !data || data.error) { paint(null, await fnErr(error, data)); return; }
@@ -832,7 +852,8 @@ export function mountHvacMon(root, { sb }) {
     drawPh();
     modal.onchange = async (e) => {
       const cb = e.target.closest('[data-cap]'); if (cb) { modal.querySelector('[data-capbody]').hidden = !cb.checked; return; }
-      const ax = e.target.closest('[data-aux]'); if (ax) { modal.querySelector('[data-auxbody]').hidden = !ax.checked; return; }
+      const ax = e.target.closest('[data-aux]'); if (ax) { modal.querySelector('[data-auxbody]').hidden = !ax.checked; drawSpeeds(); return; }
+      const axs = e.target.closest('[data-auxsh]'); if (axs) { modal.querySelector('[data-auxsw]').hidden = axs.checked; modal.querySelector('[data-auxshn]').hidden = !axs.checked; drawSpeeds(); return; }
       const ns = e.target.closest('[data-nsp]'); if (ns) { const n = +ns.value, nm = names(n); speeds = Array.from({ length: n }, (_, i) => speeds[i] || { name: nm[i], rated_cfm: '', watts: null }); if (n === speeds.length) speeds.forEach((p, i) => { if (!p.watts && !p.rated_cfm) p.name = nm[i]; }); drawSpeeds(); return; }
       const f = e.target.closest('[data-fill]'); if (f && f.value !== '') { const q = onFile[+f.value]; const set = (k, x) => { const i = modal.querySelector(`[data-f="${k}"]`); if (i && x) i.value = x; }; set('make', q.make); set('model', q.model); set('serial', q.serial); set('capacity', q.size); set('installed', q.installed); return; }
       const p = e.target.closest('[data-photo]'); if (p && p.files && p.files[0]) {
@@ -847,6 +868,7 @@ export function mountHvacMon(root, { sb }) {
       if (isBackdrop(e)) return closeModal();
       const o = e.target.closest('[data-open]'); if (o) { window.open(o.dataset.open, '_blank'); return; }
       const ct = e.target.closest('[data-capt]'); if (ct) return capture(+ct.dataset.capt);
+      const cth = e.target.closest('[data-capth]'); if (cth) return capture(+cth.dataset.capth, true);
       if (e.target.closest('[data-addrated]')) { ratedRows.push({ t: '', max: '', rated: '', cop: '' }); return drawRated(); }
       const dr = e.target.closest('[data-delrt]'); if (dr) { ratedRows.splice(+dr.dataset.delrt, 1); return drawRated(); }
       if (e.target.closest('[data-capstop]')) { clearInterval(capTimer); capTimer = null; modal.querySelector('[data-capbox]').innerHTML = ''; return; }
@@ -858,11 +880,14 @@ export function mountHvacMon(root, { sb }) {
       const mapSensor = async (id, kind) => { const f = id && S.all.find(x => x.id === id); if (f && (f.unit_id !== u.id || f.kind !== kind)) { const r = await sb.from('monitor_sensors').update({ unit_id: u.id, kind, unit: 'W', grp: 'equipment' }).eq('id', f.id); if (r.error) throw r.error; } };
       try {
         if (u && fanEl) { row.fan_sensor = fanEl.value || null; await mapSensor(row.fan_sensor, 'fan_power'); }
+        const moEl = modal.querySelector('[data-motor]'); if (u && moEl) row.motor_type = moEl.value || null;
         if (u && capEl) { row.cap_enabled = capEl.checked; row.fan_speeds = speeds.map(p => ({ ...p, name: (p.name || '').trim() || 'Speed', rated_cfm: p.rated_cfm === '' ? null : +p.rated_cfm })); }
-        if (u && auxEl) { row.aux_enabled = auxEl.checked; row.aux_kw = modal.querySelector('[data-auxkw]').value ? +modal.querySelector('[data-auxkw]').value : null; row.aux_sensor = modal.querySelector('[data-auxs]').value || null;
+        if (u && auxEl) { row.aux_enabled = auxEl.checked; row.aux_kw = modal.querySelector('[data-auxkw]').value ? +modal.querySelector('[data-auxkw]').value : null; row.aux_shared = !!(modal.querySelector('[data-auxsh]') || {}).checked; row.aux_sensor = row.aux_shared ? null : (modal.querySelector('[data-auxs]').value || null);
           if (row.aux_enabled && !row.aux_kw) return errOut('Pick the aux heat size (kW).');
-          if (row.aux_enabled && row.aux_sensor && row.aux_sensor === row.fan_sensor) return errOut('Fan and aux heat need different power channels.');
-          if (row.aux_enabled) await mapSensor(row.aux_sensor, 'aux_power'); }
+          if (row.aux_enabled && row.aux_shared && !row.fan_sensor) return errOut('Pick the power channel on the main feed (Fan / blower power).');
+          if (row.aux_enabled && !row.aux_shared && row.aux_sensor && row.aux_sensor === row.fan_sensor) return errOut('Fan and aux heat need different power channels - or tick One clamp on the main feed.');
+          if (row.aux_enabled && !row.aux_shared) await mapSensor(row.aux_sensor, 'aux_power');
+          if (row.aux_shared) row.fan_speeds = speeds.map(p => ({ ...p, name: (p.name || '').trim() || 'Speed', rated_cfm: p.rated_cfm === '' ? null : +p.rated_cfm })); }
         if (u && pwEl && pwEl.value) await mapSensor(pwEl.value, 'power');
         if (u && u.role === 'outdoor' && modal.querySelector('[data-rated]')) row.rated_points = ratedRows.filter(p => p.t !== '' && p.max !== '').map(p => ({ t: +p.t, max: +p.max, rated: p.rated === '' ? null : +p.rated, cop: p.cop === '' ? null : +p.cop, src: p.src || '' }));
       } catch (x) { return errOut(x.message || String(x)); }
