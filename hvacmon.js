@@ -1,4 +1,4 @@
-// Homestar HQ - HVAC Monitoring (v21 2026-11-22: one-finger slide along the timeline, pinch zoom follows the fingers, double-tap removed (desktop double-click kept), zoomed loads pad half a window each side; v20 2026-11-22: zoom anchor fix; v19 2026-11-22: round clock-time x labels up to 2 days; v18 2026-11-22: zoom the graph - pinch or double-tap (ctrl/trackpad-pinch + double-click on desktop), arrows to slide, Reset; zoomed data loads at up to 1-minute detail; v17 2026-11-22: always live while a dashboard is on screen, Live button removed; v16 2026-11-22: Live on by default, no time limit; v15 2026-11-22: Live button - Shelly watts every 5 s, YoLink latest report every 15 s, auto-off after 30 min; v14 2026-11-22: live tiles - latest reading every 15 s, refresh when the app comes back to the screen, 'Latest reading' time; v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
+// Homestar HQ - HVAC Monitoring (v22 2026-11-22: gesture freeze fix - pointers captured on the chart box (svg is rebuilt each frame), stale fingers cleared, background reloads paused mid-gesture and late loads dropped, empty zoomed window no longer flips to sample data; v21 2026-11-22: one-finger slide along the timeline, pinch zoom follows the fingers, double-tap removed (desktop double-click kept), zoomed loads pad half a window each side; v20 2026-11-22: zoom anchor fix; v19 2026-11-22: round clock-time x labels up to 2 days; v18 2026-11-22: zoom the graph - pinch or double-tap (ctrl/trackpad-pinch + double-click on desktop), arrows to slide, Reset; zoomed data loads at up to 1-minute detail; v17 2026-11-22: always live while a dashboard is on screen, Live button removed; v16 2026-11-22: Live on by default, no time limit; v15 2026-11-22: Live button - Shelly watts every 5 s, YoLink latest report every 15 s, auto-off after 30 min; v14 2026-11-22: live tiles - latest reading every 15 s, refresh when the app comes back to the screen, 'Latest reading' time; v13 2026-11-22: shows the server's real error text from hvac-poll; v11 2026-11-22: Performance card - heat delivered and COP vs outdoor temp against the outdoor unit's rated capacity, house heat loss line from daily energy balance, balance point, load at design temp vs F280; v10 2026-11-22: auxiliary heat per indoor unit (kW rating + its power channel), power monitoring map per unit (outdoor / fan / aux), aux tiles + heat pump share; v8 2026-11-22: server collector status, Export (CSV) + printable report, capacity monitoring - fan watts mapped to rated CFM per fan speed by the fan law, sensible BTU/h; v7 2026-11-21: minimal sensor list - tap a sensor for its details, collapsible sections, press-and-hold to move tiles anywhere (shared layout in monitor_sites.tile_layout); v5 2026-11-21: clients picked from Maintenance customers, equipment by system with outdoor/indoor units, model/serial/nameplate photos, sensors mapped to a unit, add/remove sensors, event markers on the graph; v4 2026-11-21: Equipment vs Ambient groups, room RH under the temperature; v3 2026-11-21: press-and-hold to reorder sensors; v2 2026-11-21: axis labels clear of ticks; v1 same day, Calvin). Tools > HVAC Monitoring: list of houses -> one house's dashboard:
 // graph of every sensor over time (temps on the left axis, watts on the right), 24 h / 7 d / 30 d / 1 y, legend with colour,
 // show/hide checkbox and editable names. Data: monitor_sites / monitor_sensors / monitor_series() (db/025). Until a house has
 // readings the dashboard shows clearly-labelled SAMPLE data so the layout can be judged.
@@ -233,7 +233,7 @@ export function mountHvacMon(root, { sb }) {
     body.innerHTML = '<div class="muted">Loading…</div>'; S.cust = null;
     const ok = await reloadMeta(); if (!ok) return;
     await load(); dash(); if (!S.sample) setLive(true);
-    clearInterval(timer); let n = 0; timer = setInterval(async () => { if (!S.site || dead || document.hidden) return; n++; if (n % 4 === 0) { await load(); drawChart(); zoomBar(); } await refreshLatest(); }, 15000);
+    clearInterval(timer); let n = 0; timer = setInterval(async () => { if (!S.site || dead || document.hidden) return; n++; if (n % 4 === 0 && !S.gesture) { if (await load()) { drawChart(); zoomBar(); } } await refreshLatest(); }, 15000);
   }
   async function reloadMeta() {
     const id = S.site.id;
@@ -249,15 +249,17 @@ export function mountHvacMon(root, { sb }) {
     S.events = c.data || [];
     return true;
   }
-  async function load() {
-    const R = RANGES.find(r => r.k === S.range) || RANGES[0]; let to = Date.now(), from = to - R.ms, bucket = R.bucket;
+  let loadSeq = 0;
+  async function load() {   // returns false when a newer load or a finger gesture overtook this one (its result is dropped)
+    const q = ++loadSeq; const R = RANGES.find(r => r.k === S.range) || RANGES[0]; let to = Date.now(), from = to - R.ms, bucket = R.bucket;
     if (S.zoom) { if (S.zoom.now) { const sp = S.zoom.to - S.zoom.from; S.zoom.to = to; S.zoom.from = to - sp; } from = S.zoom.from; to = S.zoom.to; bucket = bucketFor(to - from); }
     const pad = S.zoom ? (to - from) / 2 : 0;
     const { data, error } = await seriesAll(from - pad, Math.min(Date.now(), to + pad), bucket);
+    if (q !== loadSeq || S.gesture || dead) return false;
     const ser = {}; (data || []).forEach(r => (ser[r.sensor_id] = ser[r.sensor_id] || []).push([Date.parse(r.t), Number(r.v)]));
-    S.sample = !error && !(data || []).length; S.err = error ? error.message : '';
+    if (!S.zoom) S.sample = !error && !(data || []).length; S.err = error ? error.message : '';   // an empty zoomed window is empty, not sample data
     S.series = S.sample ? sampleSeries(from, to, bucket) : ser; S.from = from; S.to = to; S.bucket = bucket;
-    S.derived = derive(S.series);
+    S.derived = derive(S.series); return true;
   }
   // ---- zoom: a window inside the chosen range, data at up to 1-minute detail
   const bucketFor = (ms) => [60, 120, 300, 600, 1800, 3600, 7200, 21600, 86400].find(b => ms / 1000 / b <= 450) || 86400;
@@ -268,7 +270,7 @@ export function mountHvacMon(root, { sb }) {
     if (to > now) { from -= to - now; to = now; } const min = now - 400 * 864e5; if (from < min) { to += min - from; from = min; }
     S.zoom = sp >= R.ms && to >= now - 6e4 ? null : { from, to, now: to >= now - 2 * 6e4 };
     S.from = from; S.to = to; drawChart(); zoomBar();
-    const q = ++zoomSeq; await load(); if (q !== zoomSeq || dead) return; drawChart(); drawTiles(); zoomBar();
+    const q = ++zoomSeq; const ok = await load(); if (!ok || q !== zoomSeq || dead) return; drawChart(); drawTiles(); zoomBar();
   }
   function zoomBar() {
     const zb = root.getElementById('zb'); if (!zb) return;
@@ -285,11 +287,13 @@ export function mountHvacMon(root, { sb }) {
     const tAt = (cx) => S.from + frac(cx) * (S.to - S.from);
     const zoomAt = (t, k) => { const a = t - (t - S.from) / k, b = t + (S.to - t) / k; setZoom(a, b); };
     const redraw = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; drawChart(); }); };
-    const busy = (on) => { if (on) { box.dataset.pinch = '1'; const tip = box.querySelector('#tip'); if (tip) tip.hidden = true; } else delete box.dataset.pinch; };
+    const busy = (on) => { S.gesture = on; if (on) { box.dataset.pinch = '1'; const tip = box.querySelector('#tip'); if (tip) tip.hidden = true; } else delete box.dataset.pinch; };
+    const reset = () => { pts.clear(); pinch = null; drag = null; if (S.gesture) { busy(false); setZoom(S.from, S.to); } };
     box.addEventListener('pointerdown', (e) => {
-      pts.set(e.pointerId, e.clientX);
+      if (e.isPrimary || pts.size >= 2) { pts.clear(); pinch = null; drag = null; }   // a finger whose 'up' got lost never sticks around
+      pts.set(e.pointerId, e.clientX); try { box.setPointerCapture(e.pointerId); } catch (x) {}
       if (pts.size === 2) { drag = null; const [x1, x2] = [...pts.values()]; pinch = { d: Math.abs(x1 - x2) || 1, span: S.to - S.from, t: tAt((x1 + x2) / 2) }; busy(true); return; }
-      if (pts.size === 1) { drag = { x: e.clientX, from: S.from, to: S.to, moved: false }; if (e.pointerType === 'mouse') try { box.setPointerCapture(e.pointerId); } catch (x) {} }
+      if (pts.size === 1) drag = { x: e.clientX, from: S.from, to: S.to, moved: false };
     });
     box.addEventListener('pointermove', (e) => {
       if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, e.clientX);
@@ -304,7 +308,11 @@ export function mountHvacMon(root, { sb }) {
       if (pinch && pts.size < 2) { pinch = null; busy(false); drag = null; setZoom(S.from, S.to); return; }
       if (drag && pts.size === 0) { const moved = drag.moved; drag = null; busy(false); if (moved) setZoom(S.from, S.to); }
     };
-    box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
+    box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); box.addEventListener('lostpointercapture', (e) => { if (pts.has(e.pointerId)) up(e); });
+    // iPhone: stop Safari zooming the whole page when two fingers land on the graph
+    box.addEventListener('touchmove', (e) => { if (e.touches.length > 1 || S.gesture) e.preventDefault(); }, { passive: false });
+    ['gesturestart', 'gesturechange'].forEach(t => box.addEventListener(t, (e) => e.preventDefault()));
+    window.addEventListener('blur', reset); document.addEventListener('visibilitychange', () => { if (document.hidden) reset(); });
     box.addEventListener('dblclick', (e) => zoomAt(tAt(e.clientX), 3));
     box.addEventListener('wheel', (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); zoomAt(tAt(e.clientX), e.deltaY < 0 ? 1.5 : 1 / 1.5); }, { passive: false });
   }
