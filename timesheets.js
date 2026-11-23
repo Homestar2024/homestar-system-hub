@@ -1,4 +1,4 @@
-// Homestar HQ - Timesheets (v10 2026-11-21: Excel EMPLOYEE box = the person's HQ name (was always the template's Calvin Windsor) - server ts-file + this fallback (Calvin); v9 2026-11-21: History flag / to-look-at chips open a quick dialog; new Payroll dates tab (Calvin); v8 2026-11-21: History = clickable list (pay period, Filed tag, warnings/flags); tap opens a preview of every row and hours, with Edit & re-file, Excel and Delete inside (Calvin); v7 2026-11-21: freshness check before Generate; v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
+// Homestar HQ - Timesheets (v11 2026-11-23: Jacob's 8 h day - every weekday is topped up to 8 h with an Office row (8 h minus field time; a weekday with no HCP time gets a flagged 8 h Office row to remove if he was off); v10 2026-11-21: Excel EMPLOYEE box = the person's HQ name (was always the template's Calvin Windsor) - server ts-file + this fallback (Calvin); v9 2026-11-21: History flag / to-look-at chips open a quick dialog; new Payroll dates tab (Calvin); v8 2026-11-21: History = clickable list (pay period, Filed tag, warnings/flags); tap opens a preview of every row and hours, with Edit & re-file, Excel and Delete inside (Calvin); v7 2026-11-21: freshness check before Generate; v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
 // Data: time_entries (HCP time, synced by Claude), pay_periods, timesheets (sent/filed), bank_ledger (banked hours vault).
 // Rules (Timesheets\00 TIMESHEETS README.md): start = first of On my way / Time started; each row rounds to 0.1 h (Excel ROUND half up);
 // never over 80 h: the excess is trimmed off rows on the longest days and BANKED at 1.5x; under 80 h with a bank balance -> offer to draw.
@@ -222,8 +222,32 @@ export function mountTimesheets(root, { sb, me, people }) {
   // ---------- Manual edits (kept on top of the HCP time; every change needs a reason and is marked 'edited') ----------
   function eff() {
     const E = S.edits || { upd: {}, del: [], add: [] };
-    return [...S.entries.filter(e => !E.del.includes(e.id)).map(e => E.upd[e.id] ? { ...e, ...E.upd[e.id], edited: true } : e), ...E.add];
+    const base = [...S.entries.filter(e => !E.del.includes(e.id)).map(e => E.upd[e.id] ? { ...e, ...E.upd[e.id], edited: true } : e), ...E.add];
+    return [...base, ...officeFill(base).filter(e => !E.del.includes(e.id)).map(e => E.upd[e.id] ? { ...e, ...E.upd[e.id], edited: true } : e)];
   }
+  // Calvin 2026-11-23: Jacob works 8 h a day, 5 days a week. Whatever part of a weekday isn't field time on a job is Office time:
+  // 4 h on jobs -> 4 h Office; 7 h -> 1 h Office; no HCP time -> 8 h Office (flagged - remove it with a reason if he was off).
+  // The Office row sits before the first job if it fits after 8:00, otherwise after the last job. Edit or remove it like any row.
+  const OFFICE_DAY = 8;
+  const officeFill = (list) => {
+    const who = people.find(x => x.id === S.person) || {};
+    if (!/^jacob\b/i.test(String(who.name || '')) && String(who.email || '').toLowerCase() !== 'office@homestarhvac.ca') return [];
+    const p = P(); if (!p) return [];
+    const out = [];
+    for (let d = p.start_date; d <= p.end_date; d = addDays(d, 1)) {
+      const wd = D(d).getDay(); if (wd === 0 || wd === 6) continue;
+      const rs = list.filter(e => e.work_date === d && mins(e.end_t) > mins(e.start_t));
+      const have = rs.reduce((a, e) => a + (mins(e.end_t) - mins(e.start_t)), 0);
+      const need = Math.round((OFFICE_DAY * 60 - have) / 6) * 6; if (need <= 0) continue;
+      const first = rs.length ? Math.min(...rs.map(e => mins(e.start_t))) : null, last = rs.length ? Math.max(...rs.map(e => mins(e.end_t))) : null;
+      let s = 8 * 60; if (rs.length && !(first >= s + need)) s = last;
+      const e = Math.min(s + need, 24 * 60 - 1); if (e <= s) continue;
+      out.push({ id: 'off:' + d, work_date: d, job_no: 'Office', customer: '', dept: 'O', start_t: hm(s), end_t: hm(e), auto: true,
+        note: rs.length ? `Office: ${OFFICE_DAY} h day minus ${(have / 60).toFixed(1)} h field time` : `Office: full ${OFFICE_DAY} h day (no HCP time)`,
+        flag: rs.length ? '' : 'No Housecall Pro time this weekday - remove this Office row if Jacob was off' });
+    }
+    return out;
+  };
   function recompute() { S.res = build(eff()); S.draw = null; S.noDraw = false; drawRes(); }
   function editRow(id) {
     const p = P(); const E = S.edits; const src = id ? (eff().find(e => e.id === id) || {}) : {};
