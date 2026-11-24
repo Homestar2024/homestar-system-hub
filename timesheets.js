@@ -240,7 +240,7 @@ export function mountTimesheets(root, { sb, me, people }) {
   const officeFill = (list) => {
     const who = people.find(x => x.id === S.person) || {};
     if (!/^jacob\b/i.test(String(who.name || '')) && String(who.email || '').toLowerCase() !== 'office@homestarhvac.ca') return [];
-    const p = P(); if (!p) return [];
+    const p = P(); if (!p || S.revise) return [];   // revising: the filed rows already hold the Office fill (and any removed days stay removed)
     const out = [];
     for (let d = p.start_date; d <= p.end_date; d = addDays(d, 1)) {
       const wd = D(d).getDay(); if (wd === 0 || wd === 6) continue;
@@ -296,7 +296,7 @@ export function mountTimesheets(root, { sb, me, people }) {
         if (!sick && !g('m_j')) { er.textContent = 'Enter a job # (or Office).'; return; }
         if (!st || !en || mins(en) <= mins(st)) { er.textContent = 'End time has to be after the start time.'; return; }
         if (!reason) { er.textContent = 'Add a reason so the change is on record.'; return; }
-        const rec = { work_date: g('m_d'), job_no: sick ? 'Sick' : g('m_j'), customer: sick ? '' : g('m_c'), dept: sick ? 'O' : g('m_dp'), start_t: st, end_t: en, reason, sick, flag: sick ? '' : (src.flag || '') };
+        const rec = { work_date: g('m_d'), job_no: sick ? 'Sick' : g('m_j'), customer: sick ? '' : g('m_c'), dept: sick ? 'O' : g('m_dp'), start_t: st, end_t: en, reason, sick, flag: sick ? '' : (src.flag || ''), note: sick ? '' : (src.note || '') };
         if (!id) E.add.push({ id: 'man' + Date.now(), ...rec, note: '', flag: '', edited: true, manual: true });
         else if (id.startsWith('man')) Object.assign(E.add.find(a => a.id === id), rec);
         else E.upd[id] = rec;
