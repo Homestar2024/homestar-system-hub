@@ -336,7 +336,8 @@ function custHtml(){const ord=LANES.map(l=>l[0]);const v=VIEW;
    <div><div class="lbl">Show</div><label class="opt"><input type="checkbox" id="cToday" ${v.hideToday?"":"checked"}> Today panel</label><label class="opt"><input type="checkbox" id="cTalk" ${v.hideTalk?"":"checked"}> Talk to Claude</label>
     <div class="lbl" style="margin-top:12px">Opens on</div><select id="cLane">${ord.map(k=>`<option value="${k}" ${(v.defaultLane||"todo")===k?"selected":""}>${esc(LANE_NAMES[k])}</option>`).join("")}</select></div>
    <div><div class="lbl">Theme</div><select id="cTheme">${[["auto","Match my device"],["light","Light"],["dark","Dark"]].map(([k,l])=>`<option value="${k}" ${(v.theme||"auto")===k?"selected":""}>${l}</option>`).join("")}</select>
-    <div class="lbl" style="margin-top:12px">Accent colour</div><select id="cAccent">${[["blue","Homestar blue"],["teal","Teal"],["purple","Purple"],["slate","Slate"]].map(([k,l])=>`<option value="${k}" ${(v.accent||"blue")===k?"selected":""}>${l}</option>`).join("")}</select></div>
+    <div class="lbl" style="margin-top:12px">Accent colour</div><select id="cAccent">${[["blue","Homestar blue"],["teal","Teal"],["purple","Purple"],["slate","Slate"]].map(([k,l])=>`<option value="${k}" ${(v.accent||"blue")===k?"selected":""}>${l}</option>`).join("")}</select>
+    <div class="lbl" style="margin-top:12px">Layout</div><select id="cLayout">${[["classic","Classic"],["new","New (beta)"]].map(([k,l])=>`<option value="${k}" ${(v.layout||"classic")===k?"selected":""}>${l}</option>`).join("")}</select></div>
   </div>
   <div class="row"><button class="btn primary" id="custSave" type="button">Save</button><button class="btn" id="custReset" type="button">Back to default</button><span class="hint" id="custMsg"></span></div>`;}
 let draftOrd=null;
@@ -347,7 +348,7 @@ R.addEventListener("click",e=>{
   if(e.target.closest("#custClose")){$("#custPanel").hidden=true;return}
   const up=e.target.closest("[data-up]"),dn=e.target.closest("[data-dn]");
   if(up||dn){const i=+(up?up.dataset.up:dn.dataset.dn),j=up?i-1:i+1;const o=LANES.map(l=>l[0]);[o[i],o[j]]=[o[j],o[i]];applyView({...VIEW,laneOrder:o});$("#custPanel").innerHTML=custHtml();return}
-  if(e.target.closest("#custSave")){saveView({...VIEW,laneOrder:LANES.map(l=>l[0]),hideToday:!$("#cToday").checked,hideTalk:!$("#cTalk").checked,defaultLane:$("#cLane").value,theme:$("#cTheme").value,accent:$("#cAccent").value,updated:nowIso()});return}
+  if(e.target.closest("#custSave")){saveView({...VIEW,laneOrder:LANES.map(l=>l[0]),hideToday:!$("#cToday").checked,hideTalk:!$("#cTalk").checked,defaultLane:$("#cLane").value,theme:$("#cTheme").value,accent:$("#cAccent").value,layout:$("#cLayout").value,updated:nowIso()});return}
   if(e.target.closest("#custReset")){LANES.sort((a,b)=>Object.keys(LANE_NAMES).indexOf(a[0])-Object.keys(LANE_NAMES).indexOf(b[0]));saveView({updated:nowIso()}).then(()=>{$("#custPanel").innerHTML=custHtml()});return}
 });
 // Viewing switcher (owner) + Give to <teammate>, moved here from the board page's Hub bridge
