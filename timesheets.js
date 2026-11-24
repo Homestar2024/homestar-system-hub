@@ -1,5 +1,6 @@
-// Homestar HQ - Timesheets (v12 2026-11-24: History has an Everyone / per-person filter (Calvin); v11 2026-11-23: Jacob's 8 h day - every weekday is topped up to 8 h with an Office row (8 h minus field time; a weekday with no HCP time gets a flagged 8 h Office row to remove if he was off); v10 2026-11-21: Excel EMPLOYEE box = the person's HQ name (was always the template's Calvin Windsor) - server ts-file + this fallback (Calvin); v9 2026-11-21: History flag / to-look-at chips open a quick dialog; new Payroll dates tab (Calvin); v8 2026-11-21: History = clickable list (pay period, Filed tag, warnings/flags); tap opens a preview of every row and hours, with Edit & re-file, Excel and Delete inside (Calvin); v7 2026-11-21: freshness check before Generate; v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
-// Data: time_entries (HCP time, synced by Claude), pay_periods, timesheets (sent/filed), bank_ledger (banked hours vault).
+// Homestar HQ - Timesheets (v13 2026-11-24: SICK DAYS - a row can be 'Pay as: Sick day (paid)' (Sick column in the Excel, not dept/regular hours, note in the Notes column); BC 5 paid sick days per calendar year counter; Banked hours tab = 'Bank & sick days' with an Everyone-style person picker, bank + sick sections; edit reasons now print in the Excel Notes column (Calvin); v12 2026-11-24: History has an Everyone / per-person filter (Calvin); v11 2026-11-23: Jacob's 8 h day - every weekday is topped up to 8 h with an Office row (8 h minus field time; a weekday with no HCP time gets a flagged 8 h Office row to remove if he was off); v10 2026-11-21: Excel EMPLOYEE box = the person's HQ name (was always the template's Calvin Windsor) - server ts-file + this fallback (Calvin); v9 2026-11-21: History flag / to-look-at chips open a quick dialog; new Payroll dates tab (Calvin); v8 2026-11-21: History = clickable list (pay period, Filed tag, warnings/flags); tap opens a preview of every row and hours, with Edit & re-file, Excel and Delete inside (Calvin); v7 2026-11-21: freshness check before Generate; v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
+// Data: time_entries (HCP time, synced by Claude), pay_periods, timesheets (sent/filed), bank_ledger (banked hours vault), sick_leave (paid sick days, kept in step with sheets by a DB trigger).
+const SICK_DAYS = 5;   // BC ESA s.49.1: 5 paid sick days per calendar year (after 90 days), no carry-over
 // Rules (Timesheets\00 TIMESHEETS README.md): start = first of On my way / Time started; each row rounds to 0.1 h (Excel ROUND half up);
 // never over 80 h: the excess is trimmed off rows on the longest days and BANKED at 1.5x; under 80 h with a bank balance -> offer to draw.
 const DEPT = { I: 'Install', S: 'Service', M: 'Maintenance', O: 'Office' };
@@ -22,7 +23,7 @@ export const folderOf = (p) => { const pd = D(p.pay_date); return `Harlow Bookke
 
 // Pure: build the timesheet from entries. Returns rows (sorted), totals, and the >80 trim plan.
 export function build(entries, cap = 80) {
-  const rows = entries.map(e => ({ id: e.id, date: e.work_date, job: e.job_no, customer: e.customer || '', dept: e.dept, s: mins(e.start_t), e: mins(e.end_t), note: e.note || '', flag: e.flag || '', edited: !!e.edited, reason: e.reason || '', manual: !!e.manual }))
+  const rows = entries.map(e => ({ id: e.id, date: e.work_date, job: e.job_no, customer: e.customer || '', dept: e.dept, s: mins(e.start_t), e: mins(e.end_t), note: e.note || '', flag: e.flag || '', edited: !!e.edited, reason: e.reason || '', manual: !!e.manual, sick: !!e.sick }))
     .filter(r => r.e > r.s).sort((a, b) => (a.date + hm(a.s)).localeCompare(b.date + hm(b.s)));
   const tot = (rs) => Math.round(rs.reduce((a, r) => a + rh(r.e - r.s) * 10, 0)) / 10;
   const raw = tot(rows); const bank = [];
@@ -34,7 +35,7 @@ export function build(entries, cap = 80) {
         const days = [...new Set(rows.map(r => r.date))].map(d => [d, day(d)]).filter(([, h]) => !onlyLong || h > 8.0001).sort((a, b) => b[1] - a[1] || b[0].localeCompare(a[0]));
         if (!days.length) return;
         const [d, h] = days[0]; const room = onlyLong ? Math.round((h - 8) * 10) : need;
-        const r = rows.filter(x => x.date === d && rh(x.e - x.s) > 0.1).sort((a, b) => b.e - a.e)[0]; if (!r) return;
+        const r = rows.filter(x => x.date === d && !x.sick && rh(x.e - x.s) > 0.1).sort((a, b) => b.e - a.e)[0]; if (!r) return;
         const take = Math.min(need, room, Math.round(rh(r.e - r.s) * 10) - 1); if (take <= 0) return;
         const before = r.e; r.e -= take * 6; need -= take;
         bank.push({ date: d, job: r.job, customer: r.customer, dept: r.dept, hours: take / 10, from: hm(before), to: hm(r.e) });
@@ -42,8 +43,8 @@ export function build(entries, cap = 80) {
     };
     pass(true); pass(false);
   }
-  const byDept = { I: 0, S: 0, M: 0, O: 0 }; rows.forEach(r => byDept[r.dept] = Math.round((byDept[r.dept] + rh(r.e - r.s)) * 10) / 10);
-  return { rows, raw, total: tot(rows), byDept, bank };
+  const byDept = { I: 0, S: 0, M: 0, O: 0 }; rows.filter(r => !r.sick).forEach(r => byDept[r.dept] = Math.round((byDept[r.dept] + rh(r.e - r.s)) * 10) / 10);
+  return { rows, raw, total: tot(rows), byDept, bank, sick: tot(rows.filter(r => r.sick)) };
 }
 
 const CSS = `
@@ -83,7 +84,7 @@ td.n,th.n{text-align:right;white-space:nowrap}
 tr.day td{background:var(--sunk);font-weight:700}
 tr.day td .dh{float:right}
 .pill{display:inline-block;border-radius:999px;padding:1px 8px;font-size:12px;font-weight:700;background:var(--sunk)}
-.pill.I{background:#dbe7ff;color:#123e9c}.pill.S{background:#ffe9d2;color:#8a4500}.pill.M{background:#d9f3e6;color:#1d6b45}.pill.O{background:#e9e4ff;color:#4b3aa6}
+.pill.sk{background:#ffe0e0;color:#9c1f1f}.pill.I{background:#dbe7ff;color:#123e9c}.pill.S{background:#ffe9d2;color:#8a4500}.pill.M{background:#d9f3e6;color:#1d6b45}.pill.O{background:#e9e4ff;color:#4b3aa6}
 .flag{color:var(--warn);font-size:12.5px;margin-top:2px}.note{color:var(--muted);font-size:12.5px;margin-top:2px}
 .trim{color:var(--hot);font-size:12.5px}
 .warn{border:1px solid var(--warn);background:color-mix(in srgb,var(--warn) 12%,transparent);border-radius:10px;padding:10px 12px;margin:10px 0}
@@ -130,14 +131,14 @@ export function mountTimesheets(root, { sb, me, people }) {
   const all = !!me.sees_all_timesheets;
   const team = (people || []).filter(p => p.active !== false && (all || p.id === me.id));
   const first = (p) => (p?.name || '').split(' ')[0];
-  const S = { server: null, msMsg: '', fileErr: '', fileStep: '', tab: 'gen', person: me.id, period: null, periods: [], phase: 'pick', res: null, draw: null, bal: 0, ledger: [], err: '', sheet: null, synced: null, histWho: (() => { try { return localStorage.getItem('ts_hwho') || 'all'; } catch (x) { return 'all'; } })() };
+  const S = { server: null, msMsg: '', fileErr: '', fileStep: '', tab: 'gen', person: me.id, period: null, periods: [], phase: 'pick', res: null, draw: null, bal: 0, ledger: [], err: '', sheet: null, synced: null, sick: [], histWho: (() => { try { return localStorage.getItem('ts_hwho') || 'all'; } catch (x) { return 'all'; } })() };
   root.innerHTML = `<style>${CSS}</style><a class="back" href="#/tools">← Tools</a><h2>Timesheets</h2><div id="tabs" class="tabs"></div><div id="body"></div><div id="modal"></div>`;
   const body = root.getElementById('body'), tabsEl = root.getElementById('tabs'), modal = root.getElementById('modal');
   let dead = false, poll = null;
   const personName = (id) => (people.find(p => p.id === id) || {}).name || 'Someone';
 
   function drawTabs() {
-    tabsEl.innerHTML = [['gen', 'Generate'], ['hist', 'History'], ['bank', 'Banked hours'], ['dates', 'Payroll dates']].map(([k, l]) => `<button aria-pressed="${S.tab === k}" data-tab="${k}">${l}</button>`).join('');
+    tabsEl.innerHTML = [['gen', 'Generate'], ['hist', 'History'], ['bank', 'Bank & sick days'], ['dates', 'Payroll dates']].map(([k, l]) => `<button aria-pressed="${S.tab === k}" data-tab="${k}">${l}</button>`).join('');
   }
   tabsEl.onclick = (e) => { const b = e.target.closest('[data-tab]'); if (!b) return; S.tab = b.dataset.tab; drawTabs(); draw(); };
 
@@ -152,6 +153,13 @@ export function mountTimesheets(root, { sb, me, people }) {
     const { data } = await sb.from('bank_ledger').select('*').eq('person_id', pid).order('created_at');
     S.ledger = data || []; S.bal = Math.round(S.ledger.reduce((a, l) => a + Number(l.hours), 0) * 100) / 100;
   }
+  async function loadSick(pid) {
+    const { data } = await sb.from('sick_leave').select('*').eq('person_id', pid).order('work_date');
+    S.sick = data || [];
+  }
+  // paid sick days used in a calendar year (a sick row = 1 day; hand adjustments are stored as 8 h per day); skip = this sheet's own lines
+  const sickDays = (list, yr, skip) => Math.round((list || []).filter(l => String(l.work_date).slice(0, 4) === String(yr) && (!skip || l.timesheet_id !== skip))
+    .reduce((a, l) => a + (l.kind === 'used' ? 1 : Number(l.hours) / 8), 0) * 100) / 100;
   async function loadSheet(pid, start) {
     const { data } = await sb.from('timesheets').select('*').eq('person_id', pid).eq('period_start', start).maybeSingle();
     S.sheet = data || null;
@@ -210,7 +218,7 @@ export function mountTimesheets(root, { sb, me, people }) {
     const p = P();
     const [q] = await Promise.all([
       sb.from('time_entries').select('*').eq('person_id', S.person).gte('work_date', p.start_date).lte('work_date', p.end_date),
-      loadBank(S.person), loadSheet(S.person, p.start_date), new Promise(r => setTimeout(r, 3300))]);
+      loadBank(S.person), loadSick(S.person), loadSheet(S.person, p.start_date), new Promise(r => setTimeout(r, 3300))]);
     clearInterval(tick); if (dead) return;
     if (q.error) { S.phase = 'pick'; S.err = "Couldn't read the time entries: " + q.error.message; return draw(); }
     const { data: sy } = await sb.from('time_entries').select('synced_at').eq('person_id', S.person).order('synced_at', { ascending: false }).limit(1);
@@ -252,8 +260,11 @@ export function mountTimesheets(root, { sb, me, people }) {
   function editRow(id) {
     const p = P(); const E = S.edits; const src = id ? (eff().find(e => e.id === id) || {}) : {};
     const orig = id ? S.entries.find(e => e.id === id) : null; const days = []; for (let d = 0; d < 14; d++) days.push(addDays(p.start_date, d));
-    const v = { date: src.work_date || days[0], job: src.job_no || '', cust: src.customer || '', dept: src.dept || 'S', s: (src.start_t || '08:00').slice(0, 5), e: (src.end_t || '09:00').slice(0, 5) };
+    const v = { date: src.work_date || days[0], job: src.job_no || '', cust: src.customer || '', dept: src.dept || 'S', s: (src.start_t || '08:00').slice(0, 5), e: (src.end_t || '09:00').slice(0, 5), sick: !!src.sick };
+    const yr0 = String(v.date).slice(0, 4), left0 = SICK_DAYS - sickDays(S.sick, yr0, S.sheet && S.sheet.id) - new Set(eff().filter(e => e.sick && e.id !== id && String(e.work_date).slice(0, 4) === yr0).map(e => e.work_date)).size;
     modal.innerHTML = `<div class="modal"><div class="sheet"><h3>${id ? 'Edit row' : 'Add a row'}</h3>
+      <label class="f">Pay as<select id="m_pay"><option value="w" ${v.sick ? '' : 'selected'}>Worked hours</option><option value="sick" ${v.sick ? 'selected' : ''}>Sick day (paid)</option></select></label>
+      <div class="small muted" style="margin-top:4px">Paid sick days left in ${yr0}: <b>${Math.max(0, left0)} of ${SICK_DAYS}</b> (BC: ${SICK_DAYS} per calendar year). A sick day goes in the Sick column, not on a job.</div>
       <div class="row2"><label class="f">Day<select id="m_d">${days.map(d => `<option value="${d}" ${d === v.date ? 'selected' : ''}>${fmtD(d)}</option>`).join('')}</select></label>
         <label class="f">Dept<select id="m_dp">${Object.entries(DEPT).map(([k, l]) => `<option value="${k}" ${k === v.dept ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label class="f">Job #<input id="m_j" value="${esc(v.job)}" placeholder="e.g. 2456-75 or Office"></label>
@@ -275,10 +286,17 @@ export function mountTimesheets(root, { sb, me, people }) {
       }
       if (ev.target.closest('[data-msave]')) {
         const st = g('m_s'), en = g('m_e');
-        if (!g('m_j')) { er.textContent = 'Enter a job # (or Office).'; return; }
+        const sick = g('m_pay') === 'sick';
+        if (sick) {
+          const yr = g('m_d').slice(0, 4); const others = new Set(eff().filter(e => e.sick && e.id !== id && String(e.work_date).slice(0, 4) === yr).map(e => e.work_date));
+          const used = sickDays(S.sick, yr, S.sheet && S.sheet.id) + others.size;
+          if (eff().some(e => e.sick && e.id !== id && e.work_date === g('m_d'))) { er.textContent = 'That day already has a sick row.'; return; }
+          if (used + 1 > SICK_DAYS + 1e-9) { er.textContent = `No paid sick days left in ${yr} (${f1(used)} of ${SICK_DAYS} used). Use banked hours instead, or remove the row.`; return; }
+        }
+        if (!sick && !g('m_j')) { er.textContent = 'Enter a job # (or Office).'; return; }
         if (!st || !en || mins(en) <= mins(st)) { er.textContent = 'End time has to be after the start time.'; return; }
         if (!reason) { er.textContent = 'Add a reason so the change is on record.'; return; }
-        const rec = { work_date: g('m_d'), job_no: g('m_j'), customer: g('m_c'), dept: g('m_dp'), start_t: st, end_t: en, reason };
+        const rec = { work_date: g('m_d'), job_no: sick ? 'Sick' : g('m_j'), customer: sick ? '' : g('m_c'), dept: sick ? 'O' : g('m_dp'), start_t: st, end_t: en, reason, sick, flag: sick ? '' : (src.flag || '') };
         if (!id) E.add.push({ id: 'man' + Date.now(), ...rec, note: '', flag: '', edited: true, manual: true });
         else if (id.startsWith('man')) Object.assign(E.add.find(a => a.id === id), rec);
         else E.upd[id] = rec;
@@ -287,11 +305,11 @@ export function mountTimesheets(root, { sb, me, people }) {
     };
   }
   async function startRevise() {
-    const sh = S.sheet; if (!sh) return; await loadBank(S.person);
+    const sh = S.sheet; if (!sh) return; await Promise.all([loadBank(S.person), loadSick(S.person)]);
     // this sheet's own bank/draw lines are replaced when it is re-filed: give them back for now
     const own = S.ledger.filter(l => l.timesheet_id === sh.id); S.ledger = S.ledger.filter(l => l.timesheet_id !== sh.id);
     S.bal = Math.round(S.ledger.reduce((a, l) => a + Number(l.hours), 0) * 100) / 100;
-    const src = (sh.totals && sh.totals.src) || (sh.rows || []).filter(r => !r.drawn).map((r, i) => ({ id: 'f' + i, work_date: r.date, job_no: r.job, customer: r.customer, dept: String(r.dept || 'S')[0], start_t: r.start, end_t: r.end, note: r.note, flag: r.flag, edited: r.edited, reason: r.reason }));
+    const src = (sh.totals && sh.totals.src) || (sh.rows || []).filter(r => !r.drawn).map((r, i) => ({ id: 'f' + i, work_date: r.date, job_no: r.job, customer: r.customer, dept: String(r.dept || 'S')[0], start_t: r.start, end_t: r.end, note: r.note, flag: r.flag, edited: r.edited, reason: r.reason, sick: !!r.sick }));
     S.entries = src.map(e => ({ ...e })); S.edits = { upd: {}, del: [], add: [] }; S.removed = []; S.revise = true;
     S.res = build(eff()); S.draw = null; S.noDraw = false; S.phase = 'res'; S.synced = sh.filed_at; drawRes();
     if (own.length) S.err = '';
@@ -304,7 +322,7 @@ export function mountTimesheets(root, { sb, me, people }) {
       return `<div class="tday"><span>${fmtD(d, { weekday: 'long', month: 'short', day: 'numeric' })}</span><span>${f1(dh)} h${dh > 10.0001 ? ' ⚠ over 10' : ''}</span></div>` + rs.map(x => {
         const tr = r.bank.filter(b => b.date === d && b.job === x.job && b.to === hm(x.e));
         const notes = `${x.reason ? `<div class="note">✎ ${esc(x.reason)}</div>` : ''}${x.flag && !x.edited ? `<div class="flag">⚑ ${esc(x.flag)}</div>` : ''}${x.note ? `<div class="note">${esc(x.note)}</div>` : ''}${tr.map(b => `<div class="trim">−${f1(b.hours)} h moved to the bank (ended ${t12(b.from)} → ${t12(b.to)})</div>`).join('')}`;
-        return `<div class="te"><div class="tm"><div class="tj"><b>${esc(x.job)}</b> · ${esc(x.customer)}</div><div class="tt">${t12(hm(x.s))} – ${t12(hm(x.e))} <span class="pill ${x.dept}">${DEPT[x.dept]}</span>${x.drawn ? ' <span class="pill">banked</span>' : ''}${x.edited ? ' <span class="pill ed-p">edited</span>' : ''}</div></div><div class="th"><b>${f1(rh(x.e - x.s))}</b>${!x.drawn && S.canEdit ? `<button class="ed" data-edit="${esc(x.id)}" aria-label="Edit row">✎ Edit</button>` : ''}</div>${notes ? `<div class="tn">${notes}</div>` : ''}</div>`;
+        return `<div class="te"><div class="tm"><div class="tj"><b>${esc(x.job)}</b> · ${esc(x.customer)}</div><div class="tt">${x.sick ? '<span class="pill sk">🤒 Sick day (paid)</span>' : `${t12(hm(x.s))} – ${t12(hm(x.e))} <span class="pill ${x.dept}">${DEPT[x.dept]}</span>`}${x.drawn ? ' <span class="pill">banked</span>' : ''}${x.edited ? ' <span class="pill ed-p">edited</span>' : ''}</div></div><div class="th"><b>${f1(rh(x.e - x.s))}</b>${!x.drawn && S.canEdit ? `<button class="ed" data-edit="${esc(x.id)}" aria-label="Edit row">✎ Edit</button>` : ''}</div>${notes ? `<div class="tn">${notes}</div>` : ''}</div>`;
       }).join('');
     }).join('')}</div>${S.canEdit ? '<div class="acts" style="margin-top:8px"><button class="btn" data-addrow>+ Add a row</button></div>' : ''}${(S.removed || []).length ? `<div class="small muted" style="margin-top:6px">Removed: ${S.removed.map(r => `${esc(r.job_no)} ${fmtD(r.work_date)} (${esc(r.reason)})`).join('; ')}</div>` : ''}`;
   }
@@ -312,14 +330,14 @@ export function mountTimesheets(root, { sb, me, people }) {
     const add = (S.draw && S.draw.rows) || [];
     return [...S.res.rows, ...add].sort((a, b) => (a.date + hm(a.s)).localeCompare(b.date + hm(b.s)));
   }
-  function totals(rows) { const byDept = { I: 0, S: 0, M: 0, O: 0 }; rows.forEach(r => byDept[r.dept] = Math.round((byDept[r.dept] + rh(r.e - r.s)) * 10) / 10); return { byDept, total: Math.round(rows.reduce((a, r) => a + rh(r.e - r.s) * 10, 0)) / 10 }; }
+  function totals(rows) { const byDept = { I: 0, S: 0, M: 0, O: 0 }; rows.filter(r => !r.sick).forEach(r => byDept[r.dept] = Math.round((byDept[r.dept] + rh(r.e - r.s)) * 10) / 10); return { byDept, total: Math.round(rows.reduce((a, r) => a + rh(r.e - r.s) * 10, 0)) / 10, sick: Math.round(rows.filter(r => r.sick).reduce((a, r) => a + rh(r.e - r.s) * 10, 0)) / 10 }; }
   function drawRes() {
     const p = P(); const r = S.res; const rows = finalRows(); const t = totals(rows); const who = people.find(x => x.id === S.person) || me;
     const flagged = rows.filter(x => x.flag).length; const banked = Math.round(r.bank.reduce((a, b) => a + b.hours, 0) * 10) / 10;
     const under = Math.round((80 - t.total) * 10) / 10; const canDraw = !S.draw && !S.noDraw && under > 0 && S.bal > 0.04;
     const filed = S.sheet && S.sheet.status === 'filed' && !S.revise; S.canEdit = !filed;
     body.innerHTML = `<div class="card"><h3>${esc(first(who))} · ${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</h3>
-      <div class="tiles"><div class="tile big"><b>${f1(t.total)}</b><span>hours on the sheet</span></div>${Object.entries(t.byDept).filter(([, v]) => v).map(([k, v]) => `<div class="tile"><b>${f1(v)}</b><span>${DEPT[k]}</span></div>`).join('')}<div class="tile"><b>${f1(S.bal)}</b><span>banked hours available</span></div></div>
+      <div class="tiles"><div class="tile big"><b>${f1(t.total)}</b><span>hours on the sheet</span></div>${Object.entries(t.byDept).filter(([, v]) => v).map(([k, v]) => `<div class="tile"><b>${f1(v)}</b><span>${DEPT[k]}</span></div>`).join('')}${t.sick ? `<div class="tile"><b>${f1(t.sick)}</b><span>Sick (paid)</span></div>` : ''}<div class="tile"><b>${f1(S.bal)}</b><span>banked hours available</span></div><div class="tile"><b>${f1(Math.max(0, SICK_DAYS - sickDays(S.sick, p.end_date.slice(0, 4), S.sheet && S.sheet.id) - new Set(rows.filter(x => x.sick && x.date.slice(0, 4) === p.end_date.slice(0, 4)).map(x => x.date)).size))}</b><span>sick days left ${p.end_date.slice(0, 4)}</span></div></div>
       <div class="small muted">HCP time last pulled: ${S.synced ? new Date(S.synced).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' }) : 'never'} — anything tracked after that isn't here yet.</div>
       ${banked ? `<div class="warn"><b>Over 80 hours.</b> HCP shows ${f1(r.raw)} h. ${f1(banked)} h came off the longest days (marked in red below) and go to your bank at time and a half = <b>${f1(banked * 1.5)} banked hours</b>. The sheet Harlow gets shows ${f1(t.total)} h.</div>` : ''}
       ${S.draw ? `<div class="good"><b>${f1(S.draw.hours)} banked hours added</b>, bringing you to ${f1(t.total)} h. Balance after this: ${f1(S.bal - S.draw.hours)} h.</div>` : ''}
@@ -376,9 +394,12 @@ export function mountTimesheets(root, { sb, me, people }) {
   async function send() {
     const p = P(); const rows = finalRows(); const t = totals(rows); const who = people.find(x => x.id === S.person) || me;
     const ledger = [...S.res.bank.map(b => ({ kind: 'bank', work_date: b.date, job_no: b.job, customer: b.customer, dept: b.dept, hours_original: b.hours, multiplier: 1.5, note: `Over 80 h: ${t12(b.from)} → ${t12(b.to)}` })), ...((S.draw && S.draw.ledger) || [])];
-    const payload = rows.map(r => ({ date: r.date, job: r.job, customer: r.customer, dept: DEPT_X[r.dept], start: hm(r.s), end: hm(r.e), hours: rh(r.e - r.s), note: r.note || '', flag: r.flag || '', drawn: !!r.drawn, edited: !!r.edited, reason: r.reason || '' }));
+    const nth = {};   // Excel Notes column: sick day count, edit reason, banked-hours source
+    const xnote = (r) => { if (r.sick) { const yr = r.date.slice(0, 4); nth[yr] = (nth[yr] || 0) + 1; return `Sick day - paid (${f1(sickDays(S.sick, yr, S.sheet && S.sheet.id) + nth[yr]).replace(/\.0$/, '')} of ${SICK_DAYS}, ${yr})${r.reason && !/^sick( day)?\.?$/i.test(r.reason.trim()) ? ' - ' + r.reason : ''}`; }
+      if (r.drawn) return r.note || 'Banked hours'; if (r.edited && r.reason) return 'Edited: ' + r.reason; return ''; };
+    const payload = rows.map(r => ({ date: r.date, job: r.job, customer: r.customer, dept: DEPT_X[r.dept], start: hm(r.s), end: hm(r.e), hours: rh(r.e - r.s), note: r.note || '', flag: r.flag || '', drawn: !!r.drawn, edited: !!r.edited, reason: r.reason || '', sick: !!r.sick, xnote: xnote(r) }));
     const btn = body.querySelector('[data-send]'); if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
-    const { error } = await sb.rpc('ts_send', { p_person: S.person, p_period: p.start_date, p_rows: payload, p_totals: { total: t.total, byDept: t.byDept, raw: S.res.raw, file_name: fileName(first(who), p, S.revise ? (S.sheet.revision || 0) + 1 : 0), folder: folderOf(p), src: eff().map(e => ({ id: e.id, work_date: e.work_date, job_no: e.job_no, customer: e.customer, dept: e.dept, start_t: String(e.start_t).slice(0, 5), end_t: String(e.end_t).slice(0, 5), note: e.note || '', flag: e.flag || '', edited: !!e.edited, reason: e.reason || '' })), removed: (S.removed || []).map(r => ({ date: r.work_date, job: r.job_no, start: r.start_t, end: r.end_t, reason: r.reason })) }, p_ledger: ledger, p_revise: !!S.revise });
+    const { error } = await sb.rpc('ts_send', { p_person: S.person, p_period: p.start_date, p_rows: payload, p_totals: { total: t.total, sick: t.sick, byDept: t.byDept, raw: S.res.raw, file_name: fileName(first(who), p, S.revise ? (S.sheet.revision || 0) + 1 : 0), folder: folderOf(p), src: eff().map(e => ({ id: e.id, work_date: e.work_date, job_no: e.job_no, customer: e.customer, dept: e.dept, start_t: String(e.start_t).slice(0, 5), end_t: String(e.end_t).slice(0, 5), note: e.note || '', flag: e.flag || '', edited: !!e.edited, reason: e.reason || '', sick: !!e.sick })), removed: (S.removed || []).map(r => ({ date: r.work_date, job: r.job_no, start: r.start_t, end: r.end_t, reason: r.reason })) }, p_ledger: ledger, p_revise: !!S.revise });
     if (error) { S.err = "Couldn't send: " + error.message; drawRes(); return; }
     await loadSheet(S.person, p.start_date); S.revise = false; S.phase = 'sent'; draw(); fileNow();
   }
@@ -427,12 +448,12 @@ export function mountTimesheets(root, { sb, me, people }) {
       }
       const tok = await msToken();
       S.fileStep = 'Building the Excel…'; drawSent();
-      const [{ default: JSZip }, { buildTimesheetXlsx }] = await Promise.all([import('https://esm.sh/jszip@3.10.1'), import('./ts_excel.js?v=2')]);
+      const [{ default: JSZip }, { buildTimesheetXlsx }] = await Promise.all([import('https://esm.sh/jszip@3.10.1'), import('./ts_excel.js?v=3')]);
       const { data: tpl, error: te } = await sb.storage.from('timesheets').download('_template/timesheet_template.xlsx');
       if (te) throw new Error("Couldn't load the timesheet template: " + te.message);
-      const rows = (sh.rows || []).map(r => ({ date: r.date, job: r.job, dept: r.dept, start: r.start, end: r.end }));
+      const rows = (sh.rows || []).map(r => ({ date: r.date, job: r.job, dept: r.dept, start: r.start, end: r.end, sick: !!r.sick, hours: r.hours, note: r.xnote || '' }));
       const out = await buildTimesheetXlsx(JSZip, await tpl.arrayBuffer(), rows, p.start_date, p.end_date, (people.find(x => x.id === sh.person_id) || {}).name);
-      if (Math.abs(out.total - Number((sh.totals || {}).total || 0)) > 0.05) throw new Error(`Excel total ${out.total} doesn't match HQ total ${(sh.totals || {}).total}. Not filed.`);
+      if (Math.abs(out.total + (out.sick || 0) - Number((sh.totals || {}).total || 0)) > 0.05) throw new Error(`Excel total ${out.total} doesn't match HQ total ${(sh.totals || {}).total}. Not filed.`);
       S.fileStep = 'Saving to Harlow Bookkeeping…'; drawSent();
       const h = await harlowFolder(tok); const pd = D(p.pay_date);
       const parts = [...(h.base === 'skipTimesheets' ? [] : ['Timesheets']), String(pd.getFullYear()), `${String(pd.getMonth() + 1).padStart(2, '0')}. ${MONL[pd.getMonth()]}`, sh.totals.file_name];
@@ -477,7 +498,7 @@ export function mountTimesheets(root, { sb, me, people }) {
     const chip = (t) => t.verify_status === 'ok' ? `<button class="chipb ok" data-vn="${t.id}">✔ Verified</button>` : t.verify_status === 'issues' ? `<button class="chipb bad" data-vn="${t.id}">⚠ ${(t.verify_notes || []).filter(n => n.level === 'issue').length} to look at</button>` : t.status === 'filed' ? '<span class="chipb">Checking…</span>' : '';
     body.innerHTML = `<div class="card"><h3>Past timesheets</h3>${whoBar}${list.length ? `<div class="hl">${list.map(t => {
       const p = S.periods.find(x => x.start_date === t.period_start) || { start_date: t.period_start, end_date: addDays(t.period_start, 13) };
-      const meta = [all ? esc(first(people.find(x => x.id === t.person_id))) : '', `${f1((t.totals || {}).total || 0)} h`, Number(t.banked) ? `${f1(t.banked)} h banked` : '', Number(t.drawn) ? `${f1(t.drawn)} h used from bank` : '', t.revision ? `revision ${t.revision}` : ''].filter(Boolean).join(' · ');
+      const meta = [all ? esc(first(people.find(x => x.id === t.person_id))) : '', `${f1((t.totals || {}).total || 0)} h`, Number((t.totals || {}).sick) ? `${f1(t.totals.sick)} h sick` : '', Number(t.banked) ? `${f1(t.banked)} h banked` : '', Number(t.drawn) ? `${f1(t.drawn)} h used from bank` : '', t.revision ? `revision ${t.revision}` : ''].filter(Boolean).join(' · ');
       const issues = t.verify_status === 'issues' ? (t.verify_notes || []).filter(n => n.level === 'issue').length : 0, flags = (t.rows || []).filter(r => r.flag && !r.edited).length;
       return `<button class="hrow hopen" data-hopen="${t.id}"><div class="ht"><b>${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</b><span class="muted small">${meta}</span></div>
         <div class="ha"><span class="chipb ${t.status === 'filed' ? 'ok' : t.status === 'queued' ? '' : 'bad'}">${t.status === 'filed' ? '✅ Filed' : t.status === 'queued' ? '⏳ Filing' : '⚠ ' + esc(t.status)}</span>${issues ? `<span class="chipb bad" data-vn="${t.id}" role="button">⚠ ${issues} to look at</span>` : t.verify_status === 'ok' ? '<span class="chipb ok">✔ Verified</span>' : t.status === 'filed' ? '<span class="chipb">Checking…</span>' : ''}${flags ? `<span class="chipb bad" data-hflags="${t.id}" role="button">⚑ ${flags} flagged</span>` : ''}<span class="chev" aria-hidden="true">›</span></div></button>`;
@@ -496,13 +517,13 @@ export function mountTimesheets(root, { sb, me, people }) {
     body.innerHTML = `<div class="card"><button class="linkb" data-hback>← History</button>
       <h3 style="margin-top:6px">${esc(first(people.find(x => x.id === t.person_id) || me))} · ${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</h3>
       <div class="ha" style="margin-bottom:6px"><span class="chipb ${t.status === 'filed' ? 'ok' : t.status === 'queued' ? '' : 'bad'}">${t.status === 'filed' ? '✅ Filed' : t.status === 'queued' ? '⏳ Filing' : '⚠ ' + esc(t.status)}</span>${t.verify_status === 'ok' ? '<span class="chipb ok">✔ Verified</span>' : ''}${issues.length ? `<span class="chipb bad">⚠ ${issues.length} to look at</span>` : ''}${t.revision ? `<span class="chipb">Revision ${t.revision}</span>` : ''}</div>
-      <div class="tiles"><div class="tile big"><b>${f1(tot.total || 0)}</b><span>hours on the sheet</span></div>${Object.entries(byDept).filter(([, v]) => v).map(([k, v]) => `<div class="tile"><b>${f1(v)}</b><span>${DEPT[k] || k}</span></div>`).join('')}${Number(t.banked) ? `<div class="tile"><b>${f1(t.banked)}</b><span>hours banked</span></div>` : ''}${Number(t.drawn) ? `<div class="tile"><b>${f1(t.drawn)}</b><span>used from bank</span></div>` : ''}</div>
+      <div class="tiles"><div class="tile big"><b>${f1(tot.total || 0)}</b><span>hours on the sheet</span></div>${Object.entries(byDept).filter(([, v]) => v).map(([k, v]) => `<div class="tile"><b>${f1(v)}</b><span>${DEPT[k] || k}</span></div>`).join('')}${Number(tot.sick) ? `<div class="tile"><b>${f1(tot.sick)}</b><span>Sick (paid)</span></div>` : ''}${Number(t.banked) ? `<div class="tile"><b>${f1(t.banked)}</b><span>hours banked</span></div>` : ''}${Number(t.drawn) ? `<div class="tile"><b>${f1(t.drawn)}</b><span>used from bank</span></div>` : ''}</div>
       ${issues.length ? `<div class="warn"><b>To look at:</b>${issues.map(n => `<div>⚠ ${esc(n.text)}</div>`).join('')}</div>` : ''}
       ${flagged.length ? `<div class="warn">⚑ ${flagged.length} row${flagged.length > 1 ? 's' : ''} flagged (see below).</div>` : ''}
       ${(t.verify_notes || []).filter(n => n.level !== 'issue').length ? `<details class="small" style="margin:6px 0"><summary>Verification details${t.verified_at ? ' · ' + new Date(t.verified_at).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' }) : ''}</summary>${(t.verify_notes || []).filter(n => n.level !== 'issue').map(n => `<div class="muted">${n.level === 'ok' ? '✔' : 'ℹ'} ${esc(n.text)}</div>`).join('')}</details>` : ''}
       ${rows.length ? `<div class="tl">${days.map(d => { const rs = rows.filter(r => r.date === d); const dh = rs.reduce((a, r) => a + Number(r.hours || 0), 0);
         return `<div class="tday"><span>${fmtD(d, { weekday: 'long', month: 'short', day: 'numeric' })}</span><span>${f1(dh)} h${dh > 10.0001 ? ' ⚠ over 10' : ''}</span></div>` + rs.map(r => { const notes = `${r.reason ? `<div class="note">✎ ${esc(r.reason)}</div>` : ''}${r.flag && !r.edited ? `<div class="flag">⚑ ${esc(r.flag)}</div>` : ''}${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}`;
-          return `<div class="te"><div class="tm"><div class="tj"><b>${esc(r.job)}</b> · ${esc(r.customer)}</div><div class="tt">${t12(r.start)} – ${t12(r.end)} <span class="pill ${dk(r.dept)}">${DEPT[dk(r.dept)] || ''}</span>${r.drawn ? ' <span class="pill">banked</span>' : ''}${r.edited ? ' <span class="pill ed-p">edited</span>' : ''}</div></div><div class="th"><b>${f1(r.hours || 0)}</b></div>${notes ? `<div class="tn">${notes}</div>` : ''}</div>`; }).join(''); }).join('')}</div>` : '<div class="muted">No rows saved for this sheet.</div>'}
+          return `<div class="te"><div class="tm"><div class="tj"><b>${esc(r.job)}</b> · ${esc(r.customer)}</div><div class="tt">${r.sick ? '<span class="pill sk">🤒 Sick day (paid)</span>' : `${t12(r.start)} – ${t12(r.end)} <span class="pill ${dk(r.dept)}">${DEPT[dk(r.dept)] || ''}</span>`}${r.drawn ? ' <span class="pill">banked</span>' : ''}${r.edited ? ' <span class="pill ed-p">edited</span>' : ''}</div></div><div class="th"><b>${f1(r.hours || 0)}</b></div>${notes ? `<div class="tn">${notes}</div>` : ''}</div>`; }).join(''); }).join('')}</div>` : '<div class="muted">No rows saved for this sheet.</div>'}
       ${t.file_name ? `<div class="small muted" style="margin-top:8px">File: <b>${esc(t.file_name)}</b>${t.filed_at ? ' · filed ' + new Date(t.filed_at).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' }) : ''}</div>` : ''}
       <div class="acts">${canEdit ? '<button class="btn" data-hedit>✎ Edit &amp; re-file</button>' : ''}${t.storage_path ? `<button class="btn" data-dlp="${esc(t.storage_path)}">⬇ Excel</button>` : ''}${all ? `<button class="btn" data-del="${t.id}" style="color:var(--hot);border-color:color-mix(in srgb,var(--hot) 45%,var(--line))">🗑 Delete</button>` : ''}</div>
       ${S.err ? `<div class="err">${esc(S.err)}</div>` : ''}</div>`;
@@ -567,8 +588,10 @@ export function mountTimesheets(root, { sb, me, people }) {
     body.innerHTML = '<div class="card muted">Loading…</div>';
     let q = sb.from('bank_ledger').select('*').order('created_at', { ascending: true });
     let qt = sb.from('timesheets').select('id,person_id,period_start,file_name,storage_path,status');
-    if (!all) { q = q.eq('person_id', me.id); qt = qt.eq('person_id', me.id); }
-    const [{ data, error }, { data: sheets }] = await Promise.all([q, qt]); if (dead) return;
+    let qs = sb.from('sick_leave').select('*').order('work_date', { ascending: false });
+    if (!all) { q = q.eq('person_id', me.id); qt = qt.eq('person_id', me.id); qs = qs.eq('person_id', me.id); }
+    const [{ data, error }, { data: sheets }, { data: sk }] = await Promise.all([q, qt, qs]); if (dead) return;
+    S.sickAll = sk || [];
     if (error) { body.innerHTML = `<div class="card err">${esc(error.message)}</div>`; return; }
     const list = data || []; S.bankList = list; S.bankSheets = sheets || [];
     const ids = all ? team.map(t => t.id) : [me.id]; if (!S.bankPerson || !ids.includes(S.bankPerson)) S.bankPerson = me.id;
@@ -581,8 +604,21 @@ export function mountTimesheets(root, { sb, me, people }) {
     S.bankLeft = left;
     const mine = list.filter(l => l.person_id === S.bankPerson).slice().reverse();
     const kindTxt = (l) => l.kind === 'bank' ? 'Banked' : l.kind === 'draw' ? 'Used' : Number(l.hours) >= 0 ? 'Added by hand' : 'Removed by hand';
-    body.innerHTML = `<div class="card"><h3>Banked hours vault</h3><div class="small muted">Hours over 80 in a pay period come off the timesheet and bank here at time and a half (1 h over = 1.5 h banked). Tap any line to see where it came from.</div>
-      <div class="tiles">${ids.map(id => `<button class="tile tbtn ${id === S.bankPerson ? 'big' : ''}" data-bperson="${id}"><b>${f1(bal(id))}</b><span>${esc(first(people.find(p => p.id === id)))} · banked hours</span></button>`).join('')}</div>
+    const yrNow = todayIso().slice(0, 4); const sickYrs = [...new Set([yrNow, ...S.sickAll.filter(l => l.person_id === S.bankPerson).map(l => String(l.work_date).slice(0, 4))])].sort().reverse();
+    if (!S.sickYr || !sickYrs.includes(S.sickYr)) S.sickYr = yrNow;
+    const sl = S.sickAll.filter(l => l.person_id === S.bankPerson && String(l.work_date).slice(0, 4) === S.sickYr);
+    const sUsed = sickDays(sl, S.sickYr); const perTxt = (iso) => { const p = S.periods.find(x => x.start_date === iso); return p ? `${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric' })} pay period` : ''; };
+    const who = first(people.find(p => p.id === S.bankPerson) || me);
+    body.innerHTML = `${ids.length > 1 ? `<div class="tabs" style="margin:0 0 10px">${ids.map(id => `<button aria-pressed="${id === S.bankPerson}" data-bperson="${id}">${esc(first(people.find(p => p.id === id)))}</button>`).join('')}</div>` : ''}
+      <div class="card"><h3>Sick days · ${esc(who)}</h3><div class="small muted">BC gives ${SICK_DAYS} paid sick days per calendar year (after 90 days on the job). Unused days don't carry over. Mark a day as sick on the timesheet: ✎ Edit the row → Pay as: Sick day (paid).</div>
+      ${sickYrs.length > 1 ? `<div class="tabs" style="margin:8px 0 0">${sickYrs.map(y => `<button aria-pressed="${y === S.sickYr}" data-sickyr="${y}">${y}</button>`).join('')}</div>` : ''}
+      <div class="tiles"><div class="tile big"><b>${f1(Math.max(0, SICK_DAYS - sUsed)).replace(/\.0$/, '')}</b><span>paid sick days left ${S.sickYr}</span></div><div class="tile"><b>${f1(sUsed).replace(/\.0$/, '')}</b><span>used</span></div><div class="tile"><b>${SICK_DAYS}</b><span>per year</span></div></div>
+      ${sUsed > SICK_DAYS + 1e-9 ? `<div class="warn">Over the ${SICK_DAYS} paid days for ${S.sickYr}.</div>` : ''}
+      ${sl.length ? `<div class="blist">${sl.map(l => { const sh = S.bankSheets.find(t => t.id === l.timesheet_id);
+        return `<div class="bl" style="cursor:default"><span class="bh neg">${l.kind === 'used' ? '−1 day' : (Number(l.hours) < 0 ? '+' : '−') + f1(Math.abs(Number(l.hours)) / 8).replace(/\.0$/, '') + ' day'}</span><span class="bt"><b>${fmtD(l.work_date, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</b> · ${f1(Math.abs(Number(l.hours)))} h${l.kind === 'adjust' ? ' · added by hand' : ''}<br><span class="muted small">${esc([l.period_start ? perTxt(l.period_start) : '', sh && sh.file_name ? sh.file_name : '', l.note || ''].filter(Boolean).join(' · '))}</span></span></div>`; }).join('')}</div>` : `<div class="muted" style="margin-top:8px">No sick days in ${S.sickYr}.</div>`}
+      ${all ? '<div class="acts"><button class="btn" data-sadj>± Add a sick day by hand</button></div>' : ''}</div>
+      <div class="card"><h3>Banked hours · ${esc(who)}</h3><div class="small muted">Hours over 80 in a pay period come off the timesheet and bank here at time and a half (1 h over = 1.5 h banked). Tap any line to see where it came from.</div>
+      <div class="tiles"><div class="tile big"><b>${f1(bal(S.bankPerson))}</b><span>banked hours available</span></div></div>
       ${all ? '<div class="acts" style="margin:0 0 8px"><button class="btn" data-badj>± Adjust bank by hand</button></div>' : ''}
       ${mine.length ? `<div class="blist">${mine.map(l => `<button class="bl" data-bl="${l.id}"><span class="bh ${Number(l.hours) < 0 ? 'neg' : 'pos'}">${Number(l.hours) > 0 ? '+' : ''}${Number(l.hours).toFixed(2)} h</span>
         <span class="bt"><b>${kindTxt(l)}</b>${l.job_no ? ` · ${esc(l.job_no)}` : ''}${l.customer ? ` · ${esc(l.customer)}` : ''}<br><span class="muted small">${l.period_start ? fmtD(l.period_start, { month: 'short', day: 'numeric', year: 'numeric' }) + ' pay period' : new Date(l.created_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}${l.kind !== 'draw' && Number(l.hours) > 0 ? ` · ${f1(left[l.id] || 0)} h still banked` : ''}</span></span><span class="chev">›</span></button>`).join('')}</div>`
@@ -626,6 +662,25 @@ export function mountTimesheets(root, { sb, me, people }) {
     };
   }
 
+  function sickAdjust() {
+    modal.innerHTML = `<div class="modal"><div class="sheet"><h3>Add a sick day by hand</h3><div class="small muted">For sick days taken before HQ tracked them (earlier this year), or a correction. Sick days on timesheets count automatically.</div>
+      <div class="row2"><label class="f">Who<select id="s_p">${team.map(t => `<option value="${t.id}" ${t.id === S.bankPerson ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
+        <label class="f">Day<input id="s_d" type="date" value="${todayIso()}"></label>
+        <label class="f">Change<select id="s_s"><option value="1">Used a sick day</option><option value="-1">Give a day back (correction)</option></select></label>
+        <label class="f">Days<input id="s_n" inputmode="decimal" value="1"></label></div>
+      <label class="f" style="margin-top:8px">Reason<input id="s_r" placeholder="e.g. sick Mar 4, paid on the Feb 28 - Mar 13 sheet"></label><div class="err" id="s_err"></div>
+      <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn pri" data-ssave>Save</button></div></div></div>`;
+    const g = (k) => modal.querySelector('#' + k).value.trim();
+    modal.onclick = async (e) => {
+      if (e.target.closest('[data-x]')) { modal.innerHTML = ''; return; }
+      if (!e.target.closest('[data-ssave]')) return;
+      const n = Math.round(parseFloat(g('s_n')) * 100) / 100; const er = modal.querySelector('#s_err');
+      if (!(n > 0)) { er.textContent = 'Enter the number of days.'; return; } if (!g('s_d')) { er.textContent = 'Pick the day.'; return; } if (!g('s_r')) { er.textContent = 'Add a reason.'; return; }
+      const { error } = await sb.rpc('ts_sick_adjust', { p_person: g('s_p'), p_date: g('s_d'), p_hours: n * 8 * Number(g('s_s')), p_note: g('s_r') });
+      if (error) { er.textContent = error.message; return; } S.bankPerson = g('s_p'); S.sickYr = g('s_d').slice(0, 4); modal.innerHTML = ''; drawBank();
+    };
+  }
+
   function draw() {
     if (dead) return; drawTabs(); modal.innerHTML = '';
     if (S.tab === 'hist') return drawHist();
@@ -661,6 +716,8 @@ export function mountTimesheets(root, { sb, me, people }) {
     const bp = e.target.closest('[data-bperson]'); if (bp) { S.bankPerson = bp.dataset.bperson; return drawBank(); }
     const bl = e.target.closest('[data-bl]'); if (bl) return bankDetail(bl.dataset.bl);
     if (e.target.closest('[data-badj]')) return bankAdjust();
+    if (e.target.closest('[data-sadj]')) return sickAdjust();
+    const sy = e.target.closest('[data-sickyr]'); if (sy) { S.sickYr = sy.dataset.sickyr; return drawBank(); }
     const dl = e.target.closest('[data-dlp]'); if (dl) return download(dl.dataset.dlp);
   };
   (async () => {

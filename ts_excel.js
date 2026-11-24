@@ -3,6 +3,9 @@
 // maths (C dates, J regular, K overtime, N row total, K19/L19 period, C90:F90 dept totals, C94 over 80, C96 total)
 // and the linked text boxes, and sets fullCalcOnLoad so Excel recalculates on open. Returns a Uint8Array.
 // rows = [{date:'YYYY-MM-DD', job, dept:'I - Install', start:'HH:MM', end:'HH:MM'}] (max 4 per day)
+// v3 2026-11-24 (Calvin): a row with sick:true is a paid sick day - Job 'Sick', no dept or clock times, its hours go in the
+// Sick column (L) and the row total (N), NOT the Regular/Overtime totals (C96 = worked hours). Any row's note goes in Notes (O).
+// Returns total (worked, = C96) and sick. rows may carry {sick, hours, note}.
 // employee (2026-11-21): the person's full name, written into the unlinked EMPLOYEE text box (the template says Calvin Windsor).
 export async function buildTimesheetXlsx(JSZip, templateBytes, rows, startIso, endIso, employee) {
   const z = await JSZip.loadAsync(templateBytes);
@@ -32,12 +35,18 @@ export async function buildTimesheetXlsx(JSZip, templateBytes, rows, startIso, e
   setc('J25', serial);
   const val = {}; // cached formula values
   for (let R = 30; R <= 85; R++) { val['C' + R] = serial + Math.floor((R - 30) / 4); val['J' + R] = 0; val['K' + R] = 0; val['N' + R] = 0; }
-  const dept = { 'S - Service': 0, 'M - Maintenance': 0, 'I - Install': 0, 'O - Office': 0 }; let tot = 0;
+  const dept = { 'S - Service': 0, 'M - Maintenance': 0, 'I - Install': 0, 'O - Office': 0 }; let tot = 0, sick = 0;
   for (const r of placed) {
-    const R = r.row; setc('D' + R, /^\d+$/.test(String(r.job)) ? Number(r.job) : String(r.job)); setc('E' + R, r.dept);
+    const R = r.row;
+    x = x.replace(new RegExp('(<row r="' + R + '"[^>]*?) hidden="1"'), '$1');
+    if (r.note) setc('O' + R, String(r.note).slice(0, 250));
+    if (r.sick) {   // paid sick day: hours in the Sick column only
+      const sh = r1(Number(r.hours) || (((mins(r.end) - mins(r.start)) % 1440) + 1440) % 1440 / 60);
+      setc('D' + R, String(r.job || 'Sick')); setc('L' + R, sh); val['N' + R] = sh; sick = r1(sick + sh); continue;
+    }
+    setc('D' + R, /^\d+$/.test(String(r.job)) ? Number(r.job) : String(r.job)); setc('E' + R, r.dept);
     const [f, g] = t12(r.start), [h, i] = t12(r.end);
     setc('F' + R, f); setc('G' + R, g); setc('H' + R, h); setc('I' + R, i);
-    x = x.replace(new RegExp('(<row r="' + R + '"[^>]*?) hidden="1"'), '$1');
     const hrs = (((mins(r.end) - mins(r.start)) % 1440) + 1440) % 1440 / 60;
     const reg = r1(Math.min(hrs, 8)), ot = r1(Math.max(hrs - 8, 0));
     val['J' + R] = reg; val['K' + R] = ot; val['N' + R] = r1(reg + ot);
@@ -75,5 +84,5 @@ export async function buildTimesheetXlsx(JSZip, templateBytes, rows, startIso, e
     d = d.slice(0, s0) + seg + d.slice(e0);
   }
   z.file('xl/drawings/drawing1.xml', d);
-  return { bytes: await z.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }), total: tot, dept };
+  return { bytes: await z.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }), total: tot, sick, dept };
 }
