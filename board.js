@@ -1,3 +1,4 @@
+// v0.47 2026-11-24 (Jacob): phone lane buttons like the mockup (separate, 10px corners, lane colour tint, selected = filled).
 // v0.46 2026-11-24 (Jacob): New layout cards + panels follow the mockup exactly: small cards (title, 2-line summary, one status badge, + add job #), card panel (Details/Edit, links, Move to pills, Conversation bubbles, Reply, Give, Archive), tile lists as rows each with Reply (brief lines -> new To Do card for Claude).
 // v0.45 2026-11-24 (Jacob): Today tiles styled like the mockup (icon square + label, big number, read-out line); 'Also in the brief' removed.
 // v0.44 2026-11-24 (Jacob): schedule calendar always shows a Calvin and a Jacob row.
@@ -28,7 +29,7 @@ async function freshMsgs(id,c){try{const s=await db.doc("cards/"+id).get();const
 const nowIso=()=>new Date().toISOString();
 
 function renderTabs(){
-  $("#tabs").innerHTML=LANES.map(([k,l])=>`<button class="tab tab-${k}" role="tab" id="tab-${k}" aria-selected="${k===active}" data-lane="${k}">${l}<span class="n">${cards.filter(c=>(c.column||"todo")===k).length}</span></button>`).join("");
+  $("#tabs").innerHTML=LANES.map(([k,l])=>`<button class="tab tab-${k}" role="tab" id="tab-${k}" aria-selected="${k===active}" data-lane="${k}">${NL()&&k==="waiting"?"Waiting":l}<span class="n">${cards.filter(c=>(c.column||"todo")===k).length}</span></button>`).join("");
 }
 function draftUrl(c){/* Outlook web cannot deep-link into the edit/Send screen of a draft (tested 3 link forms 2026-10-18); Drafts folder opens with the newest draft on top, tap it and Send is right there. */return (c.draftReady||c.outlookDraftId||c.draftLink)?"https://outlook.office.com/mail/drafts":""}
 function cardHtml(c){
@@ -453,7 +454,11 @@ var nlBriefD=null, nlOpen=null, nlKind=null;
 .nlb{font:inherit;font-weight:700;border-radius:8px;padding:8px 14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
 .nlb.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .nlsheet-card article.card{margin:0}
-@media(max-width:900px){:host(.nl) #tabs{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;overflow:visible!important}:host(.nl) #tabs .tab{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 2px;font-size:.72rem;line-height:1.15;min-width:0;white-space:normal;text-align:center;margin:0}:host(.nl) #tabs .tab .n{order:-1;font-size:1rem;font-weight:900;margin:0;background:none;padding:0}}
+@media(max-width:900px){:host(.nl) #tabs{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px!important;overflow:visible!important;background:none!important;border:0!important;padding:0!important;margin:0 0 10px!important;box-shadow:none!important;border-radius:0!important}
+:host(.nl) #tabs .tab{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 2px!important;font-size:12px!important;font-weight:700;line-height:1.15;min-width:0;white-space:normal;text-align:center;margin:0!important;border-radius:10px!important;border:1px solid color-mix(in srgb,var(--lc) 45%,var(--line))!important;color:var(--lc)!important;background:color-mix(in srgb,var(--lc) 14%,var(--surface))!important;box-shadow:none!important}
+:host(.nl) #tabs .tab[aria-selected="true"]{background:var(--lc)!important;border-color:var(--lc)!important;color:var(--accent-ink)!important}
+:host(.nl) #tabs .tab .n{order:-1;font-size:15px!important;font-weight:900;font-family:inherit!important;margin:0!important;background:none!important;padding:0!important;color:inherit!important}
+:host(.nl) .tab-emails{--lc:var(--l-emails)}:host(.nl) .tab-todo{--lc:var(--l-todo)}:host(.nl) .tab-waiting{--lc:var(--l-waiting)}:host(.nl) .tab-doing{--lc:var(--l-doing)}:host(.nl) .tab-done{--lc:var(--l-done)}}
 .nlmore{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px}.nlchip{font:inherit;font-size:.8rem;font-weight:700;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:5px 11px;cursor:pointer}
 .nlrow{display:grid;gap:2px;padding:9px 2px;border-bottom:1px solid var(--line);cursor:pointer}.nlrow:last-child{border-bottom:0}.nlrow span{color:var(--muted);font-size:.88rem}.nlrow em{font-style:normal;color:var(--muted);font-size:.75rem}.nlrow:hover b{color:var(--accent)}
 :host(.nl) .nltiles{grid-template-columns:repeat(3,minmax(0,1fr))}@media(max-width:900px){:host(.nl) .nltiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
