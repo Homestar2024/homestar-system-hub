@@ -1,3 +1,4 @@
+// v0.45 2026-11-24 (Jacob): Today tiles styled like the mockup (icon square + label, big number, read-out line); 'Also in the brief' removed.
 // v0.44 2026-11-24 (Jacob): schedule calendar always shows a Calvin and a Jacob row.
 // v0.43 2026-11-24 (Jacob): NEW layout Today = fixed tiles: Needs you (To Do + Emails cards), Call backs (brief), Claude did (24 h log of Claude messages), Waiting on (cards), Close-outs (brief), This week (brief); other brief sections as chips.
 // v0.42 2026-11-24 (Jacob): NEW layout - schedule calendar panel on top (parsed from board/today schedule + Tomorrow lines; clash outline), Today below, Talk hidden, '+ New card', lanes in a 'My cards' container.
@@ -421,11 +422,14 @@ var nlBriefD=null, nlOpen=null, nlKind=null;
 .nlsch .ch b{font-family:var(--mono);font-size:.85rem;white-space:nowrap}
 .nlsch .empty{color:var(--muted);font-size:.9rem}
 .nltiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
-.nlt{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--tc);border-radius:12px;padding:12px 14px;cursor:pointer;text-align:left;font:inherit;color:var(--ink);display:flex;flex-direction:column;gap:4px;min-width:0}
-.nlt:hover{border-color:var(--tc)}
-.nlt .tl{font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-.nlt .tn{font-size:1.6rem;font-weight:900;line-height:1}
-.nlt .tp{font-size:.85rem;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.nlt{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;text-align:left;font:inherit;color:var(--ink);display:flex;flex-direction:column;gap:4px;min-width:0}
+.nlt:hover{background:var(--sunk);transform:translateY(-1px)}.nlt{transition:.15s}
+.nlt .th{display:flex;align-items:center;gap:8px}
+.nlt .ti{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:none;color:var(--tc);background:color-mix(in srgb,var(--tc) 14%,transparent)}
+.nlt .ti svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.nlt .tl{font-size:.74rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.nlt .tn{font-size:1.75rem;font-weight:900;line-height:1;margin-top:4px}
+.nlt .tp{font-size:.86rem;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .nlt.zero{opacity:.55}
 .nlh{font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:2px 0 8px}
 :host(.nl) article.card.mini{cursor:pointer;padding:10px 12px;border-left:3px solid var(--lc,var(--accent))}
@@ -467,17 +471,20 @@ function nlTiles(){const D=nlBriefD||{},g=nlGroups(D),used=new Set(),open=cards.
  const waiting=open.filter(c=>c.column==="waiting");
  const cb=brief(/call ?-?backs?/i),co=brief(/close ?-?outs?/i),wk=brief(/this week|week ahead/i);
  const T=[];
- T.push({k:"needs",l:"Needs you",tc:"var(--hot)",n:needs.length,p:needs[0]?needs[0].title:"Nothing in To Do or Emails",cards:needs,sub:"To Do and Emails"});
- if(cb){const r=real(lines(cb));T.push({k:"cb",l:"Call backs",tc:"var(--ok)",n:r.length,p:r[0]||lines(cb)[0]||"",brief:cb})}else T.push({k:"cb",l:"Call backs",tc:"var(--ok)",n:0,p:"Nothing from the morning brief yet",empty:true});
- T.push({k:"log",l:"Claude did",tc:"var(--accent)",n:log.length,p:log[0]?log[0].m.text:"Nothing in the last 24 hours",log});
- T.push({k:"wait",l:"Waiting on",tc:"var(--l-waiting)",n:waiting.length,p:waiting[0]?waiting[0].title:"Nothing waiting",cards:waiting});
- if(co){const r=real(lines(co));T.push({k:"co",l:"Close-outs",tc:"var(--l-doing)",n:r.length,p:r[0]||lines(co)[0]||"",brief:co})}else T.push({k:"co",l:"Close-outs",tc:"var(--l-doing)",n:0,p:"Added to the morning brief soon",empty:true});
- if(wk){const r=real(lines(wk));T.push({k:"wk",l:"This week",tc:"var(--l-done)",n:r.length,p:r[0]||lines(wk)[0]||"",brief:wk})}else T.push({k:"wk",l:"This week",tc:"var(--l-done)",n:0,p:"Added to the morning brief soon",empty:true});
+ const nTodo=needs.filter(c=>(c.column||"todo")==="todo").length,nEm=needs.length-nTodo,nUrg=needs.filter(c=>c.priority==="urgent").length;
+ T.push({k:"needs",l:"Needs you",ic:"alert",tc:"var(--hot)",n:needs.length,p:needs.length?[nTodo+" in To Do",nEm+" email"+(nEm===1?"":"s"),...(nUrg?[nUrg+" urgent"]:[])].join(" · "):"Nothing in To Do or Emails",cards:needs});
+ if(cb){const r=real(lines(cb));T.push({k:"cb",l:"Call backs",ic:"phone",tc:"var(--ok)",n:r.length,p:r[0]||lines(cb)[0]||"",brief:cb})}else T.push({k:"cb",l:"Call backs",ic:"phone",tc:"var(--ok)",n:0,p:"Nothing from the morning brief yet",empty:true});
+ const lc=new Set(log.map(x=>x.c.id)).size,dr=open.filter(c=>c.draftReady&&!isSent(c)).length,dn=new Set(log.filter(x=>x.c.column==="done").map(x=>x.c.id)).size;
+ T.push({k:"log",l:"Claude did",ic:"spark",tc:"var(--accent)",n:log.length,p:log.length?[log.length+" update"+(log.length===1?"":"s")+" on "+lc+" card"+(lc===1?"":"s"),...(dr?[dr+" draft"+(dr===1?"":"s")+" ready"]:[]),...(dn?[dn+" done"]:[])].join(" · "):"Nothing in the last 24 hours",log});
+ const old=[...waiting].sort((a,b)=>String(a.updated||"").localeCompare(String(b.updated||"")))[0],od=old&&old.updated?Math.floor((Date.now()-Date.parse(old.updated))/864e5):0;
+ T.push({k:"wait",l:"Waiting on",ic:"clock",tc:"var(--l-waiting)",n:waiting.length,p:old?"Oldest: "+old.title+(od?" ("+od+" day"+(od===1?"":"s")+")":""):"Nothing waiting",cards:waiting});
+ if(co){const r=real(lines(co));T.push({k:"co",l:"Close-outs",ic:"check",tc:"var(--l-doing)",n:r.length,p:r[0]||lines(co)[0]||"",brief:co})}else T.push({k:"co",l:"Close-outs",ic:"check",tc:"var(--l-doing)",n:0,p:"Added to the morning brief soon",empty:true});
+ if(wk){const r=real(lines(wk));T.push({k:"wk",l:"This week",ic:"cal",tc:"var(--l-done)",n:r.length,p:r[0]||lines(wk)[0]||"",brief:wk})}else T.push({k:"wk",l:"This week",ic:"cal",tc:"var(--l-done)",n:0,p:"Added to the morning brief soon",empty:true});
  const rest=g.filter(x=>!used.has(x.k));return {T,rest}}
+var NLI={alert:'<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/>',phone:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',spark:'<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',check:'<path d="M5 12l4 4 10-10"/>',cal:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'};
 function nlBrief(d){if(d)nlBriefD=d;const el=R.getElementById("nlToday");if(!el||!NL())return;nlSchedRender();
  const {T,rest}=nlTiles();
- el.innerHTML=`<div class="nltiles">${T.map(t=>`<button class="nlt ${t.n?"":"zero"}" data-nltile="${t.k}" style="--tc:${t.tc}"><span class="tl">${esc(t.l)}</span><span class="tn">${t.n}</span><span class="tp">${esc(t.p||"")}</span></button>`).join("")}</div>
- ${rest.length?`<div class="nlmore"><span class="hint">Also in the brief:</span>${rest.map(x=>`<button class="nlchip" data-nltile="b:${esc(x.k)}">${esc(x.k)}</button>`).join("")}</div>`:""}`;
+ el.innerHTML=`<div class="nltiles">${T.map(t=>`<button class="nlt ${t.n?"":"zero"}" data-nltile="${t.k}" style="--tc:${t.tc}"><span class="th"><span class="ti"><svg viewBox="0 0 24 24">${NLI[t.ic]||""}</svg></span><span class="tl">${esc(t.l)}</span></span><span class="tn">${t.n}</span><span class="tp">${esc(t.p||"")}</span></button>`).join("")}</div>`;
  if(nlKind==="tile")nlSheet();}
 function nlTileSheet(key){const {T,rest}=nlTiles();const row=c=>`<div class="nlrow" data-nlopen="${esc(c.id)}"><b>${esc(c.title)}</b><span>${esc(c.summary||c.nextStep||"")}</span></div>`;
  const briefHtml=t=>t.items.map(it=>`<div class="nld">${it.lead&&it.b.length>1?`<b>${esc(it.lead)}</b>`:""}<ul class="nllist">${(it.b.length?it.b:[it.lead]).map(z=>`<li>${esc(z)}</li>`).join("")}</ul></div>`).join("");
