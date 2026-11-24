@@ -1,3 +1,4 @@
+// v0.46 2026-11-24 (Jacob): New layout cards + panels follow the mockup exactly: small cards (title, 2-line summary, one status badge, + add job #), card panel (Details/Edit, links, Move to pills, Conversation bubbles, Reply, Give, Archive), tile lists as rows each with Reply (brief lines -> new To Do card for Claude).
 // v0.45 2026-11-24 (Jacob): Today tiles styled like the mockup (icon square + label, big number, read-out line); 'Also in the brief' removed.
 // v0.44 2026-11-24 (Jacob): schedule calendar always shows a Calvin and a Jacob row.
 // v0.43 2026-11-24 (Jacob): NEW layout Today = fixed tiles: Needs you (To Do + Emails cards), Call backs (brief), Claude did (24 h log of Claude messages), Waiting on (cards), Close-outs (brief), This week (brief); other brief sections as chips.
@@ -456,6 +457,42 @@ var nlBriefD=null, nlOpen=null, nlKind=null;
 .nlmore{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px}.nlchip{font:inherit;font-size:.8rem;font-weight:700;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:5px 11px;cursor:pointer}
 .nlrow{display:grid;gap:2px;padding:9px 2px;border-bottom:1px solid var(--line);cursor:pointer}.nlrow:last-child{border-bottom:0}.nlrow span{color:var(--muted);font-size:.88rem}.nlrow em{font-style:normal;color:var(--muted);font-size:.75rem}.nlrow:hover b{color:var(--accent)}
 :host(.nl) .nltiles{grid-template-columns:repeat(3,minmax(0,1fr))}@media(max-width:900px){:host(.nl) .nltiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+:host(.nl) .lane{background:var(--sunk)!important;border:0!important;border-top:4px solid var(--lc)!important;border-radius:12px!important;padding:10px!important;box-shadow:none!important}
+:host(.nl) .lane .lane-h h2{font-size:13px!important;color:var(--lc)!important}
+:host(.nl) article.card.mini{display:block!important;background:var(--surface)!important;border:1px solid var(--line)!important;border-left:3px solid var(--lc)!important;border-radius:10px!important;padding:10px 11px!important;margin:0 0 8px!important;box-shadow:none!important;cursor:pointer}
+:host(.nl) article.card.mini:hover{border-color:var(--accent)!important;border-left-color:var(--lc)!important}
+:host(.nl) article.card.mini b{display:block;font-size:13px;margin-bottom:3px;color:var(--ink)}
+:host(.nl) article.card.mini p{margin:0 0 6px;color:var(--muted);font-size:12px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.nbg{display:inline-block!important;width:auto!important;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent)}
+.nmiss{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:var(--warn)}
+:host(.nl) #nlSheet.on{background:var(--surface)!important;padding:20px!important;width:min(420px,100%)!important;border-left:1px solid var(--line)}
+@media(max-width:900px){:host(.nl) #nlSheet.on{width:100%!important;border-left:0}}
+#nlSheet h2{margin:0 0 4px;font-size:20px;color:var(--ink)}
+#nlSheet h4{margin:18px 0 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.nx{float:right;cursor:pointer;font-size:20px;color:var(--muted);line-height:1}
+.nhandle{display:none;width:40px;height:4px;border-radius:4px;background:var(--line);margin:-8px auto 12px}@media(max-width:900px){.nhandle{display:block}}
+.nmut{color:var(--muted)}.nneed{color:var(--warn);font-weight:700}
+.ndh{display:flex;align-items:center;justify-content:space-between;margin-top:16px}.ndh h4{margin:0!important}
+.ndl{display:grid;grid-template-columns:110px 1fr;gap:6px 10px;font-size:13px;margin:14px 0}.ndl dt{color:var(--muted)}.ndl dd{margin:0;min-width:0;overflow-wrap:anywhere;color:var(--ink)}
+@media(max-width:900px){.ndl{grid-template-columns:96px 1fr}}
+.nin{width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--ink);font:inherit;font-size:14px}
+.nsave{display:flex;gap:8px;align-items:center;margin-top:4px}.nsave small{color:var(--muted)}
+.nbtn{font:inherit;font-weight:700;font-size:13px;background:var(--accent);color:var(--accent-ink);border:1px solid var(--accent);border-radius:8px;padding:8px 14px;cursor:pointer}
+.nbtn.ghost{background:transparent;color:var(--muted);border-color:var(--line)}.nbtn.sm{padding:5px 12px;font-size:12px}
+.nlinks{display:flex;flex-direction:column;gap:4px}
+.nhcp{display:inline-block;margin-top:4px;color:var(--accent);font-weight:700;font-size:13px;text-decoration:none}
+.ndraft{margin-top:10px;font-size:13px}.ndraft summary{cursor:pointer;color:var(--accent);font-weight:700}.ndraft div{white-space:pre-wrap;background:var(--sunk);border-radius:10px;padding:9px 11px;margin-top:6px}
+.nwait{margin-top:10px;font-size:12px;font-weight:700;color:var(--warn)}
+.nlanes{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.nlanes button{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:20px;padding:5px 11px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.nlanes button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.nmsg{border-radius:10px;padding:9px 11px;margin-top:8px;font-size:13px;line-height:1.4;background:var(--sunk);color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
+.nmsg.me{background:color-mix(in srgb,var(--accent) 14%,var(--surface))}.nmsg small{display:block;color:var(--muted);font-size:11px;margin-bottom:3px;white-space:normal}
+.nreply{display:flex;gap:8px;margin-top:12px;align-items:flex-end}.nreply textarea{flex:1;min-height:38px;resize:vertical;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:9px 11px;color:var(--ink);font:inherit;font-size:14px;box-sizing:border-box}
+.nreply[hidden]{display:none}
+.nacts{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;align-items:center}
+.nrow{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px;background:var(--surface)}.nrow b{display:block;font-size:14px;color:var(--ink)}.nrow small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.nrow .nacts{margin-top:8px}.nrow .nreply{margin-top:8px}
+
 .nllist{margin:0;padding-left:1.1em;display:grid;gap:6px}
 </style><div id="nlScrim"></div><aside id="nlSheet" aria-label="Details"></aside>`;R.appendChild(nlT.content);}
 (()=>{const tg=R.getElementById("cb-today");if(tg)tg.insertAdjacentHTML("afterbegin",`<div id="nlToday"></div>`)})();
@@ -486,46 +523,69 @@ function nlBrief(d){if(d)nlBriefD=d;const el=R.getElementById("nlToday");if(!el|
  const {T,rest}=nlTiles();
  el.innerHTML=`<div class="nltiles">${T.map(t=>`<button class="nlt ${t.n?"":"zero"}" data-nltile="${t.k}" style="--tc:${t.tc}"><span class="th"><span class="ti"><svg viewBox="0 0 24 24">${NLI[t.ic]||""}</svg></span><span class="tl">${esc(t.l)}</span></span><span class="tn">${t.n}</span><span class="tp">${esc(t.p||"")}</span></button>`).join("")}</div>`;
  if(nlKind==="tile")nlSheet();}
-function nlTileSheet(key){const {T,rest}=nlTiles();const row=c=>`<div class="nlrow" data-nlopen="${esc(c.id)}"><b>${esc(c.title)}</b><span>${esc(c.summary||c.nextStep||"")}</span></div>`;
- const briefHtml=t=>t.items.map(it=>`<div class="nld">${it.lead&&it.b.length>1?`<b>${esc(it.lead)}</b>`:""}<ul class="nllist">${(it.b.length?it.b:[it.lead]).map(z=>`<li>${esc(z)}</li>`).join("")}</ul></div>`).join("");
- let title,body;
- if(String(key).startsWith("b:")){const t=nlGroups(nlBriefD).find(x=>x.k===key.slice(2));if(!t)return null;title=t.k;body=briefHtml(t)}
- else{const t=T.find(x=>x.k===key);if(!t)return null;title=t.l;
-  body=t.cards?(t.cards.length?`<div class="nld">${t.cards.map(row).join("")}</div>`:`<div class="nld hint">${esc(t.p)}</div>`)
-   :t.log?(t.log.length?`<div class="nld">${t.log.map(({c,m})=>`<div class="nlrow" data-nlopen="${esc(c.id)}"><b>${esc(c.title)}</b><span>${esc(m.text)}</span><em>${esc(fmtTime(m.at))}</em></div>`).join("")}</div>`:`<div class="nld hint">${esc(t.p)}</div>`)
-   :t.brief?briefHtml(t.brief):`<div class="nld hint">${t.k==="cb"?"Missed calls, voicemails and texts show here once the morning brief writes a 'Call backs' section.":t.k==="co"?"Finished jobs still needing photos, equipment, invoice or rebate will show here once the morning brief writes a 'Close-outs' section.":"Maintenance due, bookings and what Calvin is waiting on will show here once the morning brief writes a 'This week' section."}</div>`}
- return `<div class="nlgrab"></div><div class="nlsh-h"><h3>${esc(title)}</h3><button class="nlx" data-nlclose aria-label="Close">✕</button></div>${body}`}
-function nlMini(c){const all=c.msgs||[];const lastC=[...all].reverse().find(m=>m.from==="claude");const sum=c.summary||(lastC?lastC.text:(c.detail||""));const open=isOpen(c);
- const b=[];if(c.priority==="urgent")b.push(["Urgent","var(--hot)"]);if(c.needsClaude&&!c.approvedAt)b.push(["Waiting for Claude","var(--l-doing)"]);if(c.draftReady&&open&&!isSent(c))b.push(["Draft ready","var(--accent)"]);if(isSent(c))b.push(["Sent","var(--ok)"]);if(c.job)b.push([c.job,"var(--muted)"]);if(c.customer)b.push([c.customer,"var(--muted)"]);if(c.givenTo)b.push(["Given to "+c.givenTo,"var(--muted)"]);if(open&&c.updated&&Date.now()-Date.parse(c.updated)>7*864e5)b.push(["7+ days","var(--warn)"]);
- const miss=open&&!c.job?`<span class="nb miss">+ add job #</span>`:"";
- return `<article class="card mini ${c.column==="done"?"done":""} ${c.id===focusId?"flash":""}" id="${esc(c.id)}" data-nlopen="${esc(c.id)}"><h3>${esc(c.title)}</h3>${sum?`<div class="ms">${esc(sum)}</div>`:""}<div>${b.map(([t,col])=>`<span class="nb" style="--bc:${col}">${esc(t)}</span>`).join("")}${miss}</div></article>`}
+var nlBriefRows=[];
+function nlTileSheet(key){const {T}=nlTiles();const t=T.find(x=>x.k===key);if(!t)return null;
+ const head=(sub)=>`<div class="nhandle"></div><span class="nx" data-nlclose>✕</span><h2>${esc(t.l)}</h2><small class="nmut">${esc(sub)}</small>`;
+ const rep=(id,i)=>`<div class="nreply" id="nrb-${i}" hidden><textarea id="${id}" rows="1" placeholder="Reply to Claude…"></textarea>`;
+ if(t.cards){const L=t.cards;return head(L.length?L.length+(t.k==="needs"?" in To Do and Emails":" waiting on someone else"):t.p)+L.map((c,i)=>{const [st,sc]=nlStatus(c);return `<div class="nrow"><b>${esc(c.title)}</b><small>${esc(c.summary||c.nextStep||"")}</small><div class="nacts"><button class="nbtn sm" data-nlrep="${i}">Reply</button><button class="nbtn ghost sm" data-nlopen="${esc(c.id)}">Open card</button><span class="nbg" style="--c:${sc}">${esc(st)}</span></div>${rep("r-"+c.id,i)}<button class="nbtn sm" data-reply="${esc(c.id)}">Send</button></div></div>`}).join("")}
+ if(t.log){const seen=new Set(),L=t.log.filter(x=>!seen.has(x.c.id)&&seen.add(x.c.id));return head(t.log.length?t.p:"Nothing in the last 24 hours")+L.map(({c,m},i)=>`<div class="nrow"><b>${esc(c.title)}</b><small>${esc(m.text)}</small><small class="nmut">${esc(fmtTime(m.at))}</small><div class="nacts"><button class="nbtn sm" data-nlrep="${i}">Reply</button><button class="nbtn ghost sm" data-nlopen="${esc(c.id)}">Open card</button></div>${rep("r-"+c.id,i)}<button class="nbtn sm" data-reply="${esc(c.id)}">Send</button></div></div>`).join("")}
+ if(t.brief){const L=t.brief.items.flatMap(it=>it.b.length?it.b:[it.lead]);nlBriefRows=L;return head(t.p||"")+L.map((z,i)=>`<div class="nrow"><b>${esc(z)}</b><div class="nacts"><button class="nbtn sm" data-nlrep="${i}">Reply</button></div>${rep("nlbr-"+i,i)}<button class="nbtn sm" data-nlbrief="${i}">Send</button></div></div>`).join("")}
+ return head(t.p)+`<div class="nrow"><small>${t.k==="cb"?"Missed calls, voicemails and texts show here once the morning brief writes them.":t.k==="co"?"Finished jobs still needing photos, equipment, invoice or rebate show here once the morning brief writes them.":"Maintenance due, bookings and what Calvin is waiting on show here once the morning brief writes them."}</small></div>`}
+function nlStatus(c){const open=isOpen(c);if(c.priority==="urgent"&&open)return ["Urgent","var(--hot)"];if(c.needsClaude&&!c.approvedAt)return ["Claude","var(--accent)"];if(c.draftReady&&open&&!isSent(c))return ["Draft ready","var(--accent)"];if(isSent(c))return ["Sent","var(--ok)"];
+ return ({emails:["Email","var(--l-emails)"],todo:["To do","var(--muted)"],waiting:[c.givenTo?"Given to "+String(c.givenTo).split(/\s+/)[0]:"Waiting","var(--l-waiting)"],doing:["Doing","var(--l-doing)"],done:["Done","var(--ok)"],archive:["Archived","var(--muted)"]})[c.column||"todo"]||["To do","var(--muted)"]}
+function nlMini(c){const all=c.msgs||[];const lastC=[...all].reverse().find(m=>m.from==="claude");const sum=c.summary||(lastC?lastC.text:(c.detail||""));const open=isOpen(c);const [st,sc]=nlStatus(c);
+ return `<article class="card mini ${c.column==="done"?"done":""} ${c.id===focusId?"flash":""}" id="${esc(c.id)}" data-nlopen="${esc(c.id)}"><b>${esc(c.title)}</b>${sum?`<p>${esc(sum)}</p>`:""}<span class="nbg" style="--c:${sc}">${esc(st)}</span>${open&&!c.job?`<span class="nmiss">+ add job #</span>`:""}</article>`}
+function nlCardSheet(c,ed){const [st,sc]=nlStatus(c);const all=c.msgs||[];
+ const row=(l,k,v,ph)=>`<dt>${l}</dt><dd>${ed?(k==="claudeNote"?`<textarea class="nin" id="nle-${k}" rows="3" placeholder="${ph}">${esc(v||"")}</textarea>`:`<input class="nin" id="nle-${k}" value="${esc(v||"")}" placeholder="${ph}">`):(v?esc(v):(k==="claudeNote"?`<span class="nmut">–</span>`:`<span class="nneed">Missing – Claude needs this</span>`))}</dd>`;
+ const em=safeUrl(c.emailWebLink||c.emailLink||c.link,/^https:\/\/outlook\.(office365|office)\.com\//),est=safeUrl(c.estimateLink,/^https:\/\/pro\.housecallpro\.com\//);
+ const links=[];if(draftUrl(c)&&isOpen(c)&&!isSent(c))links.push(`<a class="nhcp" href="${esc(draftUrl(c))}" target="_blank" rel="noopener" data-opendraft="${esc(c.id)}">Open in Drafts ↗</a>`);if(em&&isOpen(c))links.push(`<a class="nhcp" href="${esc(em)}" target="_blank" rel="noopener">Open the email ↗</a>`);if(est&&isOpen(c))links.push(`<a class="nhcp" href="${esc(est)}" target="_blank" rel="noopener">Open in HCP ↗</a>`);
+ if(c.orderLink&&/^https:\/\/(www\.)?(sheret\.com|master\.ca|rsl\.ca|senville\.ca)\//.test(c.orderLink)&&isOpen(c))links.push(`<a class="nhcp" href="${esc(c.orderLink)}" target="_blank" rel="noopener">Open cart ↗</a>`);
+ const lanes=[...LANES];
+ return `<div class="nhandle"></div><span class="nx" data-nlclose>✕</span><h2>${esc(c.title)}</h2><span class="nbg" style="--c:${sc}">${esc(st)}</span>
+ ${c.fromOwner&&c.handoffNote?`<div class="nmsg"><small>From ${esc(String(c.fromOwner).split(/\s+/)[0])}</small>${esc(c.handoffNote)}</div>`:""}
+ <div class="ndetail ${ed?"editing":""}"><div class="ndh"><h4>Details</h4>${ed||!isOpen(c)?"":`<button class="nbtn ghost sm" data-nledit>Edit</button>`}</div>
+ <dl class="ndl">${row("Customer","customer",c.customer,"Search or type a name")}${row("Job #","job",c.job,"e.g. 2503")}<dt>Created</dt><dd>${esc(fmtTime(c.created||c.updated))}${c.source?` · ${esc(c.source==="calvin"?"added by you":"by Claude")}`:""}</dd>
+ ${c.summary||c.detail?`<dt>Summary</dt><dd>${esc(c.summary||c.detail)}</dd>`:""}${c.nextStep?`<dt>Your move</dt><dd>${esc(c.nextStep)}</dd>`:""}${c.dueOn||c.remindOn?`<dt>Due</dt><dd>${esc([c.dueOn&&"Due "+c.dueOn,c.remindOn&&"Reminder "+c.remindOn].filter(Boolean).join(" · "))}</dd>`:""}
+ ${row("Note for Claude","claudeNote",c.claudeNote,"Anything Claude should know – prefers texts, quote was verbal, call before 10…")}</dl>
+ ${ed?`<div class="nsave"><button class="nbtn" data-nlsave="${esc(c.id)}">Save</button><button class="nbtn ghost" data-nlcancel>Cancel</button><small id="nlmsg">Claude reads this on its next check</small></div>`:""}</div>
+ ${links.length?`<div class="nlinks">${links.join("")}</div>`:""}
+ ${c.draftPreview&&isOpen(c)&&!isSent(c)?`<details class="ndraft"><summary>Read the draft${c.draftSubject?": "+esc(c.draftSubject):""}</summary><div>${esc(c.draftPreview)}</div></details>`:""}
+ ${c.needsClaude&&!c.approvedAt?`<div class="nwait">Waiting for Claude's next check</div>`:""}
+ <h4>Move to</h4><div class="nlanes">${lanes.map(([k,l])=>`<button class="${(c.column||"todo")===k?"on":""}" data-nlmove="${esc(c.id)}" data-lane2="${k}">${l}</button>`).join("")}</div>
+ <h4>Conversation</h4>${all.length?all.map(m=>`<div class="nmsg ${m.from==="claude"?"":"me"}"><small>${m.from==="claude"?"Claude":(m.by?esc(m.by):"You")} · ${esc(fmtTime(m.at))}</small>${esc(m.text)}</div>`).join(""):`<div class="nmut" style="font-size:13px">No messages yet.</div>`}
+ <div class="nreply"><textarea id="r-${esc(c.id)}" rows="1" placeholder="Reply to Claude…"></textarea><button class="nbtn" data-reply="${esc(c.id)}">Send</button></div>
+ ${isOpen(c)?`<div class="nacts">${GIVE.length&&!c.givenTo?GIVE.map(p=>`<button class="nbtn ghost" data-give="${esc(c.id)}" data-to="${esc(p.id)}">Give to ${esc(p.first)}</button>`).join(""):""}${c.givenTo?`<small class="nmut">Given to ${esc(c.givenTo)}${c.givenAt?" "+esc(fmtTime(c.givenAt)):""}</small>`:""}<button class="nbtn ghost" data-nlarch="${esc(c.id)}">Archive</button></div>`:""}`}
 function nlSheet(){const sh=R.getElementById("nlSheet"),sc=R.getElementById("nlScrim");if(!sh)return;if(NL()&&(nlKind==="new"||nlKind==="job"))return;
  if(!nlKind||!NL()){sh.classList.remove("on");sc.classList.remove("on");sh.innerHTML="";return}
- const keep={};sh.querySelectorAll("textarea,input").forEach(t=>{if(t.id&&t.value)keep[t.id]=t.value});const fid=R.activeElement&&sh.contains(R.activeElement)?R.activeElement.id:null;const ed=!!sh.querySelector(".nld.editing");
+ const keep={};sh.querySelectorAll("textarea,input").forEach(t=>{if(t.id&&t.value)keep[t.id]=t.value});const fid=R.activeElement&&sh.contains(R.activeElement)?R.activeElement.id:null;const ed=!!sh.querySelector(".ndetail.editing");
  let h="";
  if(nlKind==="tile"){const th=nlTileSheet(nlOpen);if(!th){nlClose();return}h=th}
  else{const c=cards.find(x=>x.id===nlOpen);if(!c){nlClose();return}
-  const row=(l,k,v,ph)=>`<dt>${l}</dt><dd>${ed?(k==="claudeNote"?`<textarea id="nle-${k}" rows="3" placeholder="${ph}">${esc(v||"")}</textarea>`:`<input id="nle-${k}" value="${esc(v||"")}" placeholder="${ph}">`):(v?esc(v):`<span class="need">${k==="claudeNote"?"–":"Missing – Claude needs this"}</span>`)}</dd>`;
-  h=`<div class="nlgrab"></div><div class="nlsh-h"><h3>${esc(c.title)}</h3><button class="nlx" data-nlclose aria-label="Close">✕</button></div>
-  ${isOpen(c)?`<div class="nld ${ed?"editing":""}"><div style="display:flex;justify-content:space-between;align-items:center"><b>Details</b>${ed?"":`<button class="nlb" data-nledit>Edit</button>`}</div><dl>${row("Customer","customer",c.customer,"Customer name")}${row("Job #","job",c.job,"e.g. 2503")}${row("Note for Claude","claudeNote",c.claudeNote,"Anything Claude should know – prefers texts, quote was verbal, call before 10…")}</dl>
-   ${ed?`<div class="row"><button class="nlb pri" data-nlsave="${esc(c.id)}">Save</button><button class="nlb" data-nlcancel>Cancel</button><span class="hint" id="nlmsg">Saving sends it to Claude for the next check.</span></div>`:""}</div>`:""}
-  <div class="nlsheet-card">${cardHtml(c).replace(`id="${esc(c.id)}"`,`id="nls-${esc(c.id)}"`)}</div>`}
+  h=nlCardSheet(c,ed)}
  sh.innerHTML=h;sh.classList.add("on");sc.classList.add("on");
  Object.entries(keep).forEach(([id,v])=>{const t=sh.querySelector("#"+CSS.escape(id));if(t&&!t.value)t.value=v});if(fid){const f=sh.querySelector("#"+CSS.escape(fid));if(f)f.focus({preventScroll:true})}}
 function nlClose(){nlKind=null;nlOpen=null;nlSheet()}
 R.addEventListener("click",async e=>{if(!NL())return;
  if(e.target.closest("#nlScrim")||e.target.closest("[data-nlclose]")){nlClose();return}
  const tl=e.target.closest("[data-nltile]");if(tl){nlKind="tile";nlOpen=tl.dataset.nltile;nlSheet();return}
+ const bo=e.target.closest("button[data-nlopen]");if(bo){nlKind="card";nlOpen=bo.dataset.nlopen;nlSheet();return}
+ const rp=e.target.closest("[data-nlrep]");if(rp){const bx=R.getElementById("nrb-"+rp.dataset.nlrep);if(bx){bx.hidden=!bx.hidden;const t=bx.querySelector("textarea");if(t&&!bx.hidden)t.focus()}return}
+ const mv=e.target.closest("[data-nlmove]");if(mv&&db){const id=mv.dataset.nlmove,col=mv.dataset.lane2;try{if(typeof seq!=="undefined")seq.set(id,--seqTop)}catch(_){}try{await db.doc("cards/"+id).update({column:col,updated:nowIso()})}catch(err){}return}
+ const ar=e.target.closest("[data-nlarch]");if(ar&&db){try{await db.doc("cards/"+ar.dataset.nlarch).update({column:"archive",updated:nowIso()});nlClose()}catch(err){}return}
+ const gv=e.target.closest("[data-give]");if(gv&&e.target.closest("#nlSheet")){setTimeout(()=>{nlClose();const g=R.getElementById("giveDlg");if(g)g.scrollIntoView({block:"center"})},0);return}
+ const br=e.target.closest("[data-nlbrief]");if(br&&db){const n=+br.dataset.nlbrief,line=nlBriefRows[n]||"",tb=R.getElementById("nlbr-"+n),text=tb?tb.value.trim():"";if(!text){if(tb)tb.focus();return}br.disabled=true;
+  const id="req-"+Date.now().toString(36),at=nowIso(),by=opts.me&&opts.me.name?String(opts.me.name).split(/\s+/)[0]:undefined;
+  try{await db.doc("cards/"+id).set({title:line.length>70?line.slice(0,67)+"…":line,detail:line,column:"todo",priority:"normal",source:"calvin",needsClaude:true,created:at,updated:at,msgs:[{from:"calvin",...(by?{by}:{}),text:text+"\n\n(Re: "+line+")",at}]});if(tb){tb.value="";tb.placeholder="Sent – a To Do card was made for Claude"}}catch(err){if(tb)tb.placeholder="Couldn't send – try again"}br.disabled=false;return}
  const op=e.target.closest("[data-nlopen]");if(op&&!e.target.closest("a,button,select,textarea,input")){nlKind="card";nlOpen=op.dataset.nlopen;nlSheet();return}
- if(e.target.closest("[data-nledit]")){const d=R.querySelector("#nlSheet .nld");if(d)d.classList.add("editing");nlSheet();return}
- if(e.target.closest("[data-nlcancel]")){const d=R.querySelector("#nlSheet .nld");if(d)d.classList.remove("editing");nlSheet();return}
+ if(e.target.closest("[data-nledit]")){const d=R.querySelector("#nlSheet .ndetail");if(d)d.classList.add("editing");nlSheet();return}
+ if(e.target.closest("[data-nlcancel]")){const d=R.querySelector("#nlSheet .ndetail");if(d)d.classList.remove("editing");nlSheet();return}
  const sv=e.target.closest("[data-nlsave]");if(sv&&db){const id=sv.dataset.nlsave,c=cards.find(x=>x.id===id);if(!c)return;sv.disabled=true;
   const g=k=>{const el=R.getElementById("nle-"+k);return el?el.value.trim():""};const nv={customer:g("customer"),job:g("job"),claudeNote:g("claudeNote")};
   const ch=[["Customer","customer"],["Job #","job"],["Note for Claude","claudeNote"]].filter(([,k])=>(nv[k]||"")!==(c[k]||"")).map(([l,k])=>`${l}: ${nv[k]||"(cleared)"}`);
-  if(!ch.length){const d=R.querySelector("#nlSheet .nld");if(d)d.classList.remove("editing");nlSheet();return}
+  if(!ch.length){const d=R.querySelector("#nlSheet .ndetail");if(d)d.classList.remove("editing");nlSheet();return}
   const by=opts.me&&opts.me.name?String(opts.me.name).split(/\s+/)[0]:undefined;
   try{const ms=await freshMsgs(id,c);await db.doc("cards/"+id).update({...nv,msgs:[...ms,{from:"calvin",...(by?{by}:{}),text:"Updated card details – "+ch.join(" · "),at:nowIso()}],needsClaude:true,updated:nowIso()});
-   Object.assign(c,nv);const d=R.querySelector("#nlSheet .nld");if(d)d.classList.remove("editing");nlSheet();}
+   Object.assign(c,nv);const d=R.querySelector("#nlSheet .ndetail");if(d)d.classList.remove("editing");nlSheet();}
   catch(err){sv.disabled=false;const m=R.getElementById("nlmsg");if(m)m.textContent="Couldn't save: "+(err.message||err);}}
 });
 /* ---- v0.42 NEW LAYOUT: schedule calendar panel (top), Today below it, Talk to Claude hidden, '+ New card', lanes inside a 'My cards' container ---- */
