@@ -1,3 +1,4 @@
+// v0.48 2026-11-24 (Jacob): New layout top bar exactly like the mockup (text logo, pill nav, search, Theme, initials pill) + roomier page padding. Classic unchanged.
 // v0.47 2026-11-24 (Jacob): phone lane buttons like the mockup. board.js?v=18.
 // v0.46 2026-11-24 (Jacob): Board New layout cards/panels like the mockup; tile rows with Reply. board.js?v=17.
 // v0.45 2026-11-24 (Jacob): Today tiles like the mockup. board.js?v=16.
@@ -840,6 +841,8 @@ function SearchPage({ q, setQ, data, me, people }) {
 // v0.22: personal theme + accent (saved per person in board/view by the board's Customize panel; cached for a fast first paint)
 const applyLook = (v) => { const r = document.documentElement; v = v || {}; if (v.theme === 'light' || v.theme === 'dark') r.dataset.theme = v.theme; else delete r.dataset.theme; if (v.accent && v.accent !== 'blue') r.dataset.accent = v.accent; else delete r.dataset.accent; if (v.layout === 'new') r.dataset.layout = 'new'; else delete r.dataset.layout; try { localStorage.setItem('hb-look', JSON.stringify({ theme: v.theme || 'auto', accent: v.accent || 'blue', layout: v.layout === 'new' ? 'new' : 'classic' })); } catch (e) {} };
 try { applyLook(JSON.parse(localStorage.getItem('hb-look') || 'null')); } catch (e) {}
+// v0.48 New layout Theme button: flips light/dark, saved per person in board/view (same field Customize uses)
+const nlTheme = (me) => { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; const next = dark ? 'light' : 'dark'; let c = {}; try { c = JSON.parse(localStorage.getItem('hb-look') || '{}') || {}; } catch (e) {} applyLook({ ...c, theme: next }); if (me) boardDb(sb, me.id).doc('board/view').update({ theme: next }).catch(() => {}); };
 const MODS = { tools: ['./tools.js?v=66', 'mountTools', 'Tools'], maint: ['./maint.js?v=1', 'mountMaint', 'Maintenance'], kpi: ['./kpi.js?v=2', 'mountKpi', 'KPIs'], board: ['./board.js?v=18', 'mountBoard', 'the Board'] };   // v0.21: Board too (board.js, build_boardmod.py)
 function ModPage({ me, mod, owner, extra }) {
   const ref = useRef(null);
@@ -879,11 +882,11 @@ function App() {
   const PLACES = [['#/board', '▦', 'Board', !q.trim() && parts[0] === 'board', boardN ? html`Board<span class="n">${boardN}</span>` : 'Board'], ...(kpiOK ? [['#/kpi', '◔', 'KPIs', !q.trim() && parts[0] === 'kpi']] : []), ['#/maint', '🔧', 'Maint.', !q.trim() && parts[0] === 'maint', 'Maintenance'], ['#/home', '▤', 'Systems', sysOn], ['#/tools', '🧰', 'Tools', !q.trim() && parts[0] === 'tools'], ['#/ask', '💬', 'Ask', !q.trim() && parts[0] === 'ask']];
   const initials = (me.name || '?').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const tabs = html`<nav class="tabs">${PLACES.map(([h, ic, l, o]) => html`<a key=${l} href=${h} onClick=${() => { setQ(''); setSearchOpen(false); }} class=${o ? 'on' : ''}><span class="i">${ic}</span>${l}</a>`)}</nav>`;
-  const header = html`<header class="top"><a class="hb-brand" href="#/board" title="Board"><img class="word" src="wordmark.png" alt="Homestar"/><img class="word-dark" src="wordmark-dark.png" alt="Homestar"/></a>
+  const header = html`<header class="top"><a class="hb-brand" href="#/board" title="Board"><img class="word" src="wordmark.png" alt="Homestar"/><img class="word-dark" src="wordmark-dark.png" alt="Homestar"/><span class="nl-logo">HomeStar<small>HVAC SOLUTIONS</small></span></a>
       <nav class="hb-views">${PLACES.map(([h, ic, l, o, full]) => html`<a key=${l} href=${h} class=${o ? 'on' : ''}>${full || l}</a>`)}</nav>
-      <span class="grow"></span><input class=${searchOpen ? 'open' : ''} placeholder="Search cards, customers, pages…" value=${q} onInput=${e => setQ(e.target.value)} onBlur=${() => { if (!q) setSearchOpen(false); }} onKeyDown=${e => { if (e.key === 'Enter' && results && results[0]) { go('/' + results[0].type + '/' + results[0].slug); } if (e.key === 'Escape') { setQ(''); setSearchOpen(false); } }}/>
+      <span class="grow"></span><input class=${searchOpen ? 'open' : ''} placeholder="Search cards, customers…" value=${q} onInput=${e => setQ(e.target.value)} onBlur=${() => { if (!q) setSearchOpen(false); }} onKeyDown=${e => { if (e.key === 'Enter' && results && results[0]) { go('/' + results[0].type + '/' + results[0].slug); } if (e.key === 'Escape') { setQ(''); setSearchOpen(false); } }}/>
       <button class="btn ghost sm search-btn" onClick=${() => go('/search')}>🔍</button>
-      <a class=${'hb-me' + (meOn ? ' on' : '')} href="#/me" title="My record, people and settings"><span class="i">👤</span>${(me.name || 'Me').split(/\s+/)[0]}</a><div class="hb-stripe"></div></header>`;
+      <button class="btn ghost nl-theme" onClick=${() => nlTheme(me)}>Theme</button><a class=${'hb-me' + (meOn ? ' on' : '')} href="#/me" title="My record, people and settings"><span class="i">👤</span><span class="av">${initials}</span>${(me.name || 'Me').split(/\s+/)[0]}</a><div class="hb-stripe"></div></header>`;
   const sub = sysOn ? html`<nav class="hb-sub">${[['/home', 'Overview'], ['/system', 'Systems'], ['/policy', 'Policies'], ['/training', 'Training']].map(([p, l]) => html`<a key=${p} href=${'#' + p} class=${(p === '/home' ? route.startsWith('/home') : route.startsWith(p)) ? 'on' : ''}>${l}</a>`)}</nav>` : null;
   if (parts[0] === 'board') {
     const qp = new URLSearchParams(route.split('?')[1] || ''); const as = me.sees_all_boards && /^[0-9a-f-]{36}$/.test(qp.get('as') || '') ? qp.get('as') : me.id;
