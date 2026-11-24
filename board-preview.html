@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Homestar Board – design preview</title>
+<meta name="robots" content="noindex,nofollow">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --page:#F4F6F9; --panel:#FFFFFF; --card:#FFFFFF; --raised:#F5F7FA; --border:#E5E7EB;
+  --text:#111827; --text2:#4B5563; --muted:#64748B;
+  --accent:#2596BE; --btn:#2596BE; --btntext:#FFFFFF;
+  --side:#1A3654; --sidetext:#C8DDE6; --sideactive:#2596BE;
+  --green:#3f9e62; --red:#d9534f; --amber:#c7930f;
+  --tint:.12;
+  --l-emails:#0f766e;--l-todo:#174fd0;--l-waiting:#c2680c;--l-doing:#6b4fc4;--l-done:#2b7a52;
+}
+body.dark{
+  --page:#0f1722; --panel:#172131; --card:#1e2a3c; --raised:#26354a; --border:#2c3b52;
+  --text:#e8eef4; --text2:#a9b8c9; --muted:#7c8ba1;
+  --accent:#38b6e0; --btn:#38b6e0; --btntext:#0f1722;
+  --side:#121b28; --sidetext:#a9b8c9; --sideactive:#38b6e0;
+  --green:#6abf8a; --red:#f9a8a8; --amber:#e5b130;
+  --tint:.15;
+  --l-emails:#5eead4;--l-todo:#92abe8;--l-waiting:#fbbf85;--l-doing:#a68cff;--l-done:#63c493;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Lato,'Open Sans',sans-serif;background:var(--page);color:var(--text);font-size:14px}
+
+/* top bar */
+.bar{position:sticky;top:0;z-index:4;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;padding:10px 24px}
+.logo{font-weight:900;font-size:17px;color:var(--text);white-space:nowrap}
+.logo small{display:block;font-weight:700;font-size:9px;letter-spacing:.14em;color:var(--accent)}
+.pills{display:flex;gap:4px;background:var(--raised);border:1px solid var(--border);border-radius:999px;padding:4px;overflow-x:auto;scrollbar-width:none}
+.pills a{padding:7px 14px;border-radius:999px;color:var(--text2);font-weight:700;font-size:13px;white-space:nowrap;cursor:pointer;text-decoration:none}
+.pills a.on{background:var(--accent);color:var(--btntext)}
+.pills .ct{font-size:11px;margin-left:4px;opacity:.85}
+.bar .r{margin-left:auto;display:flex;gap:8px;align-items:center}
+.mepill{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:999px;padding:4px 12px 4px 4px;font-weight:700;color:var(--text)}
+.av{width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--btntext);display:grid;place-items:center;font-weight:900;font-size:11px}
+svg.i{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px}
+/* main */
+main{max-width:1440px;margin:0 auto;padding:22px 24px 40px}
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.top h1{margin:0;font-size:22px;font-weight:900}
+.top .sub{color:var(--muted);font-size:13px}
+.top .r{margin-left:auto;display:flex;gap:8px;align-items:center}
+.search{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--muted);min-width:200px}
+.btn{background:var(--btn);color:var(--btntext);border:0;border-radius:8px;padding:9px 14px;font-weight:700;font-family:inherit;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--text2);border:1px solid var(--border)}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+.ph{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.ph h2{margin:0;font-size:15px;font-weight:900}
+.ph .meta{color:var(--muted);font-size:12px;margin-left:auto}
+/* calendar */
+.cal{display:grid;grid-template-columns:70px 1fr 1fr;gap:0;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.cal .hd{background:var(--raised);padding:8px 10px;font-weight:700;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border)}
+.cal .hd.today{color:var(--accent)}
+.cal .tech{padding:10px;font-weight:700;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border);display:flex;align-items:center}
+.cal .day{position:relative;height:64px;border-bottom:1px solid var(--border);border-left:1px solid var(--border);
+  background:repeating-linear-gradient(90deg,transparent 0,transparent calc(10% - 1px),var(--border) calc(10% - 1px),var(--border) 10%)}
+.cal .scale{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);padding:3px 6px;border-left:1px solid var(--border)}
+.job{position:absolute;top:8px;bottom:8px;border-radius:6px;padding:5px 7px;font-size:11px;line-height:1.25;overflow:hidden;cursor:pointer;
+  border-left:3px solid var(--c);background:color-mix(in srgb,var(--c) calc(var(--tint)*100%),var(--card));color:var(--text)}
+.job b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.job span{color:var(--text2);white-space:nowrap}
+.job.clash{outline:2px solid var(--red);outline-offset:-2px}
+.job.half{top:34px;bottom:4px}
+.job.halftop{bottom:34px;top:4px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-top:10px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+/* tiles */
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.tile{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;cursor:pointer;transition:.15s;display:flex;flex-direction:column;gap:6px}
+.tile:hover{background:var(--raised);transform:translateY(-1px)}
+.tile .tt{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text2);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.tile .n{font-size:28px;font-weight:900;line-height:1}
+.tile .line{color:var(--text2);font-size:13px}
+.tile .ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:14px;background:color-mix(in srgb,var(--c) calc(var(--tint)*100%),transparent);color:var(--c)}
+.tile.zero{opacity:.55}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;color:var(--c);background:color-mix(in srgb,var(--c) calc(var(--tint)*100%),transparent)}
+/* lanes */
+.lanes{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.lane{background:var(--raised);border-radius:12px;padding:10px;min-height:120px}
+.lane h3{margin:2px 4px 10px;font-size:13px;display:flex;justify-content:space-between;color:var(--text2)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 11px;margin-bottom:8px;cursor:pointer}
+.card:hover{border-color:var(--accent)}
+.card b{display:block;font-size:13px;margin-bottom:3px}
+.card p{margin:0 0 6px;color:var(--text2);font-size:12px;line-height:1.35}
+.tabs{display:none;gap:6px;margin-bottom:10px;overflow-x:auto}
+.tabs button{border:1px solid var(--border);background:var(--panel);color:var(--text2);border-radius:20px;padding:6px 12px;font-family:inherit;font-weight:700;white-space:nowrap}
+.tabs button.on{background:var(--accent);color:var(--btntext);border-color:var(--accent)}
+/* drawer */
+.scrim{position:fixed;inset:0;z-index:5;background:rgba(0,0,0,.35);display:none}
+.drawer{position:fixed;top:0;right:0;height:100%;width:min(420px,100%);background:var(--panel);border-left:1px solid var(--border);
+  transform:translateX(100%);transition:.2s;padding:20px;overflow-y:auto;z-index:6}
+.open .scrim{display:block}.open .drawer{transform:none}
+.drawer h2{margin:0 0 4px}
+.drawer .x{float:right;cursor:pointer;font-size:20px;color:var(--muted)}
+.row{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:10px;background:var(--card)}
+.row b{display:block}.row small{color:var(--text2)}
+.row .acts{margin-top:8px;display:flex;gap:6px}
+.row .acts .btn{padding:6px 10px;font-size:12px}
+.handle{display:none;width:40px;height:4px;border-radius:4px;background:var(--border);margin:-8px auto 12px}
+.dl{display:grid;grid-template-columns:110px 1fr;gap:6px 10px;font-size:13px;margin:14px 0}
+.dl dt{color:var(--muted)}.dl dd{margin:0}
+.msg{border-radius:10px;padding:9px 11px;margin-top:8px;font-size:13px;line-height:1.4;background:var(--raised)}
+.msg.me{background:color-mix(in srgb,var(--accent) calc(var(--tint)*100%),var(--card))}
+.msg small{display:block;color:var(--muted);font-size:11px;margin-bottom:3px}
+.reply{display:flex;gap:8px;margin-top:12px}
+.reply input{flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:9px 11px;color:var(--text);font-family:inherit}
+.lanepick{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.lanepick button{border:1px solid var(--border);background:var(--card);color:var(--text2);border-radius:20px;padding:5px 11px;font-family:inherit;font-size:12px;font-weight:700}
+.lanepick button.on{background:var(--accent);color:var(--btntext);border-color:var(--accent)}
+h4{margin:18px 0 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.phonewrap{position:fixed;inset:0;z-index:20;background:rgba(10,15,25,.75);display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+.phonewrap.on{display:flex}
+.device{width:390px;height:min(844px,calc(100vh - 90px));border-radius:36px;border:10px solid #0b0f16;box-shadow:0 20px 60px rgba(0,0,0,.5);overflow:hidden;background:#000}
+.device iframe{width:100%;height:100%;border:0;display:block}
+html.inframe .phonebtn{display:none}
+.miss{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:var(--amber)}
+.dh{display:flex;align-items:center;justify-content:space-between;margin-top:16px}
+.btn.sm{padding:5px 12px;font-size:12px}
+.detail .edit{display:none;width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:inherit;font-size:13px}
+.detail.editing .edit{display:block}
+.detail.editing .val,.detail.editing .need{display:none}
+.detail.editing #eb{display:none}
+.need{color:var(--amber);font-weight:700}
+.muted{color:var(--muted)}
+.savebar{display:none;gap:8px;align-items:center;margin-top:4px}
+.detail.editing .savebar{display:flex}
+.savebar small{color:var(--muted)}
+.hcp{display:inline-block;margin-top:4px;color:var(--accent);font-weight:700;font-size:13px;cursor:pointer}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--text);color:var(--page);padding:10px 16px;border-radius:10px;font-weight:700;z-index:30}
+.bnav{display:none}
+.lane{border-top:4px solid var(--lc)}
+.lane h3{color:var(--lc)}
+.lane .card{border-left:3px solid var(--lc)}
+.tabs button{border-color:color-mix(in srgb,var(--lc) 45%,var(--border));color:var(--lc);background:color-mix(in srgb,var(--lc) calc(var(--tint)*100%),var(--panel))}
+.tabs button.on{background:var(--lc);border-color:var(--lc);color:#fff}
+body.dark .tabs button.on{color:#0f1722}
+.note{font-size:12px;color:var(--muted);margin-top:24px;text-align:center}
+/* responsive */
+@media(max-width:1100px){.lanes{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:820px){
+  .bar{flex-wrap:wrap;padding:10px 12px;gap:10px}
+  .pills{order:3;width:100%}
+  .bar .r .search{display:none}
+  main{padding:14px 12px 40px}
+  .tiles{grid-template-columns:repeat(2,1fr)}
+  .cal{grid-template-columns:54px 1fr}
+  .cal .tomorrow{display:none}
+  .lanes{grid-template-columns:1fr}
+  .tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;overflow:visible}
+  .tabs button{padding:6px 2px;border-radius:10px;font-size:12px;line-height:1.15;display:flex;flex-direction:column;align-items:center;min-width:0}
+  .tabs button b{font-size:15px}
+  .lane{display:none}.lane.show{display:block}
+  .lane h3{display:none}
+  .top .r{display:none}
+  /* side panel becomes a bottom sheet on phones */
+  .drawer{top:auto;bottom:0;left:0;right:0;width:100%;height:auto;max-height:88vh;border-left:0;border-top:1px solid var(--border);
+    border-radius:18px 18px 0 0;transform:translateY(100%);padding-top:20px}
+  .open .drawer{transform:none}
+  .handle{display:block}
+  .pills{display:none}
+  main{padding-bottom:90px}
+  .bnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:4;background:var(--panel);border-top:1px solid var(--border);justify-content:space-around;padding:8px 4px 14px}
+  .bnav a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:700;color:var(--muted);text-decoration:none;flex:1}
+  .bnav a svg.i{width:22px;height:22px}
+  .bnav a.on{color:var(--accent)}
+  .dl{grid-template-columns:96px 1fr}
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="logo">HomeStar<small>HVAC SOLUTIONS</small></div>
+  <nav class="pills"><a class="on">Board<span class="ct">14</span></a><a>KPIs</a><a>Maintenance</a><a>Systems</a><a>Tools</a><a>Ask</a></nav>
+  <div class="r"><div class="search">Search cards, customers…</div><button class="btn ghost phonebtn" onclick="phoneView(true)">Phone view</button><button class="btn ghost" onclick="toggleDark()">Theme</button><div class="mepill"><div class="av">JS</div>Jacob</div></div>
+</header>
+<main>
+    <div class="top">
+      <div><h1>Good morning, Jacob</h1><div class="sub">Tuesday, November 24 · updated 7:16 AM · 0 waiting for Claude</div></div>
+      <div class="r"><button class="btn">+ New card</button></div>
+    </div>
+
+    <!-- SCHEDULE -->
+    <section class="panel">
+      <div class="ph"><h2>Schedule</h2><span class="badge" style="--c:var(--red)">1 clash tomorrow</span><span class="meta">8 AM – 6 PM · tap a job to open it</span></div>
+      <div class="cal">
+        <div class="hd"></div><div class="hd today">Today · Tue 24</div><div class="hd tomorrow">Tomorrow · Wed 25</div>
+        <div class="tech">Calvin</div>
+        <div class="day">
+          <div class="job" style="--c:#8b6cd9;left:50%;width:30%" onclick="openD('job')"><b>Pat Rivers</b><span>1–4 PM · Diagnostic · #2495</span></div>
+        </div>
+        <div class="day tomorrow">
+          <div class="job halftop clash" style="--c:#2596be;left:10%;width:30%" onclick="openD('clash')"><b>Alex Morgan · 9–12</b></div>
+          <div class="job half clash" style="--c:#c7930f;left:10%;width:20%" onclick="openD('clash')"><b>BTA · 9–11</b></div>
+          <div class="job" style="--c:#8b6cd9;left:50%;width:30%" onclick="openD('job')"><b>Chris Hale</b><span>1–4 PM · Diagnostic · #2493</span></div>
+        </div>
+        <div class="tech">Jacob</div>
+        <div class="day"><div class="job" style="--c:#6b7a90;left:0;width:90%"><b>Office day</b><span>8–5</span></div></div>
+        <div class="day tomorrow"><div class="job" style="--c:#2596be;left:0;width:10%"><b>Jordan L.</b><span>8 AM</span></div></div>
+        <div></div><div class="scale"><span>8</span><span>10</span><span>12</span><span>2</span><span>4</span><span>6</span></div><div class="scale tomorrow"><span>8</span><span>10</span><span>12</span><span>2</span><span>4</span><span>6</span></div>
+      </div>
+      <div class="legend"><span><i style="background:#2596be"></i>Maintenance</span><span><i style="background:#8b6cd9"></i>Diagnostic</span><span><i style="background:#3f9e62"></i>Install</span><span><i style="background:#c7930f"></i>Other / admin</span><span><i style="border:2px solid var(--red)"></i>Clash</span></div>
+    </section>
+
+    <!-- TODAY TILES -->
+    <section class="panel">
+      <div class="ph"><h2>Today</h2><span class="meta">tap a tile to see the list</span></div>
+      <div class="tiles">
+        <div class="tile" style="--c:var(--red)" onclick="openD('needs')"><div class="tt"><span class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/></svg></span>Needs you</div><div class="n">3</div><div class="line">2 confirmations for tomorrow · 1 Calvin decision</div></div>
+        <div class="tile zero" style="--c:var(--green)" onclick="openD('calls')"><div class="tt"><span class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg></span>Call backs</div><div class="n">0</div><div class="line">No missed calls since Mon 4:31 PM</div></div>
+        <div class="tile" style="--c:var(--accent)" onclick="openD('claude')"><div class="tt"><span class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></svg></span>Claude did</div><div class="n">11</div><div class="line">6 drafts ready · 3 filed · 2 cards moved</div></div>
+        <div class="tile" style="--c:var(--amber)" onclick="openD('waiting')"><div class="tt"><span class="ic"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>Waiting on replies</div><div class="n">12</div><div class="line">Maintenance rounds 1–3 overdue</div></div>
+        <div class="tile" style="--c:#8b6cd9" onclick="openD('close')"><div class="tt"><span class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg></span>Close-outs</div><div class="n">2</div><div class="line">Missing photos / equipment</div></div>
+        <div class="tile" style="--c:var(--green)" onclick="openD('week')"><div class="tt"><span class="ic"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>This week</div><div class="n">9</div><div class="line">maintenance due · 4 booked</div></div>
+      </div>
+    </section>
+
+    <!-- LANES -->
+    <section class="panel">
+      <div class="ph"><h2>My cards</h2><span class="meta">14 open</span></div>
+      <div class="tabs" id="tabs"></div>
+      <div class="lanes" id="lanes"></div>
+    </section>
+    <div class="note">Preview only – made-up sample data, nothing is connected. Live board: <a href="./#/board" style="color:var(--accent)">open the Hub</a></div>
+  </main>
+
+<nav class="bnav">
+ <a class="on"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/></svg>Board</a>
+ <a><svg class="i" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>KPIs</a>
+ <a><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Maint.</a>
+ <a><svg class="i" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"/></svg>Systems</a>
+ <a><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.5A8 8 0 1 1 21 12z"/></svg>Ask</a>
+</nav>
+<div class="phonewrap" id="pw"><div class="device"><iframe id="pf" title="Phone view"></iframe></div><button class="btn" onclick="phoneView(false)">Back to desktop view</button></div>
+<div class="scrim" onclick="closeD()"></div>
+<aside class="drawer" id="drawer"></aside>
+<datalist id="custlist"></datalist><datalist id="joblist"></datalist>
+
+<script>
+if(window.self!==window.top)document.documentElement.classList.add('inframe');
+const SRC='<!DOCTYPE html>'+document.documentElement.outerHTML;
+function phoneView(on){
+ const w=document.getElementById('pw'),f=document.getElementById('pf');
+ if(on){f.onload=()=>{if(document.body.classList.contains('dark'))f.contentDocument.body.classList.add('dark')};f.srcdoc=SRC;}
+ w.classList.toggle('on',on);
+}
+const lanes={
+ 'Emails':[['Sam Porter','Reply drafted: ball valve vs pulling the duct','Draft ready','accent','Sam Porter',''],['Dana Whitfield','Maintenance booking reply – picked Wed 2 PM','Needs you','red','Dana Whitfield','#2501'],['Supplier – Masters','Invoice #88213 question','Draft ready','accent','','']],
+ 'To Do':[['Nolan – BC Hydro rebate','Portal fix pending, 6-month window','Waiting','amber','Nolan',''],['Daikin warranty claims','2 claims to submit','To do','muted','',''],['Bennett warranty','Find serials in HCP photos','To do','muted','Bennett','#2412'],['Mark missed calls spam','5 numbers in HCP','Quick','green','','']],
+ 'Waiting':[['Alex Morgan #2249','Calvin checking the price ($199 vs $298)','Calvin','amber','Alex Morgan','#2249'],['Blake Hunter – Sample Town','Waiting on site photos','Customer','amber','Blake Hunter','']],
+ 'Doing':[['Maintenance round 4','Drafting 8 booking emails','Claude','accent','',''],['Job 2482 schedule','Find a slot next week','Jacob','green','Evan Price','#2482']],
+ 'Done':[['Harper invoice','Sent Fri','Done','green','Harper','#2468'],['Sydney Cole','Booked Tue 8:00','Done','green','Sydney Cole','#2490']]
+};
+const CUSTS=['Sam Porter','Dana Whitfield','Alex Morgan','Blake Hunter','Nolan','Bennett','Evan Price','Harper','Sydney Cole','Chris Hale','Pat Rivers','Drew Ellis','Jordan Lee'];
+const JOBS=['#2249 Alex Morgan – Furnace maint','#2482 Evan Price – Install','#2493 Chris Hale – Diagnostic','#2495 Pat Rivers – Diagnostic','#2501 Dana Whitfield – Maintenance','#2503 Sam Porter – Ductwork'];
+const LC={'Emails':'--l-emails','To Do':'--l-todo','Waiting':'--l-waiting','Doing':'--l-doing','Done':'--l-done'};
+const col={accent:'var(--accent)',red:'var(--red)',amber:'var(--amber)',green:'var(--green)',muted:'var(--muted)'};
+let cur='Emails';
+function drawLanes(){
+ const L=document.getElementById('lanes'),T=document.getElementById('tabs');
+ L.innerHTML=Object.entries(lanes).map(([n,cs])=>`<div class="lane ${n==cur?'show':''}" style="--lc:var(${LC[n]})"><h3>${n}<span>${cs.length}</span></h3>${cs.map(c=>`<div class="card" onclick="openD('card','${c[0]}')"><b>${c[0]}</b><p>${c[1]}</p><span class="badge" style="--c:${col[c[3]]}">${c[2]}</span>${(!c[4]||!c[5])?`<span class="miss">+ add ${!c[4]&&!c[5]?'customer / job':!c[4]?'customer':'job #'}</span>`:''}</div>`).join('')}</div>`).join('');
+ T.innerHTML=Object.entries(lanes).map(([n,cs])=>`<button style="--lc:var(${LC[n]})" class="${n==cur?'on':''}" onclick="cur='${n}';drawLanes()"><b>${cs.length}</b>${n}</button>`).join('');
+}
+const D={
+ needs:['Needs you','3 things only you can do',[['Send confirmation – Alex Morgan #2249','Wed Nov 25 9–12 · Furnace maintenance',['Send','Open job']],['Send confirmation – Chris Hale #2493','Wed Nov 25 1–4 PM · Diagnostic',['Send','Open job']],['Dana Whitfield picked a slot','Wed 2 PM clashes with Calvin – offer another time',['Reply','Open card']]]],
+ calls:['Call backs','Nothing waiting',[['No missed calls or voicemails','Last call in/out: Mon 4:31 PM',[]]]],
+ claude:['Claude did','Since you last looked (Mon 5 PM)',[['6 maintenance booking drafts','In Office@ Drafts – review and send',['Review drafts']],['3 emails filed','Supplier invoices → Month End folder',[]],['2 cards moved','Sydney Cole → Done · Harper → Done',[]]]],
+ waiting:['Waiting on replies','No reply by email, text or call',[['Round 1 – emailed Nov 10 (4)','Jordan Lee, Casey Brooks, Riley Adams, Morgan Shaw',['Call list']],['Round 2 – emailed Nov 13 (4)','Taylor Quinn, Dana Whitfield, Jamie Ford, Robin Kerr',['Call list']],['Round 3 – emailed Nov 16 (4)','Drew Ellis, Kim Patel, Avery Stone, Lee Carter',['Nudge drafts']]]],
+ close:['Close-outs','Finished jobs not closed',[['#2475 – Grant','Missing nameplate photo',['Open']],['#2470 – Leslie Moore','Equipment not in HCP profile',['Open']]]],
+ week:['This week','Nov 23 – 29',[['9 maintenance visits due','4 booked · 5 not booked',['Open Maintenance']],['Calvin is waiting on you for','Nolan rebate portal update',[]]]],
+ clash:['Clash – Wed 9 AM','Calvin is double-booked',[['Alex Morgan #2249 · 9–12','Furnace maintenance',['Open job']],['BTA · 9–11','Calvin – job note says "2–4 Friday"',['Ask Calvin']]]],
+ job:['Job','Opens the job in Housecall Pro',[['(sample)','In the real board this opens HCP',[]]]],
+};
+function openD(k,t){
+ if(k=='card'){showCard(t);return}
+ const d=D[k];
+ document.getElementById('drawer').innerHTML=`<div class="handle"></div><span class="x" onclick="closeD()">✕</span><h2>${d[0]}</h2><small style="color:var(--muted)">${d[1]}</small>`+
+  d[2].map(r=>`<div class="row"><b>${r[0]}</b><small>${r[1]}</small>${r[2].length?`<div class="acts">${r[2].map((a,i)=>`<button class="btn ${i?'ghost':''}">${a}</button>`).join('')}</div>`:''}</div>`).join('');
+ document.body.classList.add('open');
+}
+function showCard(t){
+ let lane='',c;for(const [n,cs] of Object.entries(lanes)){const f=cs.find(x=>x[0]==t);if(f){lane=n;c=f}}
+ const fld=(lab,key,val,list,ph)=>`<dt>${lab}</dt><dd>${val?`<span class="val">${val}</span>`:`<span class="need">Missing – Claude needs this</span>`}
+   <input class="edit" list="${list}" value="${val}" placeholder="${ph}" data-k="${key}"></dd>`;
+ document.getElementById('drawer').innerHTML=`<div class="handle"></div><span class="x" onclick="closeD()">✕</span>
+ <h2>${c[0]}</h2><span class="badge" style="--c:${col[c[3]]}">${c[2]}</span>
+ <div class="detail" id="det">
+ <div class="dh"><h4 style="margin:0">Details</h4><button class="btn ghost sm" id="eb" onclick="editMode(true)">Edit</button></div>
+ <dl class="dl">
+  ${fld('Customer','cust',c[4],'custlist','Search customers…')}
+  ${fld('Job #','job',c[5],'joblist','Search HCP jobs…')}
+  <dt>Created</dt><dd>Mon Nov 23 · by Claude (Board Check)</dd>
+  <dt>Summary</dt><dd><span class="val">${c[1]}</span><textarea class="edit" rows="2">${c[1]}</textarea></dd>
+  <dt>Note for Claude</dt><dd><span class="val muted">–</span><textarea class="edit" rows="3" placeholder="Anything Claude should know – e.g. customer prefers texts, quote was verbal, call before 10…"></textarea></dd>
+ </dl>
+ <div class="savebar"><button class="btn" onclick="saveEdit()">Save</button><button class="btn ghost" onclick="editMode(false)">Cancel</button><small>Claude reads this on its next check</small></div>
+ </div>
+ ${c[5]?'<a class="hcp">Open job '+c[5]+' in HCP ↗</a>':''}
+ <h4>Move to</h4><div class="lanepick">${Object.keys(lanes).map(n=>`<button class="${n==lane?'on':''}">${n}</button>`).join('')}</div>
+ <h4>Conversation</h4>
+ <div class="msg"><small>Claude · Mon 6:10 PM</small>${c[1]}. Draft is in Office@ Drafts – want me to send it as is?</div>
+ <div class="msg me"><small>You · Tue 7:40 AM</small>Change the second line to offer Thursday instead.</div>
+ <div class="msg"><small>Claude · Tue 7:52 AM</small>Done – draft updated with Thursday 10 AM.</div>
+ <div class="reply"><input placeholder="Reply to Claude…"><button class="btn">Send</button></div>
+ <div class="acts" style="display:flex;gap:6px;margin-top:12px"><button class="btn ghost">Give to Calvin</button><button class="btn ghost">Archive</button></div>`;
+ document.getElementById('drawer').dataset.card=t;
+ document.body.classList.add('open');
+}
+function editMode(on){document.getElementById('det').classList.toggle('editing',on)}
+function saveEdit(){
+ const t=document.getElementById('drawer').dataset.card;let c;for(const cs of Object.values(lanes)){const f=cs.find(x=>x[0]==t);if(f)c=f}
+ document.querySelectorAll('#det input.edit').forEach(i=>{const v=i.value.trim();if(i.dataset.k=='cust')c[4]=v;if(i.dataset.k=='job')c[5]=(v.match(/#\d+/)||[v])[0]});
+ drawLanes();showCard(t);toast('Saved – Claude will use this on its next check');
+}
+function toast(m){const d=document.createElement('div');d.className='toast';d.textContent=m;document.body.appendChild(d);setTimeout(()=>d.remove(),2600)}
+function closeD(){document.body.classList.remove('open')}
+function toggleDark(){document.body.classList.toggle('dark');if(window.self!==window.top)return;const f=document.getElementById('pf');try{f.contentDocument&&f.contentDocument.body&&f.contentDocument.body.classList.toggle('dark',document.body.classList.contains('dark'))}catch(e){}}
+document.getElementById('custlist').innerHTML=CUSTS.map(x=>`<option value="${x}">`).join('');
+document.getElementById('joblist').innerHTML=JOBS.map(x=>`<option value="${x}">`).join('');
+drawLanes();
+</script>
+</body>
+</html>
