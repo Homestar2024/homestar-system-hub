@@ -1,3 +1,4 @@
+// v0.44 2026-11-24 (Jacob): schedule calendar always shows a Calvin and a Jacob row.
 // v0.43 2026-11-24 (Jacob): NEW layout Today = fixed tiles: Needs you (To Do + Emails cards), Call backs (brief), Claude did (24 h log of Claude messages), Waiting on (cards), Close-outs (brief), This week (brief); other brief sections as chips.
 // v0.42 2026-11-24 (Jacob): NEW layout - schedule calendar panel on top (parsed from board/today schedule + Tomorrow lines; clash outline), Today below, Talk hidden, '+ New card', lanes in a 'My cards' container.
 // v0.41 2026-11-24 (Jacob): NEW LAYOUT layer (Today tiles, compact cards, card side panel/bottom sheet with customer/job/note edit) - search 'v0.41 NEW LAYOUT'. Patched directly (build scripts are behind live).
@@ -564,7 +565,7 @@ function nlParse(){const D=nlBriefD||{},team=nlTeam(),out=[],loose=[];
   const text=m[5].replace(/\s+-\s+(send|call|confirm).*$/i,"");techOf(text).forEach(tc=>out.push({day:1,s,e,tech:tc,text,who:text.split(/\s+-\s+/)[0]}))})));
  out.forEach(a=>{a.clash=out.some(b=>b!==a&&b.day===a.day&&b.tech===a.tech&&b.s<a.e&&a.s<b.e)});return {jobs:out,loose}}
 function nlSchedRender(){const el=R.getElementById("nlSched");if(!el||!NL())return;const {jobs,loose}=nlParse();const S0=7*60,S1=18*60,pos=m=>Math.max(0,Math.min(100,(m-S0)/(S1-S0)*100));
- const team=nlTeam(),rows=team.filter(t=>t===team[0]||jobs.some(j=>j.tech===t));const now=new Date(),d1=new Date(now.getTime()+864e5);const fd=d=>d.toLocaleDateString("en-CA",{weekday:"short",day:"numeric"});
+ const team=nlTeam(),rows=team.filter(t=>t==="Calvin"||t==="Jacob"||jobs.some(j=>j.tech===t));const now=new Date(),d1=new Date(now.getTime()+864e5);const fd=d=>d.toLocaleDateString("en-CA",{weekday:"short",day:"numeric"});
  const clashes=Math.ceil(jobs.filter(j=>j.clash).length/2);const types=[...new Map(jobs.map(j=>{const k=nlKindOf(j.text);return [k[0],k[1]]})).entries()];
  const cell=(tc,d)=>{const js=jobs.filter(j=>j.tech===tc&&j.day===d).sort((a,b)=>a.s-b.s);return `<div class="day d${d}">${js.map((j,i)=>{const k=nlKindOf(j.text);const ov=js.some((o,n)=>n<i&&o.s<j.e&&j.s<o.e);const ov2=js.some((o,n)=>n>i&&o.s<j.e&&j.s<o.e);const t=x=>{const h=Math.floor(x/60),m=x%60;return ((h%12)||12)+(m?":"+String(m).padStart(2,"0"):"")};
   return `<div class="nlj ${j.clash?"clash":""} ${ov2?"half":""} ${ov?"half2":""}" style="--jc:${k[1]};left:${pos(j.s)}%;width:${Math.max(4,pos(j.e)-pos(j.s))}%" data-nljob="${esc(j.text)}" title="${esc(j.text)}"><b>${esc(j.who)}</b><span>${t(j.s)}–${t(j.e)}</span></div>`}).join("")}</div>`};
