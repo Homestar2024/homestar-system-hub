@@ -1,4 +1,4 @@
-// Homestar HQ - Timesheets (v11 2026-11-23: Jacob's 8 h day - every weekday is topped up to 8 h with an Office row (8 h minus field time; a weekday with no HCP time gets a flagged 8 h Office row to remove if he was off); v10 2026-11-21: Excel EMPLOYEE box = the person's HQ name (was always the template's Calvin Windsor) - server ts-file + this fallback (Calvin); v9 2026-11-21: History flag / to-look-at chips open a quick dialog; new Payroll dates tab (Calvin); v8 2026-11-21: History = clickable list (pay period, Filed tag, warnings/flags); tap opens a preview of every row and hours, with Edit & re-file, Excel and Delete inside (Calvin); v7 2026-11-21: freshness check before Generate; v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
+// Homestar HQ - Timesheets (v12 2026-11-24: History has an Everyone / per-person filter (Calvin); v11 2026-11-23: Jacob's 8 h day - every weekday is topped up to 8 h with an Office row (8 h minus field time; a weekday with no HCP time gets a flagged 8 h Office row to remove if he was off); v10 2026-11-21: Excel EMPLOYEE box = the person's HQ name (was always the template's Calvin Windsor) - server ts-file + this fallback (Calvin); v9 2026-11-21: History flag / to-look-at chips open a quick dialog; new Payroll dates tab (Calvin); v8 2026-11-21: History = clickable list (pay period, Filed tag, warnings/flags); tap opens a preview of every row and hours, with Edit & re-file, Excel and Delete inside (Calvin); v7 2026-11-21: freshness check before Generate; v6 2026-11-21: owner Delete in History (ts-file delete); v5 2026-11-21: server filing via Edge Function ts-file, no Microsoft sign-in; phone row list; v4 2026-11-20: edit & re-file as REVISED, verification column; v3: manual row edits with reasons, banked-hours drill-down + owner bank adjust; v2: instant filing via Microsoft Graph; v1 same day, Calvin). mountTimesheets(root, {sb, me, people})
 // Data: time_entries (HCP time, synced by Claude), pay_periods, timesheets (sent/filed), bank_ledger (banked hours vault).
 // Rules (Timesheets\00 TIMESHEETS README.md): start = first of On my way / Time started; each row rounds to 0.1 h (Excel ROUND half up);
 // never over 80 h: the excess is trimmed off rows on the longest days and BANKED at 1.5x; under 80 h with a bank balance -> offer to draw.
@@ -130,7 +130,7 @@ export function mountTimesheets(root, { sb, me, people }) {
   const all = !!me.sees_all_timesheets;
   const team = (people || []).filter(p => p.active !== false && (all || p.id === me.id));
   const first = (p) => (p?.name || '').split(' ')[0];
-  const S = { server: null, msMsg: '', fileErr: '', fileStep: '', tab: 'gen', person: me.id, period: null, periods: [], phase: 'pick', res: null, draw: null, bal: 0, ledger: [], err: '', sheet: null, synced: null };
+  const S = { server: null, msMsg: '', fileErr: '', fileStep: '', tab: 'gen', person: me.id, period: null, periods: [], phase: 'pick', res: null, draw: null, bal: 0, ledger: [], err: '', sheet: null, synced: null, histWho: (() => { try { return localStorage.getItem('ts_hwho') || 'all'; } catch (x) { return 'all'; } })() };
   root.innerHTML = `<style>${CSS}</style><a class="back" href="#/tools">← Tools</a><h2>Timesheets</h2><div id="tabs" class="tabs"></div><div id="body"></div><div id="modal"></div>`;
   const body = root.getElementById('body'), tabsEl = root.getElementById('tabs'), modal = root.getElementById('modal');
   let dead = false, poll = null;
@@ -470,15 +470,18 @@ export function mountTimesheets(root, { sb, me, people }) {
     if (!all) q = q.eq('person_id', me.id);
     const { data, error } = await q; if (dead) return;
     if (error) { body.innerHTML = `<div class="card err">${esc(error.message)}</div>`; return; }
-    const list = data || []; S.histList = list;
+    const whoOpts = all ? [...new Set([...team.map(p => p.id), ...(data || []).map(t => t.person_id)])].map(id => [id, first(people.find(x => x.id === id) || {})]) : [];
+    if (S.histWho && S.histWho !== 'all' && !whoOpts.some(([id]) => id === S.histWho)) S.histWho = 'all';
+    const list = (data || []).filter(t => !all || !S.histWho || S.histWho === 'all' || t.person_id === S.histWho); S.histList = list;
+    const whoBar = whoOpts.length > 1 ? `<div class="tabs" style="margin:4px 0 10px">${[['all', 'Everyone'], ...whoOpts].map(([k, l]) => `<button aria-pressed="${(S.histWho || 'all') === k}" data-hwho="${esc(k)}">${esc(l)}</button>`).join('')}</div>` : '';
     const chip = (t) => t.verify_status === 'ok' ? `<button class="chipb ok" data-vn="${t.id}">✔ Verified</button>` : t.verify_status === 'issues' ? `<button class="chipb bad" data-vn="${t.id}">⚠ ${(t.verify_notes || []).filter(n => n.level === 'issue').length} to look at</button>` : t.status === 'filed' ? '<span class="chipb">Checking…</span>' : '';
-    body.innerHTML = `<div class="card"><h3>Past timesheets</h3>${list.length ? `<div class="hl">${list.map(t => {
+    body.innerHTML = `<div class="card"><h3>Past timesheets</h3>${whoBar}${list.length ? `<div class="hl">${list.map(t => {
       const p = S.periods.find(x => x.start_date === t.period_start) || { start_date: t.period_start, end_date: addDays(t.period_start, 13) };
       const meta = [all ? esc(first(people.find(x => x.id === t.person_id))) : '', `${f1((t.totals || {}).total || 0)} h`, Number(t.banked) ? `${f1(t.banked)} h banked` : '', Number(t.drawn) ? `${f1(t.drawn)} h used from bank` : '', t.revision ? `revision ${t.revision}` : ''].filter(Boolean).join(' · ');
       const issues = t.verify_status === 'issues' ? (t.verify_notes || []).filter(n => n.level === 'issue').length : 0, flags = (t.rows || []).filter(r => r.flag && !r.edited).length;
       return `<button class="hrow hopen" data-hopen="${t.id}"><div class="ht"><b>${fmtD(p.start_date, { month: 'short', day: 'numeric' })} – ${fmtD(p.end_date, { month: 'short', day: 'numeric', year: 'numeric' })}</b><span class="muted small">${meta}</span></div>
         <div class="ha"><span class="chipb ${t.status === 'filed' ? 'ok' : t.status === 'queued' ? '' : 'bad'}">${t.status === 'filed' ? '✅ Filed' : t.status === 'queued' ? '⏳ Filing' : '⚠ ' + esc(t.status)}</span>${issues ? `<span class="chipb bad" data-vn="${t.id}" role="button">⚠ ${issues} to look at</span>` : t.verify_status === 'ok' ? '<span class="chipb ok">✔ Verified</span>' : t.status === 'filed' ? '<span class="chipb">Checking…</span>' : ''}${flags ? `<span class="chipb bad" data-hflags="${t.id}" role="button">⚑ ${flags} flagged</span>` : ''}<span class="chev" aria-hidden="true">›</span></div></button>`;
-    }).join('')}</div>` : '<div class="muted">Nothing sent yet. Timesheets you send to Harlow show up here.</div>'}</div>`;
+    }).join('')}</div>` : (S.histWho && S.histWho !== 'all' ? `<div class="muted">No filed timesheets for ${esc(first(people.find(x => x.id === S.histWho) || {}))} yet.</div>` : '<div class="muted">Nothing sent yet. Timesheets you send to Harlow show up here.</div>')}</div>`;
   }
 
   async function openSheet(id) {
@@ -651,6 +654,7 @@ export function mountTimesheets(root, { sb, me, people }) {
     const vn = e.target.closest('[data-vn]'); if (vn) return verifyNotes(vn.dataset.vn);
     const hf = e.target.closest('[data-hflags]'); if (hf) return flagNotes(hf.dataset.hflags);
     const ho = e.target.closest('[data-hopen]'); if (ho) return openSheet(ho.dataset.hopen);
+    const hw = e.target.closest('[data-hwho]'); if (hw) { S.histWho = hw.dataset.hwho; try { localStorage.setItem('ts_hwho', S.histWho); } catch (x) {} return drawHist(); }
     if (e.target.closest('[data-hback]')) return drawHist();
     if (e.target.closest('[data-hedit]')) return editFromHist();
     const dg = e.target.closest('[data-del]'); if (dg) return deleteSheet(dg.dataset.del);

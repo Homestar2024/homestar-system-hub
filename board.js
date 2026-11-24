@@ -66,11 +66,14 @@ function cardHtml(c){
   </article>`;
 }
 /* v31 (Calvin 2026-10-26): a reply or any live update must not collapse, reorder or jump a card. Order is fixed for this page session (first seen order; brand-new cards go on top), open Reply/Conversation panels, typed text and scroll position are kept across re-renders. */
-const seq=new Map(); let seqTop=0, seqBottom=0, lastCard="";
+/* v32 (Calvin 2026-11-24): newest on top - lanes open sorted by the latest change (updated / completedAt / movedAt), and a card that lands in a lane (marked complete, moved, given) jumps to the TOP of that lane, Done included. Replies and live edits still never reorder a card inside its lane (v31). */
+const seq=new Map(), seqCol=new Map(); let seqTop=0, seqBottom=0, lastCard="";
+const touched=c=>[c.updated,c.completedAt,c.movedAt].map(x=>String(x||"")).sort().pop();
 function laneOrder(list){
   const order=c=>(c.priority==="urgent"?0:1);
-  const fresh=list.filter(c=>!seq.has(c.id)).sort((a,b)=>order(a)-order(b)||String(b.updated||"").localeCompare(String(a.updated||"")));
   const first=seq.size===0;
+  list.forEach(c=>{const col=c.column||"todo";if(seq.has(c.id)&&seqCol.get(c.id)!==col){seq.delete(c.id)}seqCol.set(c.id,col)});
+  const fresh=list.filter(c=>!seq.has(c.id)).sort((a,b)=>(first?order(a)-order(b):0)||touched(b).localeCompare(touched(a)));
   if(first) fresh.forEach(c=>seq.set(c.id,++seqBottom)); else fresh.reverse().forEach(c=>seq.set(c.id,--seqTop));
   return list.slice().sort((a,b)=>seq.get(a.id)-seq.get(b.id));
 }
