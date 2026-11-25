@@ -337,7 +337,7 @@ function applyView(v){VIEW=v||{};
   const td=R.querySelector('section[aria-labelledby="todayH"]'),tk=R.querySelector('section[aria-labelledby="askH"]'),tp=R.querySelector('#pane-board > .top');
   if(td)td.hidden=!!VIEW.hideToday;if(tk)tk.hidden=!!VIEW.hideTalk;if(tp)tp.hidden=!!(VIEW.hideToday&&VIEW.hideTalk);
   if(firstView&&VIEW.defaultLane&&LANE_NAMES[VIEW.defaultLane]){active=VIEW.defaultLane}firstView=false;
-  if(ownBoard&&opts.onTheme)opts.onTheme(VIEW);
+  if(opts.onTheme)opts.onTheme(VIEW,ownBoard);   /* v0.49: someone else's board shows in THEIR theme/accent/layout (view only, not saved) */
   render();}
 function custHtml(){const ord=LANES.map(l=>l[0]);const v=VIEW;
   return `<div class="row" style="justify-content:space-between"><h3>Customize my board</h3><button class="mini-b" id="custClose" type="button">Close</button></div>
