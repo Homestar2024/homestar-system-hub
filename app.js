@@ -1,3 +1,4 @@
+// v0.53 2026-11-25 (Jacob): New layout Search + Ask in one place like the mockup: top-bar 'Search or ask anything…' box with quick matches, #/search shows an Answer (same 'ask' function, rated in ask_log) + From Systems / Board cards / Customers; Ask tab becomes Search. Classic unchanged.
 // v0.52 2026-11-25 (Jacob): Tools in the New layout like the mockup (toolsnew.js: home grid, NEW Job cost calculator, Pricing with the same price()/RATES, Timesheets = timesheets.js v19 with look:'new'). HVAC Monitoring page unchanged (Classic tools.js). Classic Tools unchanged.
 // v0.51 2026-11-25 (Jacob): Customers page in the New layout like the mockup (custnew.js: Maintenance calendar + due list, Waitlist (meta/waitlist), Warranty, All customers, customer panel + Edit record). Nav says Customers in New. Classic keeps maint.js.
 // v0.50 2026-11-25 (Jacob): KPIs in the New layout look like mockups/kpi-mock.html (kpinew.js: stat tiles, 4 charts with Table toggle, Details accordion, Job costing tab). Classic keeps kpi.js.
@@ -854,6 +855,85 @@ function ModPage({ me, mod, owner, extra }) {
   return html`<div id=${mod + 'Host'} class="boardvars" ref=${ref}></div>`;
 }
 
+// v0.53 (Jacob 2026-11-25): NEW layout Search + Ask in one place, like mockups/hub-redesign-preview.html > Search. Classic keeps SearchPage + Ask.
+// Top-bar box: quick matches as you type (pages, cards, customers) + "Ask: …" for questions; Enter opens #/search?q=…
+// Search page: an Answer (same 'ask' Edge Function, same ask_log rating) when it is a question, then From Systems / Board cards / Customers.
+const nlIsQ = (q) => /\?\s*$/.test(q.trim()) || /^(how|what|why|when|where|who|can|should|do|does|did|is|are|which|will|would|could)\b/i.test(q.trim());
+const NLI = { p: html`<svg class="i" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg>`, c: html`<svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6"/></svg>`, u: html`<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>`, s: html`<svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>` };
+function nlMatch(q, data, src, people, me) {
+  const k = q.trim().toLowerCase(); const words = k.split(/[\s,&?]+/).filter(w => w.length > 1 && !['how', 'the', 'and', 'what', 'our', 'this', 'year', 'does', 'for', 'is', 'do', 'to', 'of', 'in', 'on', 'a', 'an', 'my', 'we', 'i', 'can', 'should'].includes(w)); const digits = k.replace(/\D/g, '');
+  if (!k) return { pages: [], cards: [], cust: [] };
+  const hit = (hay) => { hay = String(hay || '').toLowerCase(); return hay.includes(k) || (words.length > 0 && (words.length === 1 ? hay.includes(words[0]) : words.filter(w => hay.includes(w)).length >= Math.min(2, words.length))); };
+  const pages = data.items.filter(i => i.state !== 'retired' && hit(i.title + ' ' + (i.overview || ''))).sort((a, b) => (b.title.toLowerCase().includes(k) - a.title.toLowerCase().includes(k)) || a.title.localeCompare(b.title)).slice(0, 8);
+  const cards = src && src.cards ? src.cards.filter(c => c.data.column !== 'archive' && hit([c.data.title, c.data.summary, c.data.detail, c.data.job, c.data.customer, c.data.nextStep].join(' '))).sort((a, b) => (a.data.column === 'done') - (b.data.column === 'done') || String(b.data.updated || '').localeCompare(String(a.data.updated || ''))).slice(0, 8) : [];
+  const cust = src && src.cust ? src.cust.filter(c => !c.data.removed).filter(c => { const r = c.data; const eq = (r.equipment || []).map(e => [e.make, e.model, e.serial, e.type, e.filter].join(' ')).join(' ');
+    const jobs = [].concat(r.visits || [], r.installs || [], r.serviceCalls || []).map(v => '#' + v.job + ' ' + v.job).join(' ');
+    if (hit([r.name, r.company, r.email, r.address, r.town, eq, (r.filters || []).join(' '), jobs].join(' '))) return true;
+    return digits.length >= 4 && [r.phone, r.phone2].join(' ').replace(/\D/g, '').includes(digits); }).slice(0, 8) : [];
+  return { pages, cards, cust };
+}
+const nlCardHref = (c, me) => '#/board?' + (c.owner_id !== me.id ? 'as=' + c.owner_id + '&' : '') + 'card=' + encodeURIComponent(c.doc_id);
+const nlCustLine = (r) => [r.address || r.town, (r.filters || []).slice(0, 1).join('')].filter(Boolean).join(' · ');
+function NLSearchBox({ data, me, people }) {
+  const [t, setT] = useState(''); const [open, setOpen] = useState(false); const [src, setSrc] = useState(SRC.cards ? SRC : null); const box = useRef(null);
+  useEffect(() => { const off = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false); }; document.addEventListener('click', off); return () => document.removeEventListener('click', off); }, []);
+  const load = () => { if (!src) searchSources().then(s => setSrc({ ...s })).catch(() => setSrc({ cards: [], cust: [] })); };
+  const m = open && t.trim() ? nlMatch(t, data, src, people, me) : null;
+  const submit = () => { const q = t.trim(); if (!q) return; setOpen(false); setT(''); go('/search?q=' + encodeURIComponent(q)); };
+  const pick = (href) => { setOpen(false); setT(''); location.hash = href.replace(/^#/, ''); };
+  return html`<div class="nls-box" ref=${box}>${NLI.s}<input placeholder="Search or ask anything…" value=${t} autocomplete="off" onFocus=${() => { load(); setOpen(true); }} onInput=${e => { setT(e.target.value); setOpen(true); load(); }} onKeyDown=${e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') { setOpen(false); e.target.blur(); } }}/><kbd>Enter to ask</kbd>
+    ${m && html`<div class="nls-dd">${nlIsQ(t) && html`<div class="nls-ddi ask" onClick=${submit}><span class="spark">✦</span><span><b>Ask:</b> ${t}</span><kbd>Enter</kbd></div>`}
+      ${m.pages.slice(0, 3).map(i => html`<div key=${'p' + i.id} class="nls-ddi" onClick=${() => pick('#/' + i.type + '/' + i.slug)}>${NLI.p}<span><b>${dt(i.title)}</b><small>${LIBS[i.type] || i.type}</small></span></div>`)}
+      ${m.cards.slice(0, 2).map(c => html`<div key=${'c' + c.doc_id} class="nls-ddi" onClick=${() => pick(nlCardHref(c, me))}>${NLI.c}<span><b>${c.data.title || c.doc_id}</b><small>Card · ${LANE_NAMES[c.data.column] || c.data.column}</small></span></div>`)}
+      ${m.cust.slice(0, 3).map(c => html`<div key=${'u' + c.doc_id} class="nls-ddi" onClick=${() => pick('#/maint?c=' + c.doc_id)}>${NLI.u}<span><b>${c.data.name}</b><small>${nlCustLine(c.data)}</small></span></div>`)}
+      ${!nlIsQ(t) && (m.pages.length + m.cards.length + m.cust.length) > 0 && html`<div class="nls-ddi more" onClick=${submit}>${NLI.s}<span>See all results for “${t}”</span><kbd>Enter</kbd></div>`}
+      ${!nlIsQ(t) && !(m.pages.length + m.cards.length + m.cust.length) && html`<div class="nls-ddi muted" onClick=${submit}>${src ? 'No quick matches – press Enter to ask' : 'Searching…'}</div>`}</div>`}</div>`;
+}
+function NLSearchPage({ data, me, people, route }) {
+  const q = decodeURIComponent((route.match(/[?&]q=([^&]*)/) || [])[1] || (route.startsWith('/ask?') ? route.split('?')[1] : '') || '').trim();
+  const [src, setSrc] = useState(SRC.cards ? SRC : null); const [chunks, setChunks] = useState(null); const [thread, setThread] = useState([]); const [conv, setConv] = useState(null); const [busy, setBusy] = useState(false); const [fu, setFu] = useState(''); const [hero, setHero] = useState('');
+  useEffect(() => { let on = true; searchSources().then(s => on && setSrc({ ...s })).catch(() => on && setSrc({ cards: [], cust: [] })); return () => { on = false; }; }, []);
+  useEffect(() => { if (!q) return; let on = true; setChunks(null); sb.rpc('search_chunks', { q, n: 8 }).then(({ data: r }) => on && setChunks(r || [])); return () => { on = false; }; }, [q]);
+  const ask = async (question, prev, cv) => { setBusy(true);
+    const history = (prev || []).slice(-3).flatMap(e => [{ role: 'user', content: e.q }, { role: 'assistant', content: e.a || '' }]);
+    const { data: res, error } = await sb.functions.invoke('ask', { body: { q: question, item_id: null, conversation_id: cv || null, history, context: { open_tracks: [], current_item_title: null } } });
+    if (res && res.conversation_id) setConv(res.conversation_id);
+    const e = { key: Date.now() + Math.random(), id: res && res.log_id, q: question, a: error ? 'Something went wrong: ' + (error.message || error) : (res && res.error ? res.error : res.answer), covered: res ? res.covered !== false : true, sources: (res && res.sources) || [], rating: null };
+    setThread(t => [...(prev || t), e]); setBusy(false); };
+  useEffect(() => { setThread([]); setConv(null); setFu(''); if (q && nlIsQ(q)) ask(q, [], null); }, [q]);
+  const rate = async (e, r) => { setThread(l => l.map(x => x === e ? { ...x, rating: r } : x)); if (e.id) await sb.from('ask_log').update({ rating: r }).eq('id', e.id); };
+  const follow = () => { const t = fu.trim(); if (t.length < 3 || busy) return; setFu(''); ask(t, thread, conv); };
+  const tries = ['How do I add a job tag in Housecall Pro?', 'What is the dress code?', '16x25', 'How do I register a Midea parts warranty?'];
+  if (!q) return html`<div class="nls"><div class="nls-hero"><h1>Search</h1><div class="sub">One box for everything: type a few words to find cards, customers and Systems pages, or ask a question and get an answer with the pages it came from.</div>
+    <form class="nls-heroq" onSubmit=${e => { e.preventDefault(); if (hero.trim()) go('/search?q=' + encodeURIComponent(hero.trim())); }}>${NLI.s}<input placeholder="Search or ask anything…" value=${hero} onInput=${e => setHero(e.target.value)}/><button class="btn">Go</button></form>
+    <div class="nls-tries">Try: ${tries.map(x => html`<a key=${x} href=${'#/search?q=' + encodeURIComponent(x)}>${x}</a>`)}</div></div></div>`;
+  const m = nlMatch(q, data, src, people, me); const pageIds = new Set(m.pages.map(p => p.id));
+  const inside = (chunks || []).filter(c => !pageIds.has(c.item_id)).filter((c, ix, a) => a.findIndex(x => x.item_id === c.item_id) === ix).slice(0, 6);
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const snip = (t) => { const s = String(t || '').replace(/[#*_>`|]+/g, ' ').replace(/\s+/g, ' '); const ix = s.toLowerCase().indexOf(words.find(w => w.length > 3) || words[0] || ''); return (ix > 60 ? '…' + s.slice(ix - 40, ix + 120) : s.slice(0, 150)) + '…'; };
+  const name = (id) => (people.find(p => p.id === id) || {}).name || '';
+  const sec = (t, n, body) => n ? html`<section class="nls-panel"><div class="nls-ph"><h2>${t}</h2><span class="meta">${n}</span></div>${body}</section>` : null;
+  const ri = (key, href, icon, a, b, p) => html`<a key=${key} class="nls-ri" href=${href}>${icon}<div><b>${a}</b>${b && html`<small>${b}</small>`}${p && html`<p>${p}</p>`}</div></a>`;
+  const loading = !src || chunks === null; const none = !loading && !m.pages.length && !inside.length && !m.cards.length && !m.cust.length;
+  return html`<div class="nls">
+    <div class="nls-qhead"><span class="muted">Results for</span> <b>${q}</b>${!nlIsQ(q) && html` <button class="btn ghost sm" onClick=${() => ask(q, [], null)} disabled=${busy || thread.length > 0}>✦ Ask this</button>`}</div>
+    ${(nlIsQ(q) || thread.length > 0) && html`<section class="nls-panel nls-answer"><div class="nls-ah"><span class="spark">✦</span><b>Answer</b><span class="meta">from Homestar's Systems, policies and training</span></div>
+      ${thread.map((e, i) => html`<div key=${e.key} class="nls-turn">${i > 0 && html`<div class="nls-fq">${e.q}</div>`}<div class="nls-abody"><${Md} md=${e.a}/></div>
+        ${!e.covered && html`<div class="muted nls-gap">No page covers this yet – it is logged as a gap for Calvin.</div>`}
+        ${e.sources.length > 0 && html`<div class="nls-srcs">Sources: ${e.sources.map(s => html`<a key=${s.slug} class="nls-src" href=${'#/' + s.type + '/' + s.slug}>${dt(s.title)}</a>`)}</div>`}
+        ${e.covered && html`<div class="nls-rate"><button class=${'btn ghost sm' + (e.rating === 1 ? ' on' : '')} onClick=${() => rate(e, 1)}>Helpful</button><button class=${'btn ghost sm' + (e.rating === -1 ? ' on' : '')} onClick=${() => rate(e, -1)}>Not right</button></div>`}</div>`)}
+      ${busy && html`<div class="nls-typing"><i></i><i></i><i></i></div>`}
+      <form class="nls-follow" onSubmit=${e => { e.preventDefault(); follow(); }}><input placeholder="Ask a follow-up…" value=${fu} onInput=${e => setFu(e.target.value)}/><button class="btn sm" disabled=${busy || fu.trim().length < 3}>Ask</button></form></section>`}
+    <div class="nls-grid">
+      ${sec('From Systems', m.pages.length + inside.length, [...m.pages.map(i => ri('p' + i.id, '#/' + i.type + '/' + i.slug, NLI.p, dt(i.title), LIBS[i.type] || i.type, (i.overview || '').slice(0, 140))), ...inside.map(c => ri('t' + c.item_id, '#/' + c.type + '/' + c.slug, NLI.p, dt(c.title), (LIBS[c.type] || c.type) + (c.heading && c.heading !== '(whole page)' ? ' › ' + c.heading : ''), snip(c.content)))])}
+      ${sec('Board cards', m.cards.length, m.cards.map(c => ri('c' + c.doc_id, nlCardHref(c, me), NLI.c, c.data.title || c.doc_id, (LANE_NAMES[c.data.column] || c.data.column) + ' lane' + (c.owner_id !== me.id ? ' · ' + name(c.owner_id) + "'s board" : ''), [c.data.job, c.data.summary || c.data.detail].filter(Boolean).join(' · ').slice(0, 140))))}
+      ${sec('Customers', m.cust.length, m.cust.map(c => ri('u' + c.doc_id, '#/maint?c=' + c.doc_id, NLI.u, c.data.name, c.data.address || c.data.town || '', (c.data.equipment || []).filter(e => e.make).slice(0, 2).map(e => [e.type, e.make, e.model].filter(Boolean).join(' ')).join(' · ') + ((c.data.filters || []).length ? ' · filters: ' + c.data.filters.slice(0, 2).join(', ') : ''))))}
+    </div>
+    ${loading && html`<div class="muted" style=${{ padding: 8 }}>Searching cards, customers and pages…</div>`}
+    ${none && !nlIsQ(q) && html`<div class="nls-panel muted">Nothing found for “${q}”. Tap “Ask this” for an answer instead.</div>`}
+  </div>`;
+}
+
 function App() {
   const hadSession = useRef(null); const toBoard = useRef(!isDeepLink(START_HASH) && !START_HASH.startsWith('#/board'));
   const route = useHash(); const [session, setSession] = useState(undefined); const [pwFlow, setPwFlow] = useState(LINK.type); const [gate, setGate] = useState(GATE); const [me, setMe] = useState(null); const [data, setData] = useState(null); const [people, setPeople] = useState([]); const [q, setQ] = useState(() => { const m = location.hash.match(/^#\/search\?q=([^&]*)/); return m ? decodeURIComponent(m[1]) : ''; }); const [searchOpen, setSearchOpen] = useState(false); const [boardN, setBoardN] = useState(0);
@@ -884,13 +964,13 @@ function App() {
   const kpiOK = !!me.sees_all_boards || deptsOf(me).some(id => (data.departments.find(d => d.id === id) || {}).name === 'Office & Admin');   // same rule as db/016 + db/019
   const sysOn = !q.trim() && (route.startsWith('/home') || !!lib || ['run', 'fix'].includes(parts[0]));
   const meOn = ['me', 'people', 'dashboard', 'changes'].includes(parts[0]);
-  const PLACES = [['#/board', '▦', 'Board', !q.trim() && parts[0] === 'board', boardN ? html`Board<span class="n">${boardN}</span>` : 'Board'], ...(kpiOK ? [['#/kpi', '◔', 'KPIs', !q.trim() && parts[0] === 'kpi']] : []), ...(document.documentElement.dataset.layout === 'new' ? [['#/maint', '🔧', 'Customers', !q.trim() && parts[0] === 'maint', 'Customers']] : [['#/maint', '🔧', 'Maint.', !q.trim() && parts[0] === 'maint', 'Maintenance']]), ['#/home', '▤', 'Systems', sysOn], ['#/tools', '🧰', 'Tools', !q.trim() && parts[0] === 'tools'], ['#/ask', '💬', 'Ask', !q.trim() && parts[0] === 'ask']];
+  const PLACES = [['#/board', '▦', 'Board', !q.trim() && parts[0] === 'board', boardN ? html`Board<span class="n">${boardN}</span>` : 'Board'], ...(kpiOK ? [['#/kpi', '◔', 'KPIs', !q.trim() && parts[0] === 'kpi']] : []), ...(document.documentElement.dataset.layout === 'new' ? [['#/maint', '🔧', 'Customers', !q.trim() && parts[0] === 'maint', 'Customers']] : [['#/maint', '🔧', 'Maint.', !q.trim() && parts[0] === 'maint', 'Maintenance']]), ['#/home', '▤', 'Systems', sysOn], ['#/tools', '🧰', 'Tools', !q.trim() && parts[0] === 'tools'], ...(document.documentElement.dataset.layout === 'new' ? [['#/search', '🔍', 'Search', parts[0] === 'search' || (parts[0] === 'ask' && !parts[1])]] : [['#/ask', '💬', 'Ask', !q.trim() && parts[0] === 'ask']])];   // v0.53: New layout - Ask lives inside Search
   const initials = (me.name || '?').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const tabs = html`<nav class="tabs">${PLACES.map(([h, ic, l, o]) => html`<a key=${l} href=${h} onClick=${() => { setQ(''); setSearchOpen(false); }} class=${o ? 'on' : ''}><span class="i">${ic}</span>${l}</a>`)}</nav>`;
   const header = html`<header class="top"><a class="hb-brand" href="#/board" title="Board"><img class="word" src="wordmark.png" alt="Homestar"/><img class="word-dark" src="wordmark-dark.png" alt="Homestar"/><span class="nl-logo">HomeStar<small>HVAC SOLUTIONS</small></span></a>
       <nav class="hb-views">${PLACES.map(([h, ic, l, o, full]) => html`<a key=${l} href=${h} class=${o ? 'on' : ''}>${full || l}</a>`)}</nav>
-      <span class="grow"></span><input class=${searchOpen ? 'open' : ''} placeholder="Search cards, customers…" value=${q} onInput=${e => setQ(e.target.value)} onBlur=${() => { if (!q) setSearchOpen(false); }} onKeyDown=${e => { if (e.key === 'Enter' && results && results[0]) { go('/' + results[0].type + '/' + results[0].slug); } if (e.key === 'Escape') { setQ(''); setSearchOpen(false); } }}/>
-      <button class="btn ghost sm search-btn" onClick=${() => go('/search')}>🔍</button>
+      <span class="grow"></span>${document.documentElement.dataset.layout === 'new' ? html`<${NLSearchBox} data=${data} me=${me} people=${people}/>` : html`<${React.Fragment}><input class=${searchOpen ? 'open' : ''} placeholder="Search cards, customers…" value=${q} onInput=${e => setQ(e.target.value)} onBlur=${() => { if (!q) setSearchOpen(false); }} onKeyDown=${e => { if (e.key === 'Enter' && results && results[0]) { go('/' + results[0].type + '/' + results[0].slug); } if (e.key === 'Escape') { setQ(''); setSearchOpen(false); } }}/>
+      <button class="btn ghost sm search-btn" onClick=${() => go('/search')}>🔍</button><//>`}
       <button class="btn ghost nl-theme" onClick=${() => nlTheme(me)}>Theme</button><a class=${'hb-me' + (meOn ? ' on' : '')} href="#/me" title="My record, people and settings"><span class="i">👤</span><span class="av">${initials}</span>${(me.name || 'Me').split(/\s+/)[0]}</a><div class="hb-stripe"></div></header>`;
   const sub = sysOn ? html`<nav class="hb-sub">${[['/home', 'Overview'], ['/system', 'Systems'], ['/policy', 'Policies'], ['/training', 'Training']].map(([p, l]) => html`<a key=${p} href=${'#' + p} class=${(p === '/home' ? route.startsWith('/home') : route.startsWith(p)) ? 'on' : ''}>${l}</a>`)}</nav>` : null;
   if (parts[0] === 'board') {
@@ -902,6 +982,7 @@ function App() {
   if (parts[0] === 'tools') return html`<div>${header}<div class="maint-page"><${ModPage} key=${route + (document.documentElement.dataset.layout === 'new' ? '|n' : '')} me=${me} mod=${document.documentElement.dataset.layout === 'new' && parts[1] !== 'hvac' ? 'toolsnew' : 'tools'} extra=${{ tool: parts[1] || '', sb, me, people }}/></div>${tabs}</div>`;
   if (parts[0] === 'maint') return html`<div>${header}<div class="maint-page">${document.documentElement.dataset.layout === 'new' ? html`<${ModPage} key=${route + '|n'} me=${me} mod="custnew" extra=${{ me }}/>` : html`<${ModPage} key=${route} me=${me} mod="maint"/>`}</div>${tabs}</div>`;
   if (parts[0] === 'kpi') return html`<div>${header}<div class="maint-page">${kpiOK ? html`<${ModPage} key=${route + (document.documentElement.dataset.layout === 'new' ? '|n' : '')} me=${me} mod=${document.documentElement.dataset.layout === 'new' ? 'kpinew' : 'kpi'}/>` : html`<div class="card"><h3>KPIs</h3><p class="muted">KPIs are open to the owner and Office &amp; Admin.</p></div>`}</div>${tabs}</div>`;
+  if (document.documentElement.dataset.layout === 'new' && (parts[0] === 'search' || (parts[0] === 'ask' && !parts[1]))) return html`<div>${header}<div class="maint-page"><${NLSearchPage} data=${data} me=${me} people=${people} route=${route}/></div>${tabs}</div>`;
   if (parts[0] === 'run') return html`<div>${header}<${Runner} key=${parts[1] + '/' + parts[2]} trackId=${parts[1]} n=${parts[2]} data=${data} me=${me} people=${people} reload=${reload}/>${tabs}</div>`;
   const libHome = lib && !slug;
   return html`<div>
