@@ -541,7 +541,7 @@ function nlTilesCalvin(){const D=nlBriefD||{},g=nlGroups(D),used=new Set(),open=
  T.push({k:"wait",l:"Waiting on",ic:"clock",tc:"var(--l-waiting)",n:waiting.length,p:(()=>{const o=[...waiting].sort((a,b)=>String(a.updated||"").localeCompare(String(b.updated||"")))[0];return o?"Oldest: "+o.title:"Nothing waiting"})(),cards:waiting});
  bt("clash","Schedule & clashes","cal","var(--warn)",/clash/i,"No clashes found");
  bt("msg","Calls & messages","phone","var(--ok)",/message|call ?-?backs?|texts?/i,"Nothing from the morning brief yet");
- const co=open.filter(c=>/^closeout-/.test(c.id||"")||/close ?-?out/i.test(c.title||""));
+ const co=open.filter(c=>/^closeout-/.test(c.id||"")||/^#?\d{4}\b.*close ?-?out/i.test(c.title||""));
  T.push({k:"co",l:"Close-outs",ic:"check",tc:"var(--l-doing)",n:co.length,p:co.length?co.map(c=>(c.title||"").split(":")[0]).slice(0,3).join(" · "):"No open close-outs",cards:co});
  const lc=new Set(log.map(x=>x.c.id)).size,dr=open.filter(c=>c.draftReady&&!isSent(c)).length;
  T.push({k:"log",l:"Claude did",ic:"spark",tc:"var(--accent)",n:log.length,p:log.length?[log.length+" update"+(log.length===1?"":"s")+" on "+lc+" card"+(lc===1?"":"s"),...(dr?[dr+" draft"+(dr===1?"":"s")+" ready"]:[])].join(" · "):"Nothing in the last 24 hours",log});
@@ -682,7 +682,7 @@ function nlParse(){const D=nlBriefD||{},team=nlTeam(),out=[],loose=[];
  const DOW=["sun","mon","tue","wed","thu","fri","sat"],dayOf=lbl=>{const m=String(lbl||"").trim().toLowerCase().match(/^(sun|mon|tue|wed|thu|fri|sat)[a-z]*\.?,?\s*(?:[a-z]{3,9}\.?\s+)?(\d{1,2})?$/);if(!m)return null;for(let k=0;k<2;k++){const d=new Date(Date.now()+k*864e5);if(DOW[d.getDay()]===m[1]&&(!m[2]||+m[2]===d.getDate()))return k}return -1};
  const youRe=/\b(you|me)\b/i,own=nlOwnerName().split(/\s+/)[0];
  const sched=(D.schedule||[]).filter(x=>{const k=dayOf(x.time);if(k===null)return true;if(k<0)return false;
-  nlBullets(x).b.forEach(z=>{const m=z.match(/^(\d{1,2}(?::\d{2})?)\s*([ap])?\.?m?\.?\s*(?:[-–]\s*(\d{1,2}(?::\d{2})?)\s*([ap])?\.?m?\.?)?\s+(.+)$/i);if(!m){loose.push({time:(k?"Tomorrow":"Today"),text:z});return}
+  nlBullets(x).b.forEach(z=>{if(/\b(stale|cancel+ed|moved (it )?to)\b/i.test(z))return;const m=z.match(/^(\d{1,2}(?::\d{2})?)\s*([ap])?\.?m?\.?\s*(?:[-–]\s*(\d{1,2}(?::\d{2})?)\s*([ap])?\.?m?\.?)?\s+(.+)$/i);if(!m){loose.push({time:(k?"Tomorrow":"Today"),text:z});return}
    let s=nlMin(m[1]+(m[2]||"")),e=m[3]?nlMin(m[3]+(m[4]||"")):null;if(s==null){loose.push({time:(k?"Tomorrow":"Today"),text:z});return}if(e!=null&&e<=s&&e+720>s)e+=720;if(e==null||e<=s)e=s+60;
    const text=m[5];let who=techOf(text);if(youRe.test(text)&&own&&!who.includes(own))who=[own,...who.filter(t=>t!==team[0]||new RegExp("\\b"+t+"\\b","i").test(text))];
    [...new Set(who)].forEach(tc=>out.push({day:k,s,e,tech:tc,text,who:text.replace(/\s*\(.*?\)\s*/g," ").trim()}))});return false});
