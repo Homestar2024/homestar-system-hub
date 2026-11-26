@@ -402,6 +402,8 @@ else{
   offs.push(db.doc("board/settings").onSnapshot(s=>{const u=s.exists&&s.data().officeAdminUrl;const a=$("#oaLink");if(u&&/^https:\/\/claude\.ai\//.test(u)){a.href=u;a.hidden=false}else{a.hidden=true}},()=>{}));
   offs.push(db.doc("board/today").onSnapshot(s=>renderBrief(s.exists?s.data():null),()=>{}));
   offs.push(db.doc("board/pipelines").onSnapshot(s=>{nlPipesD=s.exists?s.data():null;if(nlBriefD||nlPipesD)nlBrief()},()=>{}));
+  offs.push(db.doc("board/schedule").onSnapshot(s=>{nlSchedD=s.exists?s.data():null;if(NL())nlSchedRender()},()=>{}));   /* v0.62: HCP calendar (jobs, estimates, events) hourly */
+  offs.push(db.doc("board/hcp_rooms").onSnapshot(s=>{nlRoomsD=s.exists?s.data():null},()=>{}));
   offs.push(db.collection("cards").onSnapshot(snap=>{
     cards=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(focusId){const fc=cards.find(c=>c.id===focusId);if(fc&&LANES.some(l=>l[0]===(fc.column||"todo")))active=fc.column||"todo";}
@@ -673,11 +675,33 @@ R.addEventListener("click",async e=>{if(!NL())return;
 </style><section class="panel" id="nlSched" style="--pc:var(--accent)"></section>`;
 const pb=R.getElementById("pane-board"),tp=pb&&pb.querySelector(".top");if(pb&&tp)pb.insertBefore(nlT2.content,tp);
 const tabs=R.getElementById("tabs"),lanes=R.getElementById("lanes");if(tabs&&lanes){const w=document.createElement("div");w.id="nlCards";w.innerHTML=`<div class="nlcards-h"><h2>My cards</h2><span class="hint" id="nlOpenN"></span><button class="nlb pri" data-nlnew>+ New card</button></div>`;tabs.parentNode.insertBefore(w,tabs);w.appendChild(tabs);w.appendChild(lanes);}}
-var nlDay=0;
+var nlDay=0,nlSchedD=null,nlRoomsD=null;
+/* v0.62 (Calvin 2026-11-26): Schedule from Housecall Pro's own calendar (board/schedule, written hourly by the Board Check feed) - jobs, estimates AND events;
+   tap one for a side panel with customer, address, phone, notes and Housecall Pro links. Falls back to the brief text when the feed is older than 6 h. */
+function nlPtDay(t){return new Intl.DateTimeFormat("en-CA",{timeZone:"America/Vancouver",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(t))}
+function nlPtMin(t){const p=new Intl.DateTimeFormat("en-GB",{timeZone:"America/Vancouver",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(t)).split(":");return ((+p[0])%24)*60+(+p[1])}
+function nlHcpFresh(){return !!(nlSchedD&&Array.isArray(nlSchedD.items)&&Date.now()-Date.parse(nlSchedD.at||0)<6*36e5)}
+function nlK(j){return j.type==="Event"?["Event","#64748b"]:j.type==="Estimate"?["Estimate","#D9772E"]:nlKindOf(j.text)}
+function nlParseHcp(){const D=nlSchedD,out=[],loose=[],d0=nlPtDay(Date.now()),d1=nlPtDay(Date.now()+864e5),pn=id=>String((D.pros||{})[id]||"").split(/\s+/)[0];
+ (D.items||[]).forEach(x=>{const day=x.start?nlPtDay(x.start):String(x.day||"").slice(0,10);const k=day===d0?0:day===d1?1:-1;if(k<0)return;const who=x.type==="Event"?(x.name||"Event"):(x.contact||x.name||x.desc||x.type);const text=[x.type==="Event"?"":x.desc,who].filter(Boolean).join(" - ");
+  if(!x.start||x.anytime){loose.push({time:(k?"Tomorrow":"Today")+(x.anytime?" · anytime":""),text:who+(x.desc&&x.type!=="Event"?" - "+x.desc:""),id:x.id});return}
+  let s=nlPtMin(x.start),e=x.end?nlPtMin(x.end):s+60;if(e<=s)e=s+60;const techs=[...new Set((x.pros||[]).map(pn).filter(Boolean))];(techs.length?techs:[nlTeam()[0]]).forEach(tc=>out.push({day:k,s,e,tech:tc,text,who,id:x.id,type:x.type}))});
+ out.forEach(a=>{a.clash=out.some(b=>b!==a&&b.day===a.day&&b.tech===a.tech&&b.id!==a.id&&b.s<a.e&&a.s<b.e)});return {jobs:out,loose}}
+function nlSchedSheet(id){const x=((nlSchedD||{}).items||[]).find(i=>String(i.id)===String(id));if(!x)return "";const H="https://pro.housecallpro.com/app/";
+ const link=/^job/.test(x.ref)?H+"jobs/"+x.ref:/^est/.test(x.ref)?H+"estimates/"+x.ref:H+"calendar_new";const room=x.cus&&nlRoomsD&&nlRoomsD.rooms&&nlRoomsD.rooms[x.cus];
+ const when=x.start?new Date(x.start).toLocaleDateString("en-CA",{timeZone:"America/Vancouver",weekday:"short",month:"short",day:"numeric"})+" · "+(x.anytime?"anytime":new Date(x.start).toLocaleTimeString("en-US",{timeZone:"America/Vancouver",hour:"numeric",minute:"2-digit"})+(x.end?"–"+new Date(x.end).toLocaleTimeString("en-US",{timeZone:"America/Vancouver",hour:"numeric",minute:"2-digit"}):"")):String(x.day||"");
+ const techs=[...new Set((x.pros||[]).map(p=>(nlSchedD.pros||{})[p]).filter(Boolean))].join(", ");const title=x.type==="Event"?(x.name||"Event"):(x.contact||x.name||"Appointment");
+ const st=x.done?"Finished":x.started?"In progress":"Scheduled";const amt=x.amount?"$"+(x.amount/100).toLocaleString("en-CA",{minimumFractionDigits:2,maximumFractionDigits:2}):"";
+ const row=(k,v)=>v?`<dt>${k}</dt><dd>${v}</dd>`:"";
+ return `<style>.nldl{display:grid;grid-template-columns:84px 1fr;gap:7px 10px;margin:0;font-size:14px}.nldl dt{color:var(--muted);font-size:12.5px;font-weight:700}.nldl dd{margin:0;overflow-wrap:anywhere}.nldl a{color:var(--accent)}a.nlb{text-decoration:none;display:inline-flex;align-items:center}</style><div class="nlgrab"></div><div class="nlsh-h"><h3>${esc(title)}</h3><button class="nlx" data-nlclose aria-label="Close">✕</button></div><div class="nld">
+ <div class="hint" style="margin:-4px 0 10px">${esc(x.type||"")}${x.num?" #"+esc(x.num):""} · ${esc(st)}${amt?" · "+esc(amt):""}</div>
+ <div class="row" style="flex-wrap:wrap;gap:8px;margin:0 0 12px"><a class="nlb pri" href="${link}" target="_blank" rel="noopener">${x.type==="Event"?"Open HCP calendar":"Open "+(x.type||"job").toLowerCase()+" in Housecall Pro"}</a>${x.cus?`<a class="nlb" href="${H}customers/${esc(x.cus)}" target="_blank" rel="noopener">Customer in HCP</a>`:""}${room?`<a class="nlb" href="${H}inbox/categories/customers/groups/customers/chat_rooms/customers_channel_${esc(room)}_${esc(nlRoomsD.org)}" target="_blank" rel="noopener">HCP chat</a>`:""}${x.address?`<a class="nlb" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(x.address)}" target="_blank" rel="noopener">Directions</a>`:""}</div>
+ <dl class="nldl">${row("When",esc(when))}${row("Who",esc(techs))}${x.type!=="Event"&&x.contact?row("Customer",esc(x.contact)):""}${row("Phone",x.phone?`<a href="tel:${esc(x.phone)}">${esc(x.phone)}</a>`:"")}${row("Address",esc(x.address))}${row("Work",esc(x.desc))}${row("Notes",x.note?`<span style="white-space:pre-wrap">${esc(x.note)}</span>`:"")}${row("Tags",esc((x.tags||[]).join(", ")))}${row("Job",x.parent?esc(x.parent):"")}</dl>
+ <div class="hint" style="margin-top:10px">From Housecall Pro · updated ${esc(new Date(nlSchedD.at).toLocaleTimeString("en-US",{timeZone:"America/Vancouver",hour:"numeric",minute:"2-digit"}))} (hourly)</div></div>`}
 function nlTeam(){const s=new Set(["Calvin","Jacob"]);[opts.me,...(opts.team||[]),...(opts.giveTo||[])].forEach(p=>{if(p&&p.name)s.add(String(p.name).split(/\s+/)[0])});return [...s]}
 function nlMin(t,ap){const m=String(t||"").trim().match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])?\.?m?\.?$/i);if(!m)return null;let h=+m[1],mi=+(m[2]||0);const a=(m[3]||ap||"").toLowerCase();if(a==="p"&&h<12)h+=12;else if(a==="a"&&h===12)h=0;else if(!a){if(h>=1&&h<=6)h+=12}return h*60+mi}
 function nlKindOf(t){t=t.toLowerCase();return /maint|tune|clean/.test(t)?["Maintenance","#2596BE"]:/diag|service|repair|call/.test(t)?["Diagnostic / service","#8b6cd9"]:/install|start-?up|commission/.test(t)?["Install","#3f9e62"]:/estimate|quote|consult|measure|site visit/.test(t)?["Estimate","#D9772E"]:["Other","#6b7a90"]}
-function nlParse(){const D=nlBriefD||{},team=nlTeam(),out=[],loose=[];
+function nlParse(){if(nlHcpFresh())return nlParseHcp();const D=nlBriefD||{},team=nlTeam(),out=[],loose=[];
  const techOf=t=>{const f=team.filter(n=>new RegExp("\\b"+n+"\\b","i").test(t));return f.length?f:[team[0]]};
  const DOW=["sun","mon","tue","wed","thu","fri","sat"],dayOf=lbl=>{const m=String(lbl||"").trim().toLowerCase().match(/^(sun|mon|tue|wed|thu|fri|sat)[a-z]*\.?,?\s*(?:[a-z]{3,9}\.?\s+)?(\d{1,2})?$/);if(!m)return null;for(let k=0;k<2;k++){const d=new Date(Date.now()+k*864e5);if(DOW[d.getDay()]===m[1]&&(!m[2]||+m[2]===d.getDate()))return k}return -1};
  const youRe=/\b(you|me)\b/i,own=nlOwnerName().split(/\s+/)[0];
@@ -696,16 +720,16 @@ function nlParse(){const D=nlBriefD||{},team=nlTeam(),out=[],loose=[];
  out.forEach(a=>{a.clash=out.some(b=>b!==a&&b.day===a.day&&b.tech===a.tech&&b.s<a.e&&a.s<b.e)});return {jobs:out,loose}}
 function nlSchedRender(){const el=R.getElementById("nlSched");if(!el||!NL())return;const {jobs,loose}=nlParse();const S0=7*60,S1=18*60,pos=m=>Math.max(0,Math.min(100,(m-S0)/(S1-S0)*100));
  const team=nlTeam(),rows=team.filter(t=>t==="Calvin"||t==="Jacob"||jobs.some(j=>j.tech===t));const now=new Date(),d1=new Date(now.getTime()+864e5);const fd=d=>d.toLocaleDateString("en-CA",{weekday:"short",day:"numeric"});
- const clashes=Math.ceil(jobs.filter(j=>j.clash).length/2);const types=[...new Map(jobs.map(j=>{const k=nlKindOf(j.text);return [k[0],k[1]]})).entries()];
- const cell=(tc,d)=>{const js=jobs.filter(j=>j.tech===tc&&j.day===d).sort((a,b)=>a.s-b.s);return `<div class="day d${d}">${js.map((j,i)=>{const k=nlKindOf(j.text);const ov=js.some((o,n)=>n<i&&o.s<j.e&&j.s<o.e);const ov2=js.some((o,n)=>n>i&&o.s<j.e&&j.s<o.e);const t=x=>{const h=Math.floor(x/60),m=x%60;return ((h%12)||12)+(m?":"+String(m).padStart(2,"0"):"")};
-  return `<div class="nlj ${j.clash?"clash":""} ${ov2?"half":""} ${ov?"half2":""}" style="--jc:${k[1]};left:${pos(j.s)}%;width:${Math.max(4,pos(j.e)-pos(j.s))}%" data-nljob="${esc(j.text)}" title="${esc(j.text)}"><b>${esc(j.who)}</b><span>${t(j.s)}–${t(j.e)}</span></div>`}).join("")}</div>`};
+ const clashes=Math.ceil(jobs.filter(j=>j.clash).length/2);const types=[...new Map(jobs.map(j=>{const k=nlK(j);return [k[0],k[1]]})).entries()];
+ const cell=(tc,d)=>{const js=jobs.filter(j=>j.tech===tc&&j.day===d).sort((a,b)=>a.s-b.s);return `<div class="day d${d}">${js.map((j,i)=>{const k=nlK(j);const ov=js.some((o,n)=>n<i&&o.s<j.e&&j.s<o.e);const ov2=js.some((o,n)=>n>i&&o.s<j.e&&j.s<o.e);const t=x=>{const h=Math.floor(x/60),m=x%60;return ((h%12)||12)+(m?":"+String(m).padStart(2,"0"):"")};
+  return `<div class="nlj ${j.clash?"clash":""} ${ov2?"half":""} ${ov?"half2":""}" style="--jc:${k[1]};left:${pos(j.s)}%;width:${Math.max(4,pos(j.e)-pos(j.s))}%" data-nljob="${esc(j.text)}"${j.id?` data-nlid="${esc(j.id)}"`:""} title="${esc(j.text)}"><b>${esc(j.who)}</b><span>${t(j.s)}–${t(j.e)}</span></div>`}).join("")}</div>`};
  const scale=d=>`<div class="scale d${d}"><span>7</span><span>9</span><span>11</span><span>1</span><span>3</span><span>5</span></div>`;
- el.innerHTML=`<div class="row" style="justify-content:space-between;margin-bottom:10px"><h2 style="margin:0">Schedule${clashes?`<span class="nlclashb">${clashes} clash</span>`:""}</h2><span class="hint">7 AM – 6 PM · tap a job</span></div>
+ el.innerHTML=`<div class="row" style="justify-content:space-between;margin-bottom:10px"><h2 style="margin:0">Schedule${clashes?`<span class="nlclashb">${clashes} clash</span>`:""}</h2><span class="hint">7 AM – 6 PM · tap a job or event${nlHcpFresh()?" · live from HCP":""}</span></div>
  <div class="nlsw"><button class="${nlDay?"":"on"}" data-nlday="0">Today · ${fd(now)}</button><button class="${nlDay?"on":""}" data-nlday="1">Tomorrow · ${fd(d1)}</button></div>
  <div class="nlcal ${nlDay?"show1":""}" style="--days:2"><div class="hd"></div><div class="hd today d0">Today · ${fd(now)}</div><div class="hd d1">Tomorrow · ${fd(d1)}</div>
  ${rows.map(tc=>`<div class="who">${esc(tc)}</div>${cell(tc,0)}${cell(tc,1)}`).join("")}<div></div>${scale(0)}${scale(1)}</div>
  ${types.length?`<div class="nlleg">${types.map(([n,c])=>`<span><i style="background:${c}"></i>${n}</span>`).join("")}${clashes?`<span><i style="border:2px solid var(--hot)"></i>Clash</span>`:""}</div>`:""}
- ${loose.length?`<div class="nlsch" style="margin-top:10px">${loose.map(x=>`<div class="ch"><b>${esc(x.time||"")}</b><span>${esc(x.text)}</span></div>`).join("")}</div>`:""}
+ ${loose.length?`<div class="nlsch" style="margin-top:10px">${loose.map(x=>`<div class="ch"${x.id?` data-nljob="${esc(x.text)}" data-nlid="${esc(x.id)}" style="cursor:pointer"`:""}><b>${esc(x.time||"")}</b><span>${esc(x.text)}</span></div>`).join("")}</div>`:""}
  ${!jobs.length&&!loose.length?`<div class="hint" style="margin-top:8px">No jobs booked today or tomorrow.</div>`:""}`;
  const n=cards.filter(c=>isOpen(c)).length,on=R.getElementById("nlOpenN");if(on)on.textContent=n+" open";}
 function nlNewForm(){nlKind="new";nlOpen=null;const sh=R.getElementById("nlSheet"),sc=R.getElementById("nlScrim");
@@ -718,7 +742,7 @@ function nlNewForm(){nlKind="new";nlOpen=null;const sh=R.getElementById("nlSheet
  sh.classList.add("on");sc.classList.add("on");setTimeout(()=>{const t=R.getElementById("nln-text");if(t)t.focus()},50)}
 R.addEventListener("click",async e=>{if(!NL())return;
  const dy=e.target.closest("[data-nlday]");if(dy){nlDay=+dy.dataset.nlday;nlSchedRender();return}
- const jb=e.target.closest("[data-nljob]");if(jb){nlKind="job";const sh=R.getElementById("nlSheet");sh.innerHTML=`<div class="nlgrab"></div><div class="nlsh-h"><h3>Job</h3><button class="nlx" data-nlclose aria-label="Close">✕</button></div><div class="nld">${esc(jb.dataset.nljob)}</div>`;sh.classList.add("on");R.getElementById("nlScrim").classList.add("on");return}
+ const jb=e.target.closest("[data-nljob]");if(jb){nlKind="job";const sh=R.getElementById("nlSheet");const rich=jb.dataset.nlid&&nlSchedSheet(jb.dataset.nlid);if(rich){sh.innerHTML=rich;sh.classList.add("on");R.getElementById("nlScrim").classList.add("on");return}sh.innerHTML=`<div class="nlgrab"></div><div class="nlsh-h"><h3>Job</h3><button class="nlx" data-nlclose aria-label="Close">✕</button></div><div class="nld">${esc(jb.dataset.nljob)}</div>`;sh.classList.add("on");R.getElementById("nlScrim").classList.add("on");return}
  if(e.target.closest("[data-nlnew]")){nlNewForm();return}
  const cr=e.target.closest("[data-nlcreate]");if(cr&&db){const g=k=>{const el=R.getElementById(k);return el?el.value.trim():""};const text=g("nln-text");if(!text){const m=R.getElementById("nlnmsg");if(m)m.textContent="Type what needs doing.";return}
   cr.disabled=true;const id="req-"+Date.now().toString(36),at=nowIso(),by=opts.me&&opts.me.name?String(opts.me.name).split(/\s+/)[0]:undefined,lane=g("nln-lane")||"todo",ask=!!(R.getElementById("nln-claude")||{}).checked;
