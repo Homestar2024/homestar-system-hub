@@ -1,4 +1,4 @@
-// Homestar HQ - Pipeline page (v2 2026-11-26: tap a card -> side panel like the board: HCP + GHL links, contact, work summary, rebate flag, automations with sent / next / stopped steps, messages, form answers, notes; next automation step on each card. v1 2026-11-26, Calvin): full view of the Go High Level Leads / Estimates / Jobs pipelines.
+// Homestar HQ - Pipeline page (v3 2026-11-26, Calvin picks 1/2/4/6: 'Needs a nudge' lane first in Estimates (call list from the snapshot's nudge flag), follow-up stages Sent > Follow-up 1 Sent > Follow-up 2 Sent > Call to Make (moved hourly by the snapshot), STALE flags with a next step (+ 'Stale only' filter), one-tap Mark won / Mark lost + reason / Pause follow-ups with an OK step (queued in board collection pipeactions, run by the hourly GHL Sync), 'Follow-up stopped' in red, tap a message -> that customer's Housecall Pro inbox chat (board/hcp_rooms), GHL conversation link. v2 2026-11-26: tap a card -> side panel like the board: HCP + GHL links, contact, work summary, rebate flag, automations with sent / next / stopped steps, messages, form answers, notes; next automation step on each card. v1 2026-11-26, Calvin): full view of the Go High Level Leads / Estimates / Jobs pipelines.
 // Data: Calvin's board doc board/pipelines (written hourly by Tools/ghl_pipelines_snap.py in the GHL Sync task; open opportunities only).
 // mountPipeline(host, db) renders into a shadow root on host and returns a cleanup function.
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -19,7 +19,7 @@ h2{font-family:var(--display);font-size:26px;margin:0}
 .pk .l{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .pk b{font-size:26px;line-height:1.1}.pk .v{font-size:13px;color:var(--muted)}
 .tools{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
-.tools input{font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;flex:1;min-width:180px}
+.tools input#q{font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;flex:1;min-width:180px}
 .tools label{font-size:13px;color:var(--muted);display:flex;gap:6px;align-items:center}
 .cols{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(250px,1fr);gap:10px;overflow-x:auto;padding-bottom:10px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
 .col{scroll-snap-align:start;background:var(--sunk);border-radius:12px;padding:10px;min-width:0;display:flex;flex-direction:column;gap:8px;max-height:72vh}
@@ -34,7 +34,19 @@ h2{font-family:var(--display);font-size:26px;margin:0}
 .age.w{color:var(--warn);font-weight:700}.age.h{color:var(--hot);font-weight:700}
 .none{color:var(--muted);font-size:13px;padding:6px 2px}
 .op{cursor:pointer;transition:.12s}.op:hover{border-color:var(--accent);transform:translateY(-1px)}
-.op .nx{margin-top:5px;font-size:12px;color:var(--accent);font-weight:600}.op .nx.stop{color:var(--muted);font-weight:500}.op .nx.due{color:var(--warn)}
+.op .nx{margin-top:5px;font-size:12px;color:var(--accent);font-weight:600}.op .nx.stop{color:#d92d20;font-weight:600}.op .nx.due{color:var(--warn)}
+.red{color:#d92d20!important}
+.op .ng{margin-top:5px;font-size:12px;font-weight:700;color:#b54708}.op .sl{margin-top:5px;font-size:12px;font-weight:600;color:#d92d20}
+.op .qd{margin-top:5px;font-size:11.5px;font-weight:700;color:var(--accent)}
+.sb{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.04em;background:color-mix(in srgb,#d92d20 15%,transparent);color:#d92d20;border-radius:6px;padding:1px 6px;margin-left:4px;vertical-align:1px}
+.col.nudge{background:color-mix(in srgb,#f79009 13%,var(--sunk))}.col.nudge .ch{border-bottom-color:#f79009}
+.tools .fb{font:inherit;font-size:13px;font-weight:700;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 12px;cursor:pointer}.tools .fb.on{background:#d92d20;border-color:#d92d20;color:#fff}
+.flag{border-radius:10px;padding:9px 11px;margin:0 0 10px;font-size:13.5px}.flag.n{background:color-mix(in srgb,#f79009 14%,transparent);border:1px solid color-mix(in srgb,#f79009 45%,transparent)}.flag.s{background:color-mix(in srgb,#d92d20 10%,transparent);border:1px solid color-mix(in srgb,#d92d20 40%,transparent)}.flag b{display:block}
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}.acts button{font:inherit;font-size:13.5px;font-weight:700;border-radius:9px;padding:8px 12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}.acts .won{border-color:#3f9e62;color:#3f9e62}.acts .lost{border-color:#d92d20;color:#d92d20}
+.ok{border:1px solid var(--line);border-radius:10px;padding:10px;margin:0 0 12px;background:var(--bg);font-size:14px}.ok select,.ok input{font:inherit;font-size:14px;width:100%;margin:6px 0;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}.ok .row{display:flex;gap:8px;margin-top:6px}.ok .go{background:var(--accent);border:0;color:#fff;font:inherit;font-weight:700;border-radius:8px;padding:8px 14px;cursor:pointer}.ok .no{background:none;border:1px solid var(--line);color:var(--ink);font:inherit;border-radius:8px;padding:8px 14px;cursor:pointer}
+.qline{font-size:13px;border-radius:8px;padding:7px 10px;margin:0 0 10px;background:color-mix(in srgb,var(--accent) 10%,transparent)}.qline a{color:var(--accent);margin-left:6px}
+a.msg{display:block;color:inherit;text-decoration:none;cursor:pointer}a.msg:hover{background:var(--sunk)}a.msg .go{float:right;font-size:11px;color:var(--accent);font-weight:700}
+.sec .sm{float:right;font-size:12px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--accent);text-decoration:none}
 .rb{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.04em;background:color-mix(in srgb,#3f9e62 18%,transparent);color:#3f9e62;border-radius:6px;padding:1px 6px;margin-left:4px;vertical-align:1px}
 .scrim{position:fixed;inset:0;background:rgba(10,14,25,.45);z-index:60}
 .side{position:fixed;top:0;right:0;bottom:0;width:min(460px,100vw);background:var(--surface);border-left:1px solid var(--line);z-index:61;overflow-y:auto;padding:18px 18px 40px;box-shadow:-10px 0 30px rgba(0,0,0,.25)}
@@ -44,7 +56,7 @@ h2{font-family:var(--display);font-size:26px;margin:0}
 .chip{font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px;background:var(--sunk);color:var(--ink)}
 .links{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 14px}
 .links a{font:inherit;font-size:13.5px;font-weight:700;text-decoration:none;border-radius:9px;padding:8px 12px;border:1px solid var(--line);color:var(--ink);background:var(--bg)}
-.links a.hcp{background:#1777d3;border-color:#1777d3;color:#fff}.links a.ghl{background:#3f9e62;border-color:#3f9e62;color:#fff}
+.links a.hcp{background:#1777d3;border-color:#1777d3;color:#fff}.links a.inb{border-color:#1777d3;color:#1777d3}.links a.ghl{background:#3f9e62;border-color:#3f9e62;color:#fff}
 .sec{border-top:1px solid var(--line);padding-top:10px;margin-top:12px}
 .sec>b{display:block;font-size:11.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
 .kv{display:grid;grid-template-columns:86px 1fr;gap:4px 10px;font-size:14px}.kv span{color:var(--muted)}.kv a{color:var(--accent)}
@@ -61,8 +73,15 @@ ul.sum{margin:0;padding-left:18px;font-size:14px}
 .empty{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;color:var(--muted)}
 @media(max-width:600px){.pick{gap:6px}.pk{padding:10px}.pk b{font-size:22px}.cols{grid-auto-columns:86%}}
 `;
+const HCPINBOX = 'https://pro.housecallpro.com/app/inbox/categories/customers';
+const ACT = { won: 'Mark won', lost: 'Mark lost', pause: 'Pause follow-ups' };
+const REASONS = ['Price', 'Went with another company', 'Timing - not now', 'No response', 'Decided not to do it', 'Other'];
 export function mountPipeline(host, db) {
   const root = host.shadowRoot || host.attachShadow({ mode: 'open' });
+  let ROOMS = null, ACTS = [], ask = null, staleOnly = false;
+  const roomUrl = (it) => { const u = ROOMS && ROOMS.rooms && it.hcpCus && ROOMS.rooms[it.hcpCus]; return u ? `${HCPINBOX}/groups/customers/chat_rooms/customers_channel_${u}_${ROOMS.org}` : ''; };
+  const actOf = (id) => ACTS.filter(a => a.opp === id && a.status !== 'cancelled').sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
+  const actTxt = (a) => `${ACT[a.action] || a.action}${a.reason ? ' (' + a.reason + ')' : ''}`;
   let D = null, sel = (() => { try { return localStorage.getItem('hb-pipe') || 'estimates'; } catch (e) { return 'estimates'; } })(), q = '', hideEmpty = (() => { try { return localStorage.getItem('hb-pipe-hide') === '1'; } catch (e) { return false; } })(), loaded = false;
   root.innerHTML = `<style>${CSS}</style><div id="app"><div class="empty">Loading pipelines…</div></div>`;
   const app = root.getElementById('app');
@@ -74,40 +93,62 @@ export function mountPipeline(host, db) {
     const p = P.find(x => key(x) === sel), pc = COL[sel] || 'var(--accent)';
     const at = D.at ? new Date(D.at).toLocaleString('en-CA', { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
     const f = q.trim().toLowerCase();
-    const stages = p.stages.filter(s => !hideEmpty || s.n);
+    const all = p.stages.flatMap(s => s.items); const nStale = all.filter(it => it.stale).length;
+    const nudge = sel === 'estimates' ? { name: 'Needs a nudge', items: all.filter(it => it.nudge), nudge: 1 } : null; if (nudge) { nudge.n = nudge.items.length; nudge.value = nudge.items.reduce((a, x) => a + (x.value || 0), 0); }
+    const stages = [...(nudge ? [nudge] : []), ...p.stages].filter(s => (!hideEmpty || s.n) && (!staleOnly || s.items.some(it => it.stale)));
     app.innerHTML = `<div class="head"><div><h2>Pipeline</h2><div class="sub">Go High Level · open opportunities · updated ${esc(at)}</div></div></div>
       <div class="pick">${P.map(x => { const t = tot(x); return `<button class="pk ${key(x) === sel ? 'on' : ''}" data-p="${esc(key(x))}" style="--pc:${COL[key(x)] || 'var(--accent)'}"><span class="l">${esc(x.name)}</span><b>${t.n}</b><span class="v">${t.v ? money(t.v) : 'open'}</span></button>`; }).join('')}</div>
-      <div class="tools"><input id="q" placeholder="Find a name in ${esc(p.name)}…" value="${esc(q)}"><label><input type="checkbox" id="he" ${hideEmpty ? 'checked' : ''}> Hide empty stages</label></div>
-      <div class="cols" style="--pc:${pc}">${stages.map(s => { const items = s.items.filter(it => !f || (it.name + ' ' + it.contact).toLowerCase().includes(f));
-        return `<div class="col"><div class="ch"><div><b>${esc(s.name)}</b>${s.value ? `<small>${money(s.value)}</small>` : ''}</div><span class="n">${f ? items.length + '/' : ''}${s.n}</span></div><div class="list">${items.length ? items.map(it => { const m = String(it.name || '').match(/^(.*?)\s*-\s*(?:Estimate|Job|Lead)?\s*#?(\d[\w-]*)$/i); const nm = m ? m[1] : (it.name || it.contact); const d = days(it.since);
+      <div class="tools"><input id="q" placeholder="Find a name in ${esc(p.name)}…" value="${esc(q)}"><button class="fb ${staleOnly ? 'on' : ''}" id="so">Stale only (${nStale})</button><label><input type="checkbox" id="he" ${hideEmpty ? 'checked' : ''}> Hide empty stages</label></div>
+      <div class="cols" style="--pc:${pc}">${stages.map(s => { const items = s.items.filter(it => (!f || (it.name + ' ' + it.contact).toLowerCase().includes(f)) && (!staleOnly || it.stale));
+        return `<div class="col ${s.nudge ? 'nudge' : ''}"><div class="ch"><div><b>${s.nudge ? '☎ ' : ''}${esc(s.name)}</b>${s.value ? `<small>${money(s.value)}</small>` : ''}</div><span class="n">${f ? items.length + '/' : ''}${s.n}</span></div><div class="list">${items.length ? items.map(it => { const m = String(it.name || '').match(/^(.*?)\s*-\s*(?:Estimate|Job|Lead)?\s*#?(\d[\w-]*)$/i); const nm = m ? m[1] : (it.name || it.contact); const d = days(it.since);
           const nx = nextOf(it), stp = (it.auto || []).find(a => a.status === 'stopped');
-          return `<div class="op" data-op="${esc(it.id)}"><div class="t">${esc(nm)}${m ? `<span class="num">#${esc(m[2])}</span>` : ''}${it.rebate ? '<span class="rb">REBATE</span>' : ''}</div><div class="m"><span>${esc(money(it.value) || (it.contact && it.contact !== nm ? it.contact : ''))}</span>${d != null ? `<span class="age ${d > 30 ? 'h' : d > 14 ? 'w' : ''}">${d ? d + ' d in stage' : 'today'}</span>` : ''}</div>${nx ? `<div class="nx ${nx.n.state === 'due' ? 'due' : ''}">${nx.n.state === 'due' ? 'Due' : 'Next'}: ${esc(nx.n.label.replace(/\s*-.*$/, ''))} · ${esc(fmt(nx.n.when))}</div>` : stp ? `<div class="nx stop">Follow-up stopped - ${esc(stp.why.replace(/\s\d{4}-.*$/, ''))}</div>` : ''}</div>`; }).join('') : `<div class="none">${f ? 'No match' : 'None'}</div>`}</div></div>`; }).join('')}</div>`;
+          return `<div class="op" data-op="${esc(it.id)}"><div class="t">${esc(nm)}${m ? `<span class="num">#${esc(m[2])}</span>` : ''}${it.rebate ? '<span class="rb">REBATE</span>' : ''}${it.stale ? '<span class="sb">STALE</span>' : ''}</div><div class="m"><span>${esc(money(it.value) || (it.contact && it.contact !== nm ? it.contact : ''))}</span>${d != null ? `<span class="age ${d > 30 ? 'h' : d > 14 ? 'w' : ''}">${d ? d + ' d in stage' : 'today'}</span>` : ''}</div>${nx ? `<div class="nx ${nx.n.state === 'due' ? 'due' : ''}">${nx.n.state === 'due' ? 'Due' : 'Next'}: ${esc(nx.n.label.replace(/\s*-.*$/, ''))} · ${esc(fmt(nx.n.when))}</div>` : stp ? `<div class="nx stop">Follow-up stopped - ${esc(stp.why.replace(/\s\d{4}-.*$/, ''))}</div>` : ''}${s.nudge ? `<div class="ng">${esc(it.nudge)} · ${esc(it.stage)}</div>` : it.stale ? `<div class="sl">${esc(it.stale.why)}</div>` : ''}${(() => { const a = actOf(it.id); return a && a.status === 'pending' ? `<div class="qd">Queued: ${esc(actTxt(a))}</div>` : ''; })()}</div>`; }).join('') : `<div class="none">${f ? 'No match' : 'None'}</div>`}</div></div>`; }).join('')}</div>`;
   }
   let openId = null;
   function side() {
     root.querySelectorAll('.scrim,.side').forEach(x => x.remove()); if (!openId || !D) return;
-    let it = null; D.pipelines.forEach(p => p.stages.forEach(s => s.items.forEach(x => { if (x.id === openId) it = x; })));
+    let it = null, kind = ''; D.pipelines.forEach(p => p.stages.forEach(s => s.items.forEach(x => { if (x.id === openId) { it = x; kind = key(p); } })));
     if (!it) { openId = null; return; }
     const m = String(it.name || '').match(/^(.*?)\s*-\s*(?:Estimate|Job|Lead)?\s*#?(\d[\w-]*)$/i); const nm = m ? m[1] : (it.name || it.contact); const d = days(it.since);
     const icon = { sent: '✓', next: '●', later: '○', due: '!', stopped: '✕', done: '✓' };
-    const wf = (it.auto || []).map(a => `<div class="wf"><div class="wn">${esc(a.name)}</div><div class="ws"><span class="chip">${a.status === 'active' ? 'Active' : a.status === 'stopped' ? 'Stopped' : 'Done'}</span>${a.why ? ' ' + esc(a.why.replace(/(\d{4}-\d\d-\d\dT[\d:.]+Z)/, (z) => fmt(z))) : ''}${a.start ? ' · started ' + esc(fmt(a.start)) : ''}</div>${(a.steps || []).map(x => `<div class="st ${x.state}"><i>${icon[x.state] || '·'}</i><span>${esc(x.label)}${x.state === 'due' ? ' - time passed, not seen sent yet' : ''}</span><em>${esc(fmt(x.when))}</em></div>`).join('')}${a.basis ? `<small>${esc(a.basis)}</small>` : ''}</div>`).join('');
+    const wf = (it.auto || []).map(a => `<div class="wf"><div class="wn">${esc(a.name)}</div><div class="ws ${a.status === 'stopped' ? 'red' : ''}"><span class="chip ${a.status === 'stopped' ? 'red' : ''}">${a.status === 'active' ? 'Active' : a.status === 'stopped' ? 'Stopped' : 'Done'}</span>${a.why ? ' ' + esc(a.why.replace(/(\d{4}-\d\d-\d\dT[\d:.]+Z)/, (z) => fmt(z))) : ''}${a.start ? ' · started ' + esc(fmt(a.start)) : ''}</div>${(a.steps || []).map(x => `<div class="st ${x.state}"><i>${icon[x.state] || '·'}</i><span>${esc(x.label)}${x.state === 'due' ? ' - time passed, not seen sent yet' : ''}</span><em>${esc(fmt(x.when))}</em></div>`).join('')}${a.basis ? `<small>${esc(a.basis)}</small>` : ''}</div>`).join('');
     const sum = String(it.summary || '').split(/\s*\|\s*/).filter(Boolean);
+    const room = roomUrl(it), inbox = room || HCPINBOX;
+    const flags = `${it.nudge ? `<div class="flag n"><b>☎ Needs a nudge</b>${esc(it.nudge)}</div>` : ''}${it.stale ? `<div class="flag s"><b>Stale: ${esc(it.stale.why)}</b>Next step: ${esc(it.stale.next)}</div>` : ''}`;
+    const a0 = actOf(it.id), canAct = kind === 'estimates' || kind === 'leads';
+    const qline = a0 ? (a0.status === 'pending' ? `<div class="qline">Queued: <b>${esc(actTxt(a0))}</b> - runs on the next hourly Go High Level sync.<a href="#" data-cancel="${esc(a0._id)}">Cancel</a></div>` : a0.status === 'done' ? `<div class="qline">Done: ${esc(actTxt(a0))} · ${esc(fmt(a0.doneAt))}</div>` : a0.status === 'failed' ? `<div class="qline red">Didn't go through: ${esc(actTxt(a0))} (${esc(a0.result || '')}). Try again or do it in Go High Level.</div>` : '') : '';
+    const okBox = ask && ask.id === it.id ? `<div class="ok"><b>${esc(ACT[ask.action])}: ${esc(nm)}?</b><div class="sub">${ask.action === 'won' ? 'Moves the card to Approved, marks it won and stops the follow-ups in Go High Level. Approve the option in Housecall Pro to book the job.' : ask.action === 'lost' ? 'Moves the card to Rejected, marks it lost and stops the follow-ups in Go High Level.' : 'Stops the follow-up texts and emails for this customer. The card stays where it is.'}</div>${ask.action === 'lost' ? `<select id="rs">${REASONS.map(r => `<option${ask.reason === r ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>` : ''}<input id="nt" placeholder="Note (optional)" value="${esc(ask.note || '')}"><div class="row"><button class="go" data-go>OK, do it</button><button class="no" data-no>Cancel</button></div></div>` : '';
+    const acts = canAct && !(a0 && a0.status === 'pending') ? `<div class="acts"><button class="won" data-act="won">✓ Mark won</button><button class="lost" data-act="lost">✕ Mark lost</button>${(it.auto || []).some(a => a.status === 'active' && /^estimates/i.test(a.name)) ? '<button data-act="pause">⏸ Pause follow-ups</button>' : ''}</div>` : '';
     const el = document.createElement('div'); el.innerHTML = `<div class="scrim" data-close></div><aside class="side" role="dialog" aria-label="${esc(nm)}"><button class="x" data-close aria-label="Close">✕</button>
-      <h3>${esc(nm)}</h3><div class="meta">${it.number ? `<span class="chip">${esc(it.number)}</span>` : ''}<span class="chip">${esc(it.stage)}</span>${d != null ? `<span>${d ? d + ' d in stage' : 'moved today'}</span>` : ''}${it.value ? `<span>· ${money(it.value)}</span>` : ''}${it.rebate ? '<span class="rb">REBATE</span>' : ''}</div>
-      <div class="links">${it.hcp ? `<a class="hcp" href="${esc(it.hcp)}" target="_blank" rel="noopener">Open in Housecall Pro</a>` : ''}${it.ghl ? `<a class="ghl" href="${esc(it.ghl)}" target="_blank" rel="noopener">Open in Go High Level</a>` : ''}${it.board ? `<a href="${esc(it.board)}" target="_blank" rel="noopener">GHL pipeline board</a>` : ''}</div>
+      <h3>${esc(nm)}</h3><div class="meta">${it.number ? `<span class="chip">${esc(it.number)}</span>` : ''}<span class="chip">${esc(it.stage)}</span>${d != null ? `<span>${d ? d + ' d in stage' : 'moved today'}</span>` : ''}${it.value ? `<span>· ${money(it.value)}</span>` : ''}${it.rebate ? '<span class="rb">REBATE</span>' : ''}${it.stale ? '<span class="sb">STALE</span>' : ''}</div>
+      ${flags}${qline}${okBox}${okBox ? '' : acts}
+      <div class="links">${it.hcp ? `<a class="hcp" href="${esc(it.hcp)}" target="_blank" rel="noopener">Open in Housecall Pro</a>` : ''}<a class="inb" href="${esc(inbox)}" target="_blank" rel="noopener">${room ? 'HCP inbox chat' : 'HCP inbox'}</a>${it.ghl ? `<a class="ghl" href="${esc(it.ghl)}" target="_blank" rel="noopener">Open in Go High Level</a>` : ''}${it.board ? `<a href="${esc(it.board)}" target="_blank" rel="noopener">GHL pipeline board</a>` : ''}</div>
       <div class="sec"><b>What we're doing</b>${sum.length ? `<ul class="sum">${sum.map(z => `<li>${esc(z)}</li>`).join('')}</ul>` : '<div class="none">No summary on the card yet.</div>'}<div class="kv" style="margin-top:8px">${it.scheduled ? `<span>Scheduled</span><b>${esc(it.scheduled)}</b>` : ''}${it.address ? `<span>Address</span><b>${esc(it.address)}</b>` : ''}${it.phone ? `<span>Phone</span><a href="tel:${esc(it.phone)}">${esc(it.phone)}</a>` : ''}${it.email ? `<span>Email</span><a href="mailto:${esc(it.email)}">${esc(it.email)}</a>` : ''}${it.source ? `<span>Source</span><b>${esc(it.source)}</b>` : ''}</div></div>
       <div class="sec"><b>Automations</b>${wf || '<div class="none">Not in any follow-up automation right now.</div>'}</div>
       ${(it.forms || []).length ? `<div class="sec"><b>Website form</b>${it.forms.map(f => `<div class="note">${esc(fmt(f.at))}\n${esc(f.answers.join('\n'))}</div>`).join('')}</div>` : ''}
-      <div class="sec"><b>Messages</b>${(it.msgs || []).length ? it.msgs.slice().reverse().map(x => `<div class="msg">${x.dir === 'inbound' ? '← ' : '→ '}${esc(x.text)}${x.src === 'workflow' ? '<span class="au">AUTO</span>' : ''}<em>${esc(x.type)} · ${esc(fmt(x.at))}</em></div>`).join('') : '<div class="none">No texts or emails in Go High Level.</div>'}</div>
+      <div class="sec"><b>Messages${it.conv ? `<a class="sm" href="${esc(it.conv)}" target="_blank" rel="noopener">Go High Level conversation ›</a>` : ''}</b>${(it.msgs || []).length ? it.msgs.slice().reverse().map(x => `<a class="msg" href="${esc(inbox)}" target="_blank" rel="noopener"><span class="go">${room ? 'HCP inbox ›' : 'HCP inbox (find name) ›'}</span>${x.dir === 'inbound' ? '← ' : '→ '}${esc(x.text)}${x.src === 'workflow' ? '<span class="au">AUTO</span>' : ''}<em>${esc(x.type)} · ${esc(fmt(x.at))}</em></a>`).join('') : `<div class="none">No texts or emails in Go High Level. <a href="${esc(inbox)}" target="_blank" rel="noopener">Open the HCP inbox ›</a></div>`}</div>
       <div class="sec"><b>Notes</b>${(it.notes || []).length ? it.notes.map(n => `<div class="note">${esc(fmt(n.at))}\n${esc(n.body)}</div>`).join('') : '<div class="none">No notes.</div>'}</div>
       <div class="sub" style="margin-top:12px">Tags: ${esc((it.tags || []).join(', ') || 'none')}</div></aside>`;
     while (el.firstChild) root.appendChild(el.firstChild);
   }
-  root.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) { openId = null; side(); return; } const o = e.target.closest('[data-op]'); if (o) { openId = o.dataset.op; side(); } });
-  root.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openId) { openId = null; side(); } });
+  const findIt = (id) => { let it = null; (D ? D.pipelines : []).forEach(p => p.stages.forEach(s => s.items.forEach(x => { if (x.id === id) it = x; }))); return it; };
+  root.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) { openId = null; ask = null; side(); return; }
+    const ac = e.target.closest('[data-act]'); if (ac) { ask = { id: openId, action: ac.dataset.act, reason: REASONS[0] }; side(); return; }
+    if (e.target.closest('[data-no]')) { ask = null; side(); return; }
+    if (e.target.closest('[data-go]') && ask) { const it = findIt(ask.id); const rs = root.getElementById('rs'), nt = root.getElementById('nt');
+      const rec = { opp: it.id, contact: it.contactId || '', name: it.name, action: ask.action, reason: ask.action === 'lost' ? (rs ? rs.value : '') : '', note: nt ? nt.value.trim() : '', at: new Date().toISOString(), by: 'Calvin', status: 'pending' };
+      ask = null; ACTS.push({ ...rec, _id: 'tmp' }); side(); draw();
+      db.collection('pipeactions').add(rec).catch((err) => { ACTS = ACTS.filter(a => a._id !== 'tmp'); alert("Couldn't queue it: " + err.message); side(); draw(); }); return; }
+    const cx = e.target.closest('[data-cancel]'); if (cx) { e.preventDefault(); if (cx.dataset.cancel !== 'tmp') db.doc('pipeactions/' + cx.dataset.cancel).update({ status: 'cancelled' }).catch(() => {}); return; }
+    const o = e.target.closest('[data-op]'); if (o) { openId = o.dataset.op; ask = null; side(); } });
+  root.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openId) { openId = null; ask = null; side(); } });
   app.addEventListener('click', (e) => { const b = e.target.closest('[data-p]'); if (b) { sel = b.dataset.p; q = ''; try { localStorage.setItem('hb-pipe', sel); } catch (x) {} draw(); } });
   app.addEventListener('input', (e) => { if (e.target.id === 'q') { q = e.target.value; const pos = e.target.selectionStart; draw(); const qi = root.getElementById('q'); if (qi) { qi.focus(); qi.setSelectionRange(pos, pos); } } });
+  app.addEventListener('click', (e) => { if (e.target.id === 'so') { staleOnly = !staleOnly; draw(); } });
   app.addEventListener('change', (e) => { if (e.target.id === 'he') { hideEmpty = e.target.checked; try { localStorage.setItem('hb-pipe-hide', hideEmpty ? '1' : '0'); } catch (x) {} draw(); } });
   const off = db.doc('board/pipelines').onSnapshot((s) => { loaded = true; D = s.exists ? s.data() : null; draw(); if (openId) side(); }, () => { loaded = true; draw(); });
-  return () => { try { off && off(); } catch (e) {} root.innerHTML = ''; };
+  const off2 = db.doc('board/hcp_rooms').onSnapshot((s) => { ROOMS = s.exists ? s.data() : null; if (openId) side(); }, () => {});
+  const off3 = db.collection('pipeactions').onSnapshot((snap) => { ACTS = snap.docs.map(d => ({ ...d.data(), _id: d.id })); draw(); if (openId && !ask) side(); }, () => {});
+  return () => { [off, off2, off3].forEach(f => { try { f && f(); } catch (e) {} }); root.innerHTML = ''; };
 }
