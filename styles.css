@@ -245,6 +245,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--blue);outline-of
 /* v0.48 New layout top bar like the mockup + page padding */
 .nl-logo,.nl-theme,.hb-me .av{display:none}
 :root[data-layout="new"] .top .hb-brand img{height:38px}   /* v0.55 Calvin: Homestar logo back in the New layout */
+@media(max-width:600px){:root[data-layout="new"] .top .hb-brand img{height:26px;max-width:38vw}}
 :root[data-layout="new"] .nl-logo{display:none;font-family:var(--body);font-weight:900;font-size:17px;color:var(--ink);white-space:nowrap;line-height:1.1}
 :root[data-layout="new"] .nl-logo small{display:block;font-weight:700;font-size:9px;letter-spacing:.14em;color:var(--blue)}
 :root[data-layout="new"] .top{gap:16px;padding:10px 24px;min-height:0;background:var(--card);border-bottom:1px solid var(--line)}
