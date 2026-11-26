@@ -537,7 +537,7 @@ function nlTilesCalvin(){const D=nlBriefD||{},g=nlGroups(D),used=new Set(),open=
  bt("inst","Installs & orders","box","#3f9e62",/heat pump|install|order/i,"No installs or orders in the morning brief");
  const P=nlPipesD&&nlPipesD.pipelines||[];const est=P.find(x=>/estimate/i.test(x.name));const st=n=>{const s=est&&est.stages.find(x=>x.name.toLowerCase()===n);return s?s.n:0};
  const salesCards=open.filter(c=>/estimate|quote|est\s*#/i.test((c.title||"")+" "+(c.summary||"")));
- T.push({k:"sales",l:"Estimates & sales",ic:"tag",tc:"#D9772E",n:st("pending estimate")+st("sent"),p:est?[st("pending estimate")+" to write",st("sent")+" sent - follow up",st("on hold")+" on hold"].join(" · "):"Pipelines load with the next GHL sync",cards:salesCards,sub:"Open estimate / quote cards - full list in Pipelines below"});
+ T.push({k:"sales",l:"Estimates & sales",ic:"tag",tc:"#D9772E",n:st("pending estimate")+st("sent"),p:est?[st("pending estimate")+" to write",st("sent")+" sent - follow up",st("on hold")+" on hold"].join(" · "):"Pipelines load with the next GHL sync",cards:salesCards,sub:"Open estimate / quote cards - full pipelines on the Pipeline tab"});
  T.push({k:"wait",l:"Waiting on",ic:"clock",tc:"var(--l-waiting)",n:waiting.length,p:(()=>{const o=[...waiting].sort((a,b)=>String(a.updated||"").localeCompare(String(b.updated||"")))[0];return o?"Oldest: "+o.title:"Nothing waiting"})(),cards:waiting});
  bt("clash","Schedule & clashes","cal","var(--warn)",/clash/i,"No clashes found");
  bt("msg","Calls & messages","phone","var(--ok)",/message|call ?-?backs?|texts?/i,"Nothing from the morning brief yet");
@@ -575,7 +575,7 @@ function nlTiles(){if(/^calvin\b/i.test(nlOwnerName()))return nlTilesCalvin();co
 var NLI={alert:'<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/>',phone:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',spark:'<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',check:'<path d="M5 12l4 4 10-10"/>',box:'<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>',tag:'<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',cal:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'};
 function nlBrief(d){if(d)nlBriefD=d;const el=R.getElementById("nlToday");if(!el||!NL())return;nlSchedRender();
  const {T,rest}=nlTiles();
- const pipes=nlPipesHtml();
+ const pipes="";   /* v0.55: pipelines moved to their own Pipeline tab */
  el.innerHTML=`<div class="nltiles">${T.map(t=>`<button class="nlt ${t.n?"":"zero"}" data-nltile="${t.k}" style="--tc:${t.tc}"><span class="th"><span class="ti"><svg viewBox="0 0 24 24">${NLI[t.ic]||""}</svg></span><span class="tl">${esc(t.l)}</span></span><span class="tn">${t.n}</span><span class="tp">${esc(t.p||"")}</span></button>`).join("")}</div>${pipes}`;
  if(nlKind==="tile")nlSheet();}
 var nlBriefRows=[];
