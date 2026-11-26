@@ -91,7 +91,7 @@ export function mountPipeline(host, db) {
     if (!D || !D.pipelines || !D.pipelines.length) { app.innerHTML = `<div class="empty">${loaded ? 'No pipeline data yet - it fills in on the next hourly Go High Level sync.' : 'Loading pipelines…'}</div>`; return; }
     const P = D.pipelines; if (!P.some(p => key(p) === sel)) sel = key(P[0]);
     const p = P.find(x => key(x) === sel), pc = COL[sel] || 'var(--accent)';
-    const at = D.at ? new Date(D.at).toLocaleString('en-CA', { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+    const at = D.at ? new Date(D.at).toLocaleString('en-CA', { timeZone: 'America/Vancouver', weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
     const f = q.trim().toLowerCase();
     const all = p.stages.flatMap(s => s.items); const nStale = all.filter(it => it.stale).length;
     const nudge = sel === 'estimates' ? { name: 'Needs a nudge', items: all.filter(it => it.nudge), nudge: 1 } : null; if (nudge) { nudge.n = nudge.items.length; nudge.value = nudge.items.reduce((a, x) => a + (x.value || 0), 0); }
