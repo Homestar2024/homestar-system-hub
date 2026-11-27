@@ -8,6 +8,11 @@ const CSS = `
  font-family:Lato,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text);font-size:14px}
 .k.dark{--page:#0f1722;--panel:#172131;--card:#1e2a3c;--raised:#26354a;--border:#2c3b52;--text:#e8eef4;--text2:#a9b8c9;--muted:#7c8ba1;
  --accent:#38b6e0;--btntext:#0f1722;--green:#6abf8a;--red:#f9a8a8;--amber:#e5b130;--tint:.15;--s1:#38b6e0;--s2:#E0884A;--s3:#475569}
+/* v0.65 (Calvin 2026-11-27): Homestar brand accent (html[data-accent=brand], per person) - logo blue #1048D0 + orange #F08010; Jacob's default (cyan) untouched */
+.k.brand{--accent:#1048D0;--btn:#1048D0;--btntext:#FFFFFF;--s1:#1048D0;--s2:#F08010}
+.k.brand.dark{--accent:#4f7ff0;--btn:#4f7ff0;--btntext:#FFFFFF;--s1:#4f7ff0;--s2:#F59A3C}
+.k.brand .tic,.k.brand .pays{background:linear-gradient(135deg,#0C379E,#1048D0)}
+
 *{box-sizing:border-box}
 .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
 .top h1{margin:0;font-size:22px;font-weight:900}
@@ -125,8 +130,8 @@ const K_ = $('#k');
 const offs = [];
 // theme: follow the Hub (html[data-theme] or the system setting)
 const mq = matchMedia('(prefers-color-scheme: dark)');
-const syncTheme = () => { const t = document.documentElement.dataset.theme; K_.classList.toggle('dark', t ? t === 'dark' : mq.matches); };
-syncTheme(); const tObs = new MutationObserver(syncTheme); tObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+const syncTheme = () => { const t = document.documentElement.dataset.theme; K_.classList.toggle('dark', t ? t === 'dark' : mq.matches); K_.classList.toggle('brand', document.documentElement.dataset.accent === 'brand'); };
+syncTheme(); const tObs = new MutationObserver(syncTheme); tObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-accent'] });
 mq.addEventListener('change', syncTheme); offs.push(() => { tObs.disconnect(); mq.removeEventListener('change', syncTheme); });
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
