@@ -1,3 +1,4 @@
+// v0.73 2026-11-27 (Calvin): Board schedule keeps the last Housecall Pro copy (no 6 h cut-off / brief fallback while the copy covers today); header shows "from HCP as of <time>".
 // v0.47 2026-11-24 (Jacob): phone lane buttons like the mockup (separate, 10px corners, lane colour tint, selected = filled).
 // v0.46 2026-11-24 (Jacob): New layout cards + panels follow the mockup exactly: small cards (title, 2-line summary, one status badge, + add job #), card panel (Details/Edit, links, Move to pills, Conversation bubbles, Reply, Give, Archive), tile lists as rows each with Reply (brief lines -> new To Do card for Claude).
 // v0.45 2026-11-24 (Jacob): Today tiles styled like the mockup (icon square + label, big number, read-out line); 'Also in the brief' removed.
@@ -685,7 +686,9 @@ var nlDay=0,nlSchedD=null,nlRoomsD=null;
    tap one for a side panel with customer, address, phone, notes and Housecall Pro links. Falls back to the brief text when the feed is older than 6 h. */
 function nlPtDay(t){return new Intl.DateTimeFormat("en-CA",{timeZone:"America/Vancouver",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(t))}
 function nlPtMin(t){const p=new Intl.DateTimeFormat("en-GB",{timeZone:"America/Vancouver",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(t)).split(":");return ((+p[0])%24)*60+(+p[1])}
-function nlHcpFresh(){return !!(nlSchedD&&Array.isArray(nlSchedD.items)&&Date.now()-Date.parse(nlSchedD.at||0)<6*36e5)}
+/* v0.73 (Calvin 2026-11-27): no 6 h cut-off - keep the last HCP copy while it still covers today (overnight the hourly feed stops 6 PM-6 AM and the old fallback put Jacob's Bill Torry on Saturday); label shows when the copy was taken. */
+function nlHcpFresh(){return !!(nlSchedD&&Array.isArray(nlSchedD.items)&&(!nlSchedD.to||Date.parse(nlSchedD.to)>Date.now()))}
+function nlHcpAsOf(){const t=Date.parse((nlSchedD||{}).at||0);if(!t)return "";const tz={timeZone:"America/Vancouver"},d=new Date(t),tm=d.toLocaleTimeString("en-US",{...tz,hour:"numeric",minute:"2-digit"});return d.toLocaleDateString("en-CA",tz)===new Date().toLocaleDateString("en-CA",tz)?tm:d.toLocaleDateString("en-US",{...tz,weekday:"short"})+" "+tm}
 function nlK(j){return j.type==="Event"?["Event","#64748b"]:j.type==="Estimate"?["Estimate","#D9772E"]:nlKindOf(j.text)}
 function nlParseHcp(){const D=nlSchedD,out=[],loose=[],d0=nlPtDay(Date.now()),d1=nlPtDay(Date.now()+864e5),pn=id=>String((D.pros||{})[id]||"").split(/\s+/)[0];
  (D.items||[]).forEach(x=>{const day=x.start?nlPtDay(x.start):String(x.day||"").slice(0,10);const k=day===d0?0:day===d1?1:-1;if(k<0)return;const who=x.type==="Event"?(x.name||"Event"):(x.contact||x.name||x.desc||x.type);const text=[x.type==="Event"?"":x.desc,who].filter(Boolean).join(" - ");
@@ -732,7 +735,7 @@ function nlSchedRender(){const el=R.getElementById("nlSched");if(!el||!NL())retu
   return `<div class="day d${d}" style="min-height:${12+NL_*LH}px">${js.map((j,i)=>{const k=nlK(j);const ov=false,ov2=false;const t=x=>{const h=Math.floor(x/60),m=x%60;return ((h%12)||12)+(m?":"+String(m).padStart(2,"0"):"")};
   return `<div class="nlj ${j.clash?"clash":""} ${ov2?"half":""} ${ov?"half2":""}" style="--jc:${k[1]};left:${pos(j.s)}%;width:${Math.max(4,pos(j.e)-pos(j.s))}%;top:${6+j.lane*LH}px;bottom:auto;height:${LH-6}px" data-nljob="${esc(j.text)}"${j.id?` data-nlid="${esc(j.id)}"`:""} title="${esc(j.text)}"><b>${esc(j.who)}</b><span>${t(j.s)}–${t(j.e)}</span></div>`}).join("")}</div>`};
  const scale=d=>`<div class="scale d${d}"><span>7</span><span>9</span><span>11</span><span>1</span><span>3</span><span>5</span></div>`;
- el.innerHTML=`<div class="row" style="justify-content:space-between;margin-bottom:10px"><h2 style="margin:0">Schedule${clashes?`<span class="nlclashb">${clashes} clash</span>`:""}</h2><span class="hint">7 AM – 6 PM · tap a job or event${nlHcpFresh()?" · live from HCP":""}</span></div>
+ el.innerHTML=`<div class="row" style="justify-content:space-between;margin-bottom:10px"><h2 style="margin:0">Schedule${clashes?`<span class="nlclashb">${clashes} clash</span>`:""}</h2><span class="hint">7 AM – 6 PM · tap a job or event${nlHcpFresh()?" · from HCP as of "+esc(nlHcpAsOf()):""}</span></div>
  <div class="nlsw"><button class="${nlDay?"":"on"}" data-nlday="0">Today · ${fd(now)}</button><button class="${nlDay?"on":""}" data-nlday="1">Tomorrow · ${fd(d1)}</button></div>
  <div class="nlcal ${nlDay?"show1":""}" style="--days:2"><div class="hd"></div><div class="hd today d0">Today · ${fd(now)}</div><div class="hd d1">Tomorrow · ${fd(d1)}</div>
  ${rows.map(tc=>`<div class="who">${esc(tc)}</div>${cell(tc,0)}${cell(tc,1)}`).join("")}<div></div>${scale(0)}${scale(1)}</div>
