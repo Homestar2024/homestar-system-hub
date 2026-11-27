@@ -3,7 +3,7 @@
 // v0.63 (Calvin 2026-11-27): Job cost calculator hidden for the owner (sees_all_boards); #/tools/jobcost shows the Tools home for him.
 // Home grid + Job cost calculator (NEW tool, New layout only) + Pricing (same price() and RATES as tools.js) + Timesheets
 // (timesheets.js with look:'new' - same logic, data and filing). HVAC Monitoring is NOT here: #/tools/hvac keeps the Classic page.
-import { price, RATES } from './tools.js?v=68';
+import { price, RATES } from './tools.js?v=69';
 
 const BASE = `
 :host{display:block}
