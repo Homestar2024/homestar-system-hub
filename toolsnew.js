@@ -1,5 +1,6 @@
 // Homestar System Hub - TOOLS, NEW layout (v0.52, Jacob 2026-11-25, Calvin OK on the redesign). Built to match the Tools mockup
 // (mockups/hub-redesign-preview.html > Tools). Only used when html[data-layout=new]; Classic keeps tools.js.
+// v0.63 (Calvin 2026-11-27): Job cost calculator hidden for the owner (sees_all_boards); #/tools/jobcost shows the Tools home for him.
 // Home grid + Job cost calculator (NEW tool, New layout only) + Pricing (same price() and RATES as tools.js) + Timesheets
 // (timesheets.js with look:'new' - same logic, data and filing). HVAC Monitoring is NOT here: #/tools/hvac keeps the Classic page.
 import { price, RATES } from './tools.js?v=66';
@@ -163,11 +164,12 @@ export function mountToolsNew(host, db, extra) {
  const head = (t, sub) => `<a class="back" href="#/tools">‹ Tools</a><div class="top"><div><h1>${t}</h1><div class="sub">${sub}</div></div></div>`;
 
  // ---------- HOME ----------
- if (tool !== 'jobcost' && tool !== 'pricing') {
+ const noJC = !!(me && me.sees_all_boards);   // v0.63 Calvin 2026-11-27: Job cost calculator removed from Calvin's Tools (Jacob keeps it)
+ if ((tool !== 'jobcost' || noJC) && tool !== 'pricing') {
   const TOOLS = [['jobcost', 'Job cost calculator', 'Paste an HCP job – get subtotal, GST, rebate and what the customer pays.', 'New', 'accent'],
    ['timesheets', 'Timesheets', 'Build your pay period from HCP, send it to Harlow, track banked hours and sick days.', '', 'green'],
    ['pricing', 'Pricing', 'Price an install, service repair or diagnostic from the company rate model.', 'Rates as of ' + String(RATES.asOf).split(' ')[0], 'muted'],
-   ['hvac', 'HVAC Monitoring', 'Live temperatures and power from monitored homes.', '', 'green']];
+   ['hvac', 'HVAC Monitoring', 'Live temperatures and power from monitored homes.', '', 'green']].filter(t => !(noJC && t[0] === 'jobcost'));
   const drawHome = (badge) => { T.innerHTML = `<div class="top"><div><h1>Tools</h1><div class="sub">Homestar's own tools</div></div></div>
    <div class="tgrid">${TOOLS.map(([k, n, d, st, c]) => { const b = badge[k] != null ? badge[k] : st; return `<a class="tool" href="#/tools/${k}"><span class="tic">${ICON[k]}</span><div><b>${n}</b><p>${d}</p>${b ? `<span class="badge" style="--c:var(--${c})">${esc(b)}</span>` : ''}</div><span class="chev">›</span></a>`; }).join('')}</div>`; };
   const badge = {}; drawHome(badge);
